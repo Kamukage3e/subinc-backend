@@ -1,0 +1,278 @@
+openapi: 3.1.0
+info:
+  title: Subinc Cost Management Microservice API
+  version: "1.0"
+  description: Production-grade API for multi-tenant SaaS cloud cost management. RBAC/ABAC endpoints included.
+servers:
+  - url: /api
+paths:
+  /users/{id}/roles:
+    post:
+      summary: Assign role to user
+      tags: [Users, RBAC]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+      responses:
+        "200":
+          description: Roles updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  roles:
+                    type: array
+                    items:
+                      type: string
+  /users/{id}/roles/{role}:
+    delete:
+      summary: Remove role from user
+      tags: [Users, RBAC]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: role
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Roles updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  roles:
+                    type: array
+                    items:
+                      type: string
+  /users/{id}/attributes:
+    post:
+      summary: Set user attribute
+      tags: [Users, ABAC]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key, value]
+              properties:
+                key:
+                  type: string
+                value:
+                  type: string
+      responses:
+        "200":
+          description: Attributes updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  attributes:
+                    type: object
+                    additionalProperties:
+                      type: string
+  /users/{id}/attributes/{key}:
+    delete:
+      summary: Remove user attribute
+      tags: [Users, ABAC]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Attributes updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  attributes:
+                    type: object
+                    additionalProperties:
+                      type: string
+  /provisioning/terraform:
+    post:
+      summary: Enqueue a Terraform provision job
+      tags: [Provisioning, Terraform]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProvisionRequest"
+      responses:
+        "202":
+          description: Provision job accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProvisionStatus"
+    get:
+      summary: List all Terraform provision jobs
+      tags: [Provisioning, Terraform]
+      parameters:
+        - in: query
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: org_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: project_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of provision jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProvisionStatus"
+  /provisioning/terraform/{id}:
+    get:
+      summary: Get status of a Terraform provision job
+      tags: [Provisioning, Terraform]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Provision job status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProvisionStatus"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+  /provisioning/terraform/{id}/cancel:
+    post:
+      summary: Cancel a Terraform provision job
+      tags: [Provisioning, Terraform]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Job cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+components:
+  schemas:
+    ProvisionRequest:
+      type: object
+      required:
+        - tenant_id
+        - org_id
+        - project_id
+        - provider
+        - resource
+      properties:
+        tenant_id:
+          type: string
+        org_id:
+          type: string
+        project_id:
+          type: string
+        provider:
+          type: string
+          description: aws, azure, gcp
+        resource:
+          type: string
+          description: e.g., ec2, s3, vm, storage
+        config:
+          type: object
+          additionalProperties:
+            type: string
+        requested_by:
+          type: string
+    ProvisionStatus:
+      type: object
+      properties:
+        id:
+          type: string
+        request:
+          $ref: "#/components/schemas/ProvisionRequest"
+        status:
+          type: string
+          description: pending, running, success, failed, cancelled
+        message:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        terraform_hcl:
+          type: string
+          description: Terraform HCL for client export

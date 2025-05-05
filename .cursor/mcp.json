@@ -1,0 +1,32 @@
+{
+    "mcpServers": {
+        "server-sequential-thinking": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@smithery/cli@latest",
+                "run",
+                "@smithery-ai/server-sequential-thinking",
+                "--key",
+                "648b6147-b03a-4030-a553-23504d6930c0"
+            ]
+        },
+        "browser-tools-mcp": {
+            "command": "npx",
+            "args": [
+                "@agentdeskai/browser-tools-mcp@1.2.0"
+            ]
+        },
+        "filesystem": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@smithery/cli@latest",
+                "run",
+                "@smithery-ai/filesystem",
+                "--config",
+                "{\"allowedDirs\":\"/Users/numon/subinc\"}"
+            ]
+        }
+    }
+}
