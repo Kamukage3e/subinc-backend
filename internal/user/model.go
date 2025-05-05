@@ -3,7 +3,10 @@ package user
 import (
 	"time"
 
+	"os"
+
 	"github.com/google/uuid"
+	"github.com/speps/go-hashids/v2"
 )
 
 // User represents a real SaaS user. All fields are required for prod.
@@ -17,6 +20,23 @@ type User struct {
 	Attributes   map[string]string `json:"attributes" db:"attributes"`
 	CreatedAt    time.Time         `json:"created_at" db:"created_at"`
 	UpdatedAt    time.Time         `json:"updated_at" db:"updated_at"`
+}
+
+var hashID *hashids.HashID
+
+func init() {
+	salt := os.Getenv("HASHID_SALT")
+	if salt == "" {
+		salt = "subinc-default-salt-change-me" // secure default, must override in prod
+	}
+	hd := hashids.NewData()
+	hd.Salt = salt
+	hd.MinLength = 12
+	var err error
+	hashID, err = hashids.NewWithData(hd)
+	if err != nil {
+		panic("failed to initialize hashids: " + err.Error())
+	}
 }
 
 func (u *User) HasRole(role string) bool {

@@ -226,6 +226,1017 @@ paths:
                 properties:
                   error:
                     type: string
+  /admin/audit:
+    get:
+      summary: List/search/export admin audit logs
+      tags: [Admin, Audit]
+      parameters:
+        - in: query
+          name: actor_id
+          schema:
+            type: string
+          description: Filter by actor (admin user ID)
+        - in: query
+          name: action
+          schema:
+            type: string
+          description: Filter by action type
+        - in: query
+          name: resource
+          schema:
+            type: string
+          description: Filter by resource
+        - in: query
+          name: start
+          schema:
+            type: string
+            format: date-time
+          description: Filter logs created after this time (ISO8601)
+        - in: query
+          name: end
+          schema:
+            type: string
+            format: date-time
+          description: Filter logs created before this time (ISO8601)
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          description: Max results per page
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Offset for pagination
+        - in: query
+          name: export
+          schema:
+            type: string
+            enum: [csv, json]
+            default: json
+          description: Export format (csv or json)
+      responses:
+        "200":
+          description: List of audit logs or exported file
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  logs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuditLog"
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+  /admin/api-keys:
+    get:
+      summary: List API keys
+      tags: [Admin, API Keys]
+      parameters:
+        - in: query
+          name: user_id
+          schema:
+            type: string
+          description: Filter by user ID
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [active, revoked]
+          description: Filter by status
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          description: Max results per page
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Offset for pagination
+      responses:
+        "200":
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  api_keys:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/APIKey"
+    post:
+      summary: Create API key
+      tags: [Admin, API Keys]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, name]
+              properties:
+                user_id:
+                  type: string
+                name:
+                  type: string
+      responses:
+        "201":
+          description: API key created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKey"
+  /admin/api-keys/{id}:
+    get:
+      summary: Get API key details
+      tags: [Admin, API Keys]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: API key details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKey"
+    put:
+      summary: Update API key (name only)
+      tags: [Admin, API Keys]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        "200":
+          description: API key updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKey"
+    delete:
+      summary: Revoke API key
+      tags: [Admin, API Keys]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: API key revoked
+  /admin/api-keys/{id}/rotate:
+    post:
+      summary: Rotate API key
+      tags: [Admin, API Keys]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: API key rotated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKey"
+  /admin/api-keys/audit:
+    get:
+      summary: Audit API key usage
+      tags: [Admin, API Keys]
+      parameters:
+        - in: query
+          name: api_key_id
+          schema:
+            type: string
+          description: Filter by API key ID
+        - in: query
+          name: user_id
+          schema:
+            type: string
+          description: Filter by user ID
+        - in: query
+          name: action
+          schema:
+            type: string
+          description: Filter by action (create, revoke, rotate, use)
+        - in: query
+          name: start
+          schema:
+            type: string
+            format: date-time
+          description: Filter logs created after this time (ISO8601)
+        - in: query
+          name: end
+          schema:
+            type: string
+            format: date-time
+          description: Filter logs created before this time (ISO8601)
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          description: Max results per page
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Offset for pagination
+      responses:
+        "200":
+          description: List of API key audit logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  logs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/APIKeyAuditLog"
+  /admin/notifications:
+    get:
+      summary: List admin notifications
+      tags: [Admin, Notifications]
+      parameters:
+        - in: query
+          name: recipient
+          schema:
+            type: string
+          description: Filter by recipient (user/admin email or ID)
+        - in: query
+          name: type
+          schema:
+            type: string
+            enum: [system, security, billing, email, sms, push, webhook]
+          description: Filter by notification type
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [pending, sent, failed]
+          description: Filter by status
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          description: Max results per page
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Offset for pagination
+      responses:
+        "200":
+          description: List of notifications
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  notifications:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Notification"
+    post:
+      summary: Send admin notification
+      tags: [Admin, Notifications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationInput"
+      responses:
+        "201":
+          description: Notification created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+  /admin/notifications/{id}:
+    get:
+      summary: Get admin notification by ID
+      tags: [Admin, Notifications]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Notification details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+    patch:
+      summary: Mark notification as sent
+      tags: [Admin, Notifications]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sent_at]
+              properties:
+                sent_at:
+                  type: string
+                  format: date-time
+      responses:
+        "200":
+          description: Notification updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+  /admin/rate-limits:
+    get:
+      summary: Get admin rate limit configuration and status
+      tags: [Admin, Rate Limits]
+      responses:
+        "200":
+          description: Current rate limit config and status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitConfig"
+    patch:
+      summary: Update admin rate limit configuration
+      tags: [Admin, Rate Limits]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RateLimitConfigInput"
+      responses:
+        "200":
+          description: Updated rate limit config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitConfig"
+  /admin/system/maintenance:
+    get:
+      summary: Get maintenance mode status
+      tags: [Admin, Maintenance]
+      responses:
+        "200":
+          description: Current maintenance mode status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceModeStatus"
+    patch:
+      summary: Set maintenance mode status
+      tags: [Admin, Maintenance]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MaintenanceModeInput"
+      responses:
+        "200":
+          description: Updated maintenance mode status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceModeStatus"
+  /admin/monitoring:
+    get:
+      summary: Get real-time monitoring configuration and status
+      tags: [Admin, Monitoring]
+      responses:
+        "200":
+          description: Current monitoring config and status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitoringConfig"
+    patch:
+      summary: Update real-time monitoring configuration
+      tags: [Admin, Monitoring]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MonitoringConfigInput"
+      responses:
+        "200":
+          description: Updated monitoring config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitoringConfig"
+  /admin/secrets:
+    get:
+      summary: Get secrets status
+      tags: [Admin, Secrets]
+      responses:
+        "200":
+          description: Current secrets status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecretsStatus"
+    patch:
+      summary: Rotate or update secrets
+      tags: [Admin, Secrets]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SecretsUpdateInput"
+      responses:
+        "200":
+          description: Updated secrets status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecretsStatus"
+  /admin/system/flags:
+    get:
+      summary: List feature flags
+      tags: [Admin, Feature Flags]
+      responses:
+        "200":
+          description: List of feature flags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flags:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FeatureFlag"
+    post:
+      summary: Create feature flag
+      tags: [Admin, Feature Flags]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeatureFlagInput"
+      responses:
+        "201":
+          description: Feature flag created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeatureFlag"
+    patch:
+      summary: Update feature flag
+      tags: [Admin, Feature Flags]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeatureFlagInput"
+      responses:
+        "200":
+          description: Feature flag updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeatureFlag"
+    delete:
+      summary: Delete feature flag
+      tags: [Admin, Feature Flags]
+      parameters:
+        - in: query
+          name: flag
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Feature flag deleted
+  /admin/system/config:
+    get:
+      summary: List system configs
+      tags: [Admin, System Config]
+      responses:
+        "200":
+          description: List of system configs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  config:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SystemConfig"
+    post:
+      summary: Create system config
+      tags: [Admin, System Config]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SystemConfigInput"
+      responses:
+        "201":
+          description: System config created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemConfig"
+    patch:
+      summary: Update system config
+      tags: [Admin, System Config]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SystemConfigInput"
+      responses:
+        "200":
+          description: System config updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemConfig"
+    delete:
+      summary: Delete system config
+      tags: [Admin, System Config]
+      parameters:
+        - in: query
+          name: key
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: System config deleted
+  /admin/pricing:
+    get:
+      summary: List/search pricing rules
+      tags: [Admin, Pricing]
+      parameters:
+        - in: query
+          name: tenant_id
+          schema:
+            type: string
+          description: Filter by tenant
+        - in: query
+          name: plan
+          schema:
+            type: string
+          description: Filter by plan
+        - in: query
+          name: feature
+          schema:
+            type: string
+          description: Filter by feature
+        - in: query
+          name: currency
+          schema:
+            type: string
+          description: Filter by currency
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          description: Max results per page
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Offset for pagination
+      responses:
+        "200":
+          description: List of pricing rules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  pricing:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PricingRule"
+    post:
+      summary: Create pricing rule
+      tags: [Admin, Pricing]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PricingRuleInput"
+      responses:
+        "201":
+          description: Pricing rule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PricingRule"
+    patch:
+      summary: Update pricing rule
+      tags: [Admin, Pricing]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PricingRuleInput"
+      responses:
+        "200":
+          description: Pricing rule updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PricingRule"
+    delete:
+      summary: Delete pricing rule
+      tags: [Admin, Pricing]
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Pricing rule deleted
+  /admin/subscriptions:
+    get:
+      summary: List/search subscriptions
+      tags: [Admin, Subscriptions]
+      parameters:
+        - in: query
+          name: tenant_id
+          schema:
+            type: string
+          description: Filter by tenant
+        - in: query
+          name: plan
+          schema:
+            type: string
+          description: Filter by plan
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [active, cancelled, past_due, trialing]
+          description: Filter by status
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          description: Max results per page
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Offset for pagination
+      responses:
+        "200":
+          description: List of subscriptions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  subscriptions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Subscription"
+    post:
+      summary: Create subscription
+      tags: [Admin, Subscriptions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionInput"
+      responses:
+        "201":
+          description: Subscription created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subscription"
+  /admin/subscriptions/{id}:
+    patch:
+      summary: Update subscription
+      tags: [Admin, Subscriptions]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionInput"
+      responses:
+        "200":
+          description: Subscription updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subscription"
+    delete:
+      summary: Cancel subscription
+      tags: [Admin, Subscriptions]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Subscription cancelled
+  /architecture/docs:
+    get:
+      summary: List architecture docs
+      tags: [Architecture]
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of architecture docs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ArchitectureDoc"
+    post:
+      summary: Generate architecture doc
+      tags: [Architecture]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateDocRequest"
+      responses:
+        "201":
+          description: Doc generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchitectureDoc"
+
+  /architecture/docs/{id}:
+    get:
+      summary: Get architecture doc
+      tags: [Architecture]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Architecture doc
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchitectureDoc"
+        "404":
+          description: Not found
+
+  /architecture/diagrams:
+    get:
+      summary: List architecture diagrams
+      tags: [Architecture]
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of diagrams
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ArchitectureDiagram"
+    post:
+      summary: Generate architecture diagram
+      tags: [Architecture]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateDiagramRequest"
+      responses:
+        "201":
+          description: Diagram generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchitectureDiagram"
+
+  /architecture/diagrams/{id}:
+    get:
+      summary: Get architecture diagram
+      tags: [Architecture]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Architecture diagram
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchitectureDiagram"
+        "404":
+          description: Not found
+
+  /optimization/recommendations:
+    post:
+      summary: Generate optimization recommendations
+      description: Returns actionable, explainable recommendations for cost, performance, and security using OpenAI and cloud-native engines.
+      tags: [Optimization]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OptimizationRequest"
+      responses:
+        "200":
+          description: List of recommendations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OptimizationResponse"
+  /optimization/recommendations/{id}:
+    get:
+      summary: Get a specific optimization recommendation
+      tags: [Optimization]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Recommendation detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OptimizationRecommendation"
+  /optimization/history:
+    get:
+      summary: List past optimization recommendations
+      tags: [Optimization]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: tenant_id
+          schema:
+            type: string
+        - in: query
+          name: project_id
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+        - in: query
+          name: offset
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of past recommendations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OptimizationHistoryResponse"
+
 components:
   schemas:
     ProvisionRequest:
@@ -276,3 +1287,474 @@ components:
         terraform_hcl:
           type: string
           description: Terraform HCL for client export
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: string
+        actor_id:
+          type: string
+        action:
+          type: string
+        resource:
+          type: string
+        details:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        hash:
+          type: string
+        prev_hash:
+          type: string
+    APIKey:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        name:
+          type: string
+        key:
+          type: string
+          description: Only returned on create/rotate
+        status:
+          type: string
+          enum: [active, revoked]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+    APIKeyAuditLog:
+      type: object
+      properties:
+        id:
+          type: string
+        api_key_id:
+          type: string
+        user_id:
+          type: string
+        action:
+          type: string
+        details:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        recipient:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        sent_at:
+          type: string
+          format: date-time
+          nullable: true
+    NotificationInput:
+      type: object
+      required:
+        - type
+        - recipient
+        - subject
+        - body
+      properties:
+        type:
+          type: string
+          enum: [system, security, billing, email, sms, push, webhook]
+        recipient:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
+    RateLimitConfig:
+      type: object
+      properties:
+        global:
+          type: object
+          properties:
+            max_requests:
+              type: integer
+            window_seconds:
+              type: integer
+        per_route:
+          type: array
+          items:
+            type: object
+            properties:
+              route:
+                type: string
+              max_requests:
+                type: integer
+              window_seconds:
+                type: integer
+        status:
+          type: object
+          properties:
+            current_usage:
+              type: integer
+            reset_at:
+              type: string
+              format: date-time
+    RateLimitConfigInput:
+      type: object
+      properties:
+        global:
+          type: object
+          properties:
+            max_requests:
+              type: integer
+            window_seconds:
+              type: integer
+        per_route:
+          type: array
+          items:
+            type: object
+            properties:
+              route:
+                type: string
+              max_requests:
+                type: integer
+              window_seconds:
+                type: integer
+    MaintenanceModeStatus:
+      type: object
+      properties:
+        maintenance:
+          type: boolean
+        updated_at:
+          type: string
+          format: date-time
+    MaintenanceModeInput:
+      type: object
+      required:
+        - maintenance
+      properties:
+        maintenance:
+          type: boolean
+    MonitoringConfig:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        providers:
+          type: array
+          items:
+            type: string
+        status:
+          type: object
+          properties:
+            last_event_at:
+              type: string
+              format: date-time
+            event_count:
+              type: integer
+    MonitoringConfigInput:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        providers:
+          type: array
+          items:
+            type: string
+    SecretsStatus:
+      type: object
+      properties:
+        secrets:
+          type: array
+          items:
+            type: object
+            properties:
+              key_id:
+                type: string
+              status:
+                type: string
+              last_rotated:
+                type: string
+                format: date-time
+    SecretsUpdateInput:
+      type: object
+      properties:
+        rotate:
+          type: boolean
+        key_id:
+          type: string
+        new_secret:
+          type: string
+    SystemConfig:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    SystemConfigInput:
+      type: object
+      required:
+        - key
+        - value
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    PricingRule:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        plan:
+          type: string
+        feature:
+          type: string
+        currency:
+          type: string
+        amount:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PricingRuleInput:
+      type: object
+      required:
+        - tenant_id
+        - plan
+        - feature
+        - currency
+        - amount
+      properties:
+        tenant_id:
+          type: string
+        plan:
+          type: string
+        feature:
+          type: string
+        currency:
+          type: string
+        amount:
+          type: number
+    Subscription:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        plan:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    SubscriptionInput:
+      type: object
+      required:
+        - tenant_id
+        - plan
+      properties:
+        tenant_id:
+          type: string
+        plan:
+          type: string
+    ArchitectureDoc:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+        format:
+          type: string
+        export_url:
+          type: string
+        diagram_id:
+          type: string
+        resource_hash:
+          type: string
+        meta:
+          type: object
+          additionalProperties:
+            type: string
+    ArchitectureDiagram:
+      type: object
+      properties:
+        id:
+          type: string
+        doc_id:
+          type: string
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        format:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        export_url:
+          type: string
+        meta:
+          type: object
+          additionalProperties:
+            type: string
+    GenerateDocRequest:
+      type: object
+      required: [format, graph]
+      properties:
+        format:
+          type: string
+        graph:
+          $ref: "#/components/schemas/ArchitectureGraph"
+    GenerateDiagramRequest:
+      type: object
+      required: [doc_id, format, graph]
+      properties:
+        doc_id:
+          type: string
+        format:
+          type: string
+        graph:
+          $ref: "#/components/schemas/ArchitectureGraph"
+    ArchitectureGraph:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceNode"
+        edges:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceEdge"
+    ResourceNode:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        provider:
+          type: string
+        name:
+          type: string
+        properties:
+          type: object
+          additionalProperties:
+            type: string
+    ResourceEdge:
+      type: object
+      properties:
+        source_id:
+          type: string
+        target_id:
+          type: string
+        type:
+          type: string
+    OptimizationRequest:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        scope:
+          type: string
+          description: Resource scope (e.g., region, resource type)
+        resources:
+          type: array
+          items:
+            type: string
+        time_window:
+          type: string
+          description: ISO8601 duration or date range
+        goal:
+          type: string
+          enum: [cost, performance, security, multi]
+    OptimizationRecommendation:
+      type: object
+      properties:
+        id:
+          type: string
+        resource_id:
+          type: string
+        type:
+          type: string
+          enum: [cost, performance, security]
+        impact:
+          type: string
+        rationale:
+          type: string
+        remediation:
+          type: string
+        source:
+          type: string
+          enum: [openai, aws, azure, gcp]
+        confidence:
+          type: number
+        status:
+          type: string
+          enum: [new, applied, ignored, dismissed]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    OptimizationResponse:
+      type: object
+      properties:
+        recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/OptimizationRecommendation"
+    OptimizationHistoryResponse:
+      type: object
+      properties:
+        recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/OptimizationRecommendation"
+        total:
+          type: integer

@@ -1,6 +1,8 @@
 package project
 
-import "time"
+import (
+	"time"
+)
 
 // Project represents a real SaaS project. All fields are required for prod.
 type Project struct {

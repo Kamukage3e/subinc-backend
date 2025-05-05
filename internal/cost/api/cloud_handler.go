@@ -236,6 +236,11 @@ func (h *CloudHandler) ListIntegrations(c *fiber.Ctx) error {
 		integrations[i] = mapCredentialToResponse(cred)
 	}
 
+	// Encode all IDs
+	for i := range integrations {
+		integrations[i].ID = encodeID(integrations[i].ID)
+	}
+
 	response := IntegrationsResponse{
 		Integrations: integrations,
 		Count:        len(integrations),
@@ -279,6 +284,9 @@ func (h *CloudHandler) GetIntegration(c *fiber.Ctx) error {
 
 	// Create response
 	response := mapCredentialToResponse(credential)
+
+	// Encode ID
+	response.ID = encodeID(response.ID)
 
 	return c.JSON(response)
 }
@@ -336,6 +344,9 @@ func (h *CloudHandler) UpdateIntegration(c *fiber.Ctx) error {
 
 	// Create response
 	response := mapCredentialToResponse(credential)
+
+	// Encode ID
+	response.ID = encodeID(response.ID)
 
 	return c.JSON(response)
 }
@@ -482,6 +493,11 @@ func (h *CloudHandler) ListAccounts(c *fiber.Ctx) error {
 				accountResponses[i].IsDefault = true
 			}
 		}
+	}
+
+	// Encode all IDs
+	for i := range accountResponses {
+		accountResponses[i].ID = encodeID(accountResponses[i].ID)
 	}
 
 	response := AccountsResponse{

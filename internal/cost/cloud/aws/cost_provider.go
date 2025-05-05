@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,16 +16,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/google/uuid"
 
+	"github.com/subinc/subinc-backend/internal/architecture"
+	"github.com/subinc/subinc-backend/internal/architecture/types"
 	"github.com/subinc/subinc-backend/internal/cost/domain"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
-)
-
-// Required credentials for AWS
-const (
-	CredAccessKeyID     = "access_key_id"
-	CredSecretAccessKey = "secret_access_key"
-	CredRegion          = "region"
-	CredSessionToken    = "session_token" // Optional
 )
 
 // Errors
@@ -44,24 +39,24 @@ type AWSCostProvider struct {
 // NewAWSCostProvider creates a new AWS cost provider
 func NewAWSCostProvider(ctx context.Context, creds map[string]string, log *logger.Logger) (*AWSCostProvider, error) {
 	// Validate required credentials
-	accessKeyID, ok := creds[CredAccessKeyID]
+	accessKeyID, ok := creds[domain.AWSAccessKeyID]
 	if !ok || accessKeyID == "" {
-		return nil, fmt.Errorf("%w: %s is required", ErrMissingCredentials, CredAccessKeyID)
+		return nil, fmt.Errorf("%w: %s is required", ErrMissingCredentials, domain.AWSAccessKeyID)
 	}
 
-	secretAccessKey, ok := creds[CredSecretAccessKey]
+	secretAccessKey, ok := creds[domain.AWSSecretAccessKey]
 	if !ok || secretAccessKey == "" {
-		return nil, fmt.Errorf("%w: %s is required", ErrMissingCredentials, CredSecretAccessKey)
+		return nil, fmt.Errorf("%w: %s is required", ErrMissingCredentials, domain.AWSSecretAccessKey)
 	}
 
-	region, ok := creds[CredRegion]
+	region, ok := creds[domain.AWSRegion]
 	if !ok || region == "" {
 		// Default to us-east-1 if not specified
 		region = "us-east-1"
 	}
 
 	// Optional session token for temporary credentials
-	sessionToken := creds[CredSessionToken]
+	sessionToken := creds[domain.AWSSessionToken]
 
 	// Create AWS credentials provider
 	var credProvider awssdk.CredentialsProvider
@@ -344,60 +339,251 @@ func (p *AWSCostProvider) FetchAccounts(ctx context.Context, credentials map[str
 
 // GetCostCategories returns the supported cost categories for AWS
 func (p *AWSCostProvider) GetCostCategories() []domain.CostCategory {
-	return []domain.CostCategory{
-		{
-			ID:          "service",
-			Name:        "Service",
-			Description: "AWS service categories",
-			Provider:    domain.AWS,
-		},
-		{
-			ID:          "region",
-			Name:        "Region",
-			Description: "AWS geographical regions",
-			Provider:    domain.AWS,
-		},
-		{
-			ID:          "account",
-			Name:        "Account",
-			Description: "AWS accounts",
-			Provider:    domain.AWS,
-		},
-		{
-			ID:          "tag",
-			Name:        "Resource Tags",
-			Description: "User-defined resource tags",
-			Provider:    domain.AWS,
-		},
-		{
-			ID:          "usage_type",
-			Name:        "Usage Type",
-			Description: "Types of resource usage",
-			Provider:    domain.AWS,
-		},
+	dims := []struct {
+		Dim            cetypes.Dimension
+		ID, Name, Desc string
+	}{
+		{cetypes.DimensionService, "service", "Service", "AWS service categories"},
+		{cetypes.DimensionUsageType, "usage_type", "Usage Type", "Types of resource usage"},
+		{cetypes.DimensionLinkedAccount, "account", "Account", "AWS accounts"},
+		{cetypes.DimensionRegion, "region", "Region", "AWS geographical regions"},
 	}
+	var cats []domain.CostCategory
+	for _, d := range dims {
+		input := &costexplorer.GetDimensionValuesInput{Dimension: d.Dim}
+		_, err := p.costExplorer.GetDimensionValues(context.Background(), input)
+		if err != nil {
+			p.logger.Error("Failed to fetch AWS cost category", logger.String("category", d.ID), logger.ErrorField(err))
+			continue
+		}
+		cats = append(cats, domain.CostCategory{
+			ID:          d.ID,
+			Name:        d.Name,
+			Description: d.Desc,
+			Provider:    domain.AWS,
+		})
+	}
+	// Add tag category (always present)
+	cats = append(cats, domain.CostCategory{
+		ID:          "tag",
+		Name:        "Resource Tags",
+		Description: "User-defined resource tags",
+		Provider:    domain.AWS,
+	})
+	return cats
 }
 
 // GetSupportedServices returns the services supported by AWS
 func (p *AWSCostProvider) GetSupportedServices() []domain.CloudService {
-	// No static list; must query AWS APIs for real data. Return empty for now.
-	return []domain.CloudService{}
+	// Query Cost Explorer for all unique SERVICE dimension values
+	input := &costexplorer.GetDimensionValuesInput{
+		Dimension: cetypes.DimensionService,
+	}
+	resp, err := p.costExplorer.GetDimensionValues(context.Background(), input)
+	if err != nil {
+		p.logger.Error("Failed to fetch AWS supported services", logger.ErrorField(err))
+		return []domain.CloudService{}
+	}
+	var services []domain.CloudService
+	for _, v := range resp.DimensionValues {
+		services = append(services, domain.CloudService{
+			ID:       *v.Value,
+			Name:     *v.Value,
+			Provider: domain.AWS,
+			Category: "service",
+		})
+	}
+	return services
 }
 
 // GetUsageTypes returns the usage types supported by AWS
 func (p *AWSCostProvider) GetUsageTypes() []domain.UsageType {
-	// No static list; must query AWS APIs for real data. Return empty for now.
-	return []domain.UsageType{}
+	input := &costexplorer.GetDimensionValuesInput{
+		Dimension: cetypes.DimensionUsageType,
+	}
+	resp, err := p.costExplorer.GetDimensionValues(context.Background(), input)
+	if err != nil {
+		p.logger.Error("Failed to fetch AWS usage types", logger.ErrorField(err))
+		return []domain.UsageType{}
+	}
+	var usageTypes []domain.UsageType
+	for _, v := range resp.DimensionValues {
+		usageTypes = append(usageTypes, domain.UsageType{
+			ID:       *v.Value,
+			Name:     *v.Value,
+			Provider: domain.AWS,
+			Service:  "",
+			Unit:     "",
+		})
+	}
+	return usageTypes
 }
 
-// FetchResourceUsage retrieves detailed resource usage data
+// FetchResourceUsage retrieves detailed resource usage data for a specific AWS resource
 func (p *AWSCostProvider) FetchResourceUsage(ctx context.Context, accountID string, resourceID string, startTime, endTime time.Time) (*domain.ResourceUsage, error) {
-	return nil, fmt.Errorf("FetchResourceUsage is not implemented for AWS")
+	if resourceID == "" {
+		return nil, fmt.Errorf("resourceID is required for AWS resource usage fetch")
+	}
+	if startTime.After(endTime) {
+		return nil, domain.ErrInvalidTimeRange
+	}
+	startDate := startTime.Format("2006-01-02")
+	endDate := endTime.Format("2006-01-02")
+	timePeriod := &cetypes.DateInterval{
+		Start: awssdk.String(startDate),
+		End:   awssdk.String(endDate),
+	}
+	input := &costexplorer.GetCostAndUsageInput{
+		Granularity: cetypes.GranularityDaily,
+		TimePeriod:  timePeriod,
+		Metrics:     []string{"UnblendedCost", "UsageQuantity"},
+		GroupBy: []cetypes.GroupDefinition{
+			{
+				Type: cetypes.GroupDefinitionTypeDimension,
+				Key:  awssdk.String("RESOURCE_ID"),
+			},
+		},
+		Filter: &cetypes.Expression{
+			Dimensions: &cetypes.DimensionValues{
+				Key:    cetypes.DimensionResourceId,
+				Values: []string{resourceID},
+			},
+		},
+	}
+	resp, err := p.costExplorer.GetCostAndUsage(ctx, input)
+	if err != nil {
+		p.logger.Error("Failed to fetch AWS resource usage", logger.ErrorField(err), logger.String("resource_id", resourceID))
+		return nil, fmt.Errorf("failed to fetch AWS resource usage: %w", err)
+	}
+	usage := &domain.ResourceUsage{
+		ResourceID: resourceID,
+		Provider:   domain.AWS,
+		AccountID:  accountID,
+		StartTime:  startTime,
+		EndTime:    endTime,
+		Metrics:    make(map[string]float64),
+	}
+	for _, resultByTime := range resp.ResultsByTime {
+		for _, group := range resultByTime.Groups {
+			if len(group.Keys) > 0 && group.Keys[0] == resourceID {
+				if cost, ok := group.Metrics["UnblendedCost"]; ok && cost.Amount != nil {
+					c, _ := parseFloat(*cost.Amount)
+					usage.Metrics["cost"] += c
+				}
+				if usageMetric, ok := group.Metrics["UsageQuantity"]; ok && usageMetric.Amount != nil {
+					u, _ := parseFloat(*usageMetric.Amount)
+					usage.Metrics["usage"] += u
+				}
+				if cost, ok := group.Metrics["UnblendedCost"]; ok && cost.Unit != nil {
+					// Store currency as a string in a float64 map (not ideal, but matches interface)
+					// Use a convention: currency code as a negative float (e.g., -840 for USD)
+					// Or just skip, as currency is always USD for AWS
+				}
+			}
+		}
+	}
+	return usage, nil
 }
 
 // ListBillingItems lists billing line items for an account
 func (p *AWSCostProvider) ListBillingItems(ctx context.Context, accountID string, startTime, endTime time.Time, page, pageSize int) ([]*domain.BillingItem, int, error) {
-	return nil, 0, fmt.Errorf("ListBillingItems is not implemented for AWS")
+	if accountID == "" {
+		return nil, 0, fmt.Errorf("accountID is required for AWS billing items")
+	}
+	if startTime.After(endTime) {
+		return nil, 0, domain.ErrInvalidTimeRange
+	}
+	startDate := startTime.Format("2006-01-02")
+	endDate := endTime.Format("2006-01-02")
+	timePeriod := &cetypes.DateInterval{
+		Start: awssdk.String(startDate),
+		End:   awssdk.String(endDate),
+	}
+	input := &costexplorer.GetCostAndUsageInput{
+		Granularity: cetypes.GranularityDaily,
+		TimePeriod:  timePeriod,
+		Metrics:     []string{"UnblendedCost", "UsageQuantity"},
+		GroupBy: []cetypes.GroupDefinition{
+			{
+				Type: cetypes.GroupDefinitionTypeDimension,
+				Key:  awssdk.String("SERVICE"),
+			},
+			{
+				Type: cetypes.GroupDefinitionTypeDimension,
+				Key:  awssdk.String("RESOURCE_ID"),
+			},
+		},
+		Filter: &cetypes.Expression{
+			Dimensions: &cetypes.DimensionValues{
+				Key:    cetypes.DimensionLinkedAccount,
+				Values: []string{accountID},
+			},
+		},
+	}
+	resp, err := p.costExplorer.GetCostAndUsage(ctx, input)
+	if err != nil {
+		p.logger.Error("Failed to fetch AWS billing items", logger.ErrorField(err), logger.String("account_id", accountID))
+		return nil, 0, fmt.Errorf("failed to fetch AWS billing items: %w", err)
+	}
+	var items []*domain.BillingItem
+	for _, resultByTime := range resp.ResultsByTime {
+		for _, group := range resultByTime.Groups {
+			var service, resourceID string
+			if len(group.Keys) > 0 {
+				service = group.Keys[0]
+			}
+			if len(group.Keys) > 1 {
+				resourceID = group.Keys[1]
+			}
+			costAmount := 0.0
+			if cost, ok := group.Metrics["UnblendedCost"]; ok && cost.Amount != nil {
+				costAmount, _ = parseFloat(*cost.Amount)
+			}
+			usageQuantity := 0.0
+			if usage, ok := group.Metrics["UsageQuantity"]; ok && usage.Amount != nil {
+				usageQuantity, _ = parseFloat(*usage.Amount)
+			}
+			var startTimeVal, endTimeVal time.Time
+			if resultByTime.TimePeriod.Start != nil {
+				startTimeVal, _ = time.Parse("2006-01-02", *resultByTime.TimePeriod.Start)
+			}
+			if resultByTime.TimePeriod.End != nil {
+				endTimeVal, _ = time.Parse("2006-01-02", *resultByTime.TimePeriod.End)
+			}
+			item := &domain.BillingItem{
+				ID:            uuid.New().String(),
+				AccountID:     accountID,
+				Provider:      domain.AWS,
+				Description:   fmt.Sprintf("%s %s", service, resourceID),
+				Service:       service,
+				ResourceID:    resourceID,
+				UsageType:     determineUsageType(service, resourceID),
+				UsageQuantity: usageQuantity,
+				UsageUnit:     determineUsageUnit(service, resourceID),
+				CostAmount:    costAmount,
+				CostCurrency:  determineCurrency(group.Metrics),
+				StartTime:     startTimeVal,
+				EndTime:       endTimeVal,
+			}
+			items = append(items, item)
+		}
+	}
+	total := len(items)
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 100
+	}
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if start > total {
+		return []*domain.BillingItem{}, total, nil
+	}
+	if end > total {
+		end = total
+	}
+	return items[start:end], total, nil
 }
 
 // HealthCheck verifies that the AWS Cost Explorer API is reachable
@@ -409,6 +595,19 @@ func (p *AWSCostProvider) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
+// ListResources implements ResourceInventoryProvider for AWS
+func (p *AWSCostProvider) ListResources(ctx context.Context, accountID string, credentials map[string]string) ([]types.ResourceNode, error) {
+	if credentials == nil {
+		return nil, ErrMissingCredentials
+	}
+	resources, err := architecture.ScanAWSResourcesFormer2Style(ctx, credentials, credentials[domain.AWSRegion])
+	if err != nil {
+		p.logger.Error("Failed to scan AWS resources", logger.ErrorField(err))
+		return nil, err
+	}
+	return resources, nil
+}
+
 // Helper functions
 
 // parseFloat safely parses a string to float64
@@ -418,45 +617,97 @@ func parseFloat(s string) (float64, error) {
 	return f, err
 }
 
-// determineResourceType infers resource type from service and resource ID
+// determineResourceType infers resource type from service and resource ID using a map-based, extensible approach
 func determineResourceType(service, resourceID string) domain.ResourceType {
-	// In a real implementation, we'd have more sophisticated logic
-	// For now, use a simple mapping
-	switch {
-	case strings.HasPrefix(resourceID, "i-"):
-		return domain.Compute
-	case strings.HasPrefix(resourceID, "vol-"):
-		return domain.Storage
-	case strings.HasPrefix(resourceID, "db-"):
-		return domain.Database
-	case strings.Contains(service, "EC2"):
-		return domain.Compute
-	case strings.Contains(service, "S3"):
-		return domain.Storage
-	case strings.Contains(service, "RDS") || strings.Contains(service, "DynamoDB"):
-		return domain.Database
-	case strings.Contains(service, "VPC") || strings.Contains(service, "CloudFront"):
-		return domain.Network
-	default:
-		return domain.Other
+	// Map of patterns to resource types for extensibility
+	var typePatterns = []struct {
+		Pattern string
+		Type    domain.ResourceType
+	}{
+		{"^i-", domain.Compute},
+		{"^vol-", domain.Storage},
+		{"^db-", domain.Database},
+		{"ec2", domain.Compute},
+		{"s3", domain.Storage},
+		{"rds", domain.Database},
+		{"dynamodb", domain.Database},
+		{"vpc", domain.Network},
+		{"cloudfront", domain.Network},
 	}
+	serviceLower := strings.ToLower(service)
+	for _, entry := range typePatterns {
+		if matched, _ := regexp.MatchString(entry.Pattern, resourceID); matched {
+			return entry.Type
+		}
+		if strings.Contains(serviceLower, entry.Pattern) {
+			return entry.Type
+		}
+	}
+	return domain.Other
 }
 
-// determineRegionFromResourceID extracts region from AWS resource ID if possible
+// determineRegionFromResourceID extracts region from AWS resource ID or ARN
 func determineRegionFromResourceID(resourceID string) string {
-	// Region extraction not implemented; return empty string for safety.
+	// ARN format: arn:partition:service:region:account-id:resource
+	if strings.HasPrefix(resourceID, "arn:") {
+		parts := strings.Split(resourceID, ":")
+		if len(parts) >= 4 {
+			return parts[3]
+		}
+	}
+	// Try to match region in known resource ID patterns (e.g., vol-<region>-<id>)
+	regionPattern := regexp.MustCompile(`[a-z]{2}-[a-z]+-\d`)
+	if match := regionPattern.FindString(resourceID); match != "" {
+		return match
+	}
 	return ""
 }
 
-// determineUsageType infers usage type from service and resource ID
+// determineUsageType infers usage type from service and resource ID, using a scalable map-based approach
 func determineUsageType(service, resourceID string) string {
-	// Usage type extraction not implemented; return empty string for safety.
+	service = strings.ToLower(service)
+	usageTypeMap := map[string]string{
+		"ec2":        "BoxUsage",
+		"s3":         "Storage",
+		"rds":        "DBInstanceUsage",
+		"lambda":     "LambdaUsage",
+		"dynamodb":   "ReadWriteCapacity",
+		"vpc":        "VpcUsage",
+		"cloudfront": "DataTransfer",
+		"elb":        "LoadBalancerUsage",
+		"redshift":   "NodeUsage",
+		"glacier":    "ArchiveStorage",
+		"kms":        "KeyUsage",
+	}
+	for pattern, usageType := range usageTypeMap {
+		if strings.Contains(service, pattern) {
+			return usageType
+		}
+	}
 	return ""
 }
 
-// determineUsageUnit infers usage unit from service and resource ID
+// determineUsageUnit infers usage unit from service and resource ID, using a scalable map-based approach
 func determineUsageUnit(service, resourceID string) string {
-	// Usage unit extraction not implemented; return empty string for safety.
+	service = strings.ToLower(service)
+	usageUnitMap := map[string]string{
+		"ec2":        "Hours",
+		"s3":         "GB",
+		"rds":        "Hours",
+		"lambda":     "Requests",
+		"dynamodb":   "ReadWriteUnits",
+		"vpc":        "Hours",
+		"cloudfront": "GB",
+		"elb":        "Hours",
+		"redshift":   "NodeHours",
+		"glacier":    "GB-Months",
+		"kms":        "Requests",
+	}
+	for pattern, usageUnit := range usageUnitMap {
+		if strings.Contains(service, pattern) {
+			return usageUnit
+		}
+	}
 	return ""
 }
 

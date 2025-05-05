@@ -14,10 +14,12 @@ import (
 // Router sets up all API routes
 type Router struct {
 	app                  *fiber.App
+	apiPrefix            string
 	costService          service.CostService
 	cloudProviderService service.CloudProviderService
 	billingService       service.BillingService
 	couponService        service.CouponService
+	optimizationService  *service.OptimizationService
 	logger               *logger.Logger
 	secretsManager       secrets.SecretsManager
 	jwtSecretName        string
@@ -26,10 +28,12 @@ type Router struct {
 // NewRouter creates a new router
 func NewRouter(
 	app *fiber.App,
+	apiPrefix string,
 	costService service.CostService,
 	cloudProviderService service.CloudProviderService,
 	billingService service.BillingService,
 	couponService service.CouponService,
+	optimizationService *service.OptimizationService,
 	log *logger.Logger,
 	secretsManager secrets.SecretsManager,
 	jwtSecretName string,
@@ -40,10 +44,12 @@ func NewRouter(
 
 	return &Router{
 		app:                  app,
+		apiPrefix:            apiPrefix,
 		costService:          costService,
 		cloudProviderService: cloudProviderService,
 		billingService:       billingService,
 		couponService:        couponService,
+		optimizationService:  optimizationService,
 		logger:               log,
 		secretsManager:       secretsManager,
 		jwtSecretName:        jwtSecretName,
@@ -53,7 +59,7 @@ func NewRouter(
 // SetupRoutes registers all API routes
 func (r *Router) SetupRoutes() {
 	// Create API group
-	api := r.app.Group("/api")
+	api := r.app.Group(r.apiPrefix)
 
 	// Register cost API routes
 	costGroup := api.Group("/cost")
@@ -110,10 +116,16 @@ func (r *Router) SetupRoutes() {
 	}).Repo()
 	anomalyService := service.NewAnomalyDetectionService(costRepo, r.logger)
 	anomalyHandler := NewAnomalyHandler(anomalyService, r.logger)
-	apiV1 := api.Group("/v1")
-	apiV1.Post("/anomalies/detect", anomalyHandler.DetectAnomalies)
-	apiV1.Get("/anomalies", anomalyHandler.ListAnomalies)
-	apiV1.Get("/anomalies/:id/recommendation", anomalyHandler.GetRecommendation)
+	api.Post("/anomalies/detect", anomalyHandler.DetectAnomalies)
+	api.Get("/anomalies", anomalyHandler.ListAnomalies)
+	api.Get("/anomalies/:id/recommendation", anomalyHandler.GetRecommendation)
+
+	// Register optimization routes
+	optHandler := NewOptimizationHandler(r.optimizationService)
+	opt := api.Group("/optimization", middleware.RBACMiddleware("admin", "owner", "user"))
+	opt.Post("/recommendations", optHandler.GenerateRecommendations)
+	opt.Get("/recommendations/:id", optHandler.GetRecommendation)
+	opt.Get("/history", optHandler.ListHistory)
 }
 
 // setupHealthCheck sets up health check routes

@@ -6,6 +6,8 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/subinc/subinc-backend/internal/cost/middleware"
+	"github.com/subinc/subinc-backend/internal/pkg/idencode"
 	"github.com/subinc/subinc-backend/internal/pkg/secrets"
 )
 
@@ -32,6 +34,15 @@ func (h *UserHandler) RegisterRoutes(router fiber.Router) {
 	users.Delete(":id", h.DeleteUser)
 	users.Post("/login", h.Login)
 	users.Post("/register", h.Register)
+	// RBAC/ABAC endpoints
+	users.Post(":id/roles", middleware.RBACMiddleware("admin", "owner"), h.AssignRole)
+	users.Delete(":id/roles/:role", middleware.RBACMiddleware("admin", "owner"), h.RemoveRole)
+	users.Post(":id/attributes", middleware.RBACMiddleware("admin", "owner"), h.SetAttribute)
+	users.Delete(":id/attributes/:key", middleware.RBACMiddleware("admin", "owner"), h.RemoveAttribute)
+}
+
+func decodeIDParam(c *fiber.Ctx) (string, error) {
+	return idencode.Decode(c.Params("id"))
 }
 
 func (h *UserHandler) ListUsers(c *fiber.Ctx) error {
@@ -41,15 +52,15 @@ func (h *UserHandler) ListUsers(c *fiber.Ctx) error {
 	if !ok || tenantID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing tenant id in context"})
 	}
-	// Implement a real ListUsers method in your UserStore for prod
 	users, err := h.store.ListByTenantID(ctx, tenantID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch users"})
 	}
 	resp := make([]map[string]interface{}, 0, len(users))
 	for _, u := range users {
+		idHash, _ := idencode.Encode(u.ID)
 		resp = append(resp, map[string]interface{}{
-			"id":         u.ID,
+			"id":         idHash,
 			"tenant_id":  u.TenantID,
 			"username":   u.Username,
 			"email":      u.Email,
@@ -63,15 +74,16 @@ func (h *UserHandler) ListUsers(c *fiber.Ctx) error {
 }
 
 func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
+	id, err := decodeIDParam(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
 	}
 	ctx := c.Context()
 	u, err := h.store.GetByID(ctx, id)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "user not found"})
 	}
+	idHash, _ := idencode.Encode(u.ID)
 	resp := struct {
 		ID        string `json:"id"`
 		TenantID  string `json:"tenant_id"`
@@ -80,7 +92,7 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 		CreatedAt string `json:"created_at"`
 		UpdatedAt string `json:"updated_at"`
 	}{
-		ID:        u.ID,
+		ID:        idHash,
 		TenantID:  u.TenantID,
 		Username:  u.Username,
 		Email:     u.Email,
@@ -91,12 +103,12 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 }
 
 func (h *UserHandler) DeleteUser(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
+	id, err := decodeIDParam(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
 	}
 	ctx := c.Context()
-	err := h.store.Delete(ctx, id)
+	err = h.store.Delete(ctx, id)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "user not found"})
 	}
@@ -177,9 +189,9 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 }
 
 func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
+	id, err := decodeIDParam(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
 	}
 	var req struct {
 		Email      *string            `json:"email"`
@@ -216,4 +228,107 @@ func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update user"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"id": u.ID, "username": u.Username, "email": u.Email, "tenant_id": u.TenantID})
+}
+
+func (h *UserHandler) AssignRole(c *fiber.Ctx) error {
+	id, err := decodeIDParam(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
+	}
+	var req struct {
+		Role string `json:"role"`
+	}
+	if err := c.BodyParser(&req); err != nil || req.Role == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid role"})
+	}
+	ctx := context.Background()
+	u, err := h.store.GetByID(ctx, id)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "user not found"})
+	}
+	// Enforce tenant isolation
+	claims, _ := c.Locals("claims").(map[string]interface{})
+	if claims["tenant_id"] != u.TenantID {
+		return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
+	}
+	u.AddRole(req.Role)
+	if err := h.store.Update(ctx, u); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "failed to update user roles"})
+	}
+	return c.JSON(fiber.Map{"roles": u.Roles})
+}
+
+func (h *UserHandler) RemoveRole(c *fiber.Ctx) error {
+	id, err := decodeIDParam(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
+	}
+	role := c.Params("role")
+	if role == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid role"})
+	}
+	ctx := context.Background()
+	u, err := h.store.GetByID(ctx, id)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "user not found"})
+	}
+	claims, _ := c.Locals("claims").(map[string]interface{})
+	if claims["tenant_id"] != u.TenantID {
+		return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
+	}
+	u.RemoveRole(role)
+	if err := h.store.Update(ctx, u); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "failed to update user roles"})
+	}
+	return c.JSON(fiber.Map{"roles": u.Roles})
+}
+
+func (h *UserHandler) SetAttribute(c *fiber.Ctx) error {
+	id, err := decodeIDParam(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
+	}
+	var req struct{ Key, Value string }
+	if err := c.BodyParser(&req); err != nil || req.Key == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid attribute"})
+	}
+	ctx := context.Background()
+	u, err := h.store.GetByID(ctx, id)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "user not found"})
+	}
+	claims, _ := c.Locals("claims").(map[string]interface{})
+	if claims["tenant_id"] != u.TenantID {
+		return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
+	}
+	u.SetAttribute(req.Key, req.Value)
+	if err := h.store.Update(ctx, u); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "failed to update user attributes"})
+	}
+	return c.JSON(fiber.Map{"attributes": u.Attributes})
+}
+
+func (h *UserHandler) RemoveAttribute(c *fiber.Ctx) error {
+	id, err := decodeIDParam(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
+	}
+	key := c.Params("key")
+	if key == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid attribute key"})
+	}
+	ctx := context.Background()
+	u, err := h.store.GetByID(ctx, id)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "user not found"})
+	}
+	claims, _ := c.Locals("claims").(map[string]interface{})
+	if claims["tenant_id"] != u.TenantID {
+		return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
+	}
+	u.RemoveAttribute(key)
+	if err := h.store.Update(ctx, u); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "failed to update user attributes"})
+	}
+	return c.JSON(fiber.Map{"attributes": u.Attributes})
 }

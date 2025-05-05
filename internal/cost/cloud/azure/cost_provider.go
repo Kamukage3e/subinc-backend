@@ -13,14 +13,6 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-// Required credentials for Azure
-const (
-	CredClientID       = "client_id"
-	CredClientSecret   = "client_secret"
-	CredTenantID       = "tenant_id"
-	CredSubscriptionID = "subscription_id" // Optional, if not provided we will list all subscriptions
-)
-
 // Errors
 var (
 	ErrMissingCredentials  = errors.New("missing required Azure credentials")
@@ -38,17 +30,17 @@ type AzureCostProvider struct {
 
 // NewAzureCostProvider creates a new Azure cost provider with real SDK clients
 func NewAzureCostProvider(ctx context.Context, credentials map[string]string, log *logger.Logger) (*AzureCostProvider, error) {
-	clientID, ok := credentials[CredClientID]
+	clientID, ok := credentials[domain.AzureClientID]
 	if !ok || clientID == "" {
-		return nil, fmt.Errorf("%w: %s is required", ErrMissingCredentials, CredClientID)
+		return nil, fmt.Errorf("%w: %s is required", ErrMissingCredentials, domain.AzureClientID)
 	}
-	clientSecret, ok := credentials[CredClientSecret]
+	clientSecret, ok := credentials[domain.AzureClientSecret]
 	if !ok || clientSecret == "" {
-		return nil, fmt.Errorf("%w: %s is required", ErrMissingCredentials, CredClientSecret)
+		return nil, fmt.Errorf("%w: %s is required", ErrMissingCredentials, domain.AzureClientSecret)
 	}
-	tenantID, ok := credentials[CredTenantID]
+	tenantID, ok := credentials[domain.AzureTenantID]
 	if !ok || tenantID == "" {
-		return nil, fmt.Errorf("%w: %s is required", ErrMissingCredentials, CredTenantID)
+		return nil, fmt.Errorf("%w: %s is required", ErrMissingCredentials, domain.AzureTenantID)
 	}
 
 	cred, err := azidentity.NewClientSecretCredential(tenantID, clientID, clientSecret, nil)
@@ -156,19 +148,19 @@ func (p *AzureCostProvider) GetProviderInfo() domain.CloudProviderInfo {
 
 // ValidateCredentials checks if the provided credentials are valid
 func (p *AzureCostProvider) ValidateCredentials(ctx context.Context, accountID string, credentials map[string]string) error {
-	clientID, ok := credentials[CredClientID]
+	clientID, ok := credentials[domain.AzureClientID]
 	if !ok || clientID == "" {
-		return fmt.Errorf("%w: %s is required", ErrMissingCredentials, CredClientID)
+		return fmt.Errorf("%w: %s is required", ErrMissingCredentials, domain.AzureClientID)
 	}
 
-	clientSecret, ok := credentials[CredClientSecret]
+	clientSecret, ok := credentials[domain.AzureClientSecret]
 	if !ok || clientSecret == "" {
-		return fmt.Errorf("%w: %s is required", ErrMissingCredentials, CredClientSecret)
+		return fmt.Errorf("%w: %s is required", ErrMissingCredentials, domain.AzureClientSecret)
 	}
 
-	tenantID, ok := credentials[CredTenantID]
+	tenantID, ok := credentials[domain.AzureTenantID]
 	if !ok || tenantID == "" {
-		return fmt.Errorf("%w: %s is required", ErrMissingCredentials, CredTenantID)
+		return fmt.Errorf("%w: %s is required", ErrMissingCredentials, domain.AzureTenantID)
 	}
 
 	// Try to create a new Azure credential

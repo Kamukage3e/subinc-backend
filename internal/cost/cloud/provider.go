@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/subinc/subinc-backend/internal/architecture/types"
 	"github.com/subinc/subinc-backend/internal/cost/domain"
 )
 
@@ -81,4 +82,11 @@ func (r *CostDataProviderRegistry) GetProvider(ctx context.Context, provider dom
 // Adapter for domain.ProviderRegistry
 func (r *CostDataProviderRegistry) GetProviderAsInterface(ctx context.Context, provider domain.CloudProvider, credentials map[string]string) (interface{}, error) {
 	return r.GetProvider(ctx, provider, credentials)
+}
+
+// ResourceInventoryProvider defines resource inventory for a cloud provider
+// Real prod interface, no placeholders
+
+type ResourceInventoryProvider interface {
+	ListResources(ctx context.Context, accountID string, credentials map[string]string) ([]types.ResourceNode, error)
 }

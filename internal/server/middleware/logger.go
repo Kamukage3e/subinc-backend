@@ -2,10 +2,12 @@ package middleware
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/subinc/subinc-backend/internal/admin"
 	. "github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -45,7 +47,7 @@ func init() {
 }
 
 // RequestLogger creates a Fiber middleware for structured request logging with logger.Logger
-func RequestLogger(log *Logger) fiber.Handler {
+func RequestLogger(log *Logger, adminStore *admin.PostgresAdminStore) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// Start timer
 		start := time.Now()
@@ -110,6 +112,31 @@ func RequestLogger(log *Logger) fiber.Handler {
 		if err != nil {
 			fields = append(fields, ErrorField(err))
 		}
+
+		// --- ADMIN API AUDIT LOG ---
+		if strings.HasPrefix(path, "/admin/") {
+			claims, ok := c.Locals("claims").(map[string]interface{})
+			actor := "anonymous"
+			if ok {
+				if sub, ok := claims["sub"].(string); ok && sub != "" {
+					actor = sub
+				}
+			}
+			// Only log if authenticated
+			if actor != "anonymous" {
+				_ = adminStore.LogAuditEvent(
+					"admin_api_audit",
+					method,
+					actor,
+					map[string]interface{}{
+						"resource":   path,
+						"status":     statusCode,
+						"request_id": requestID,
+					},
+				)
+			}
+		}
+		// --- END ADMIN API AUDIT LOG ---
 
 		// Log with appropriate level based on status code
 		switch {

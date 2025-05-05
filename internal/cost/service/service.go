@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/subinc/subinc-backend/internal/cost/domain"
 	"github.com/subinc/subinc-backend/internal/cost/repository"
-	"github.com/subinc/subinc-backend/internal/pkg/jobs"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
+	"github.com/subinc/subinc-backend/pkg/jobs"
 )
 
 // Common error codes for better client-side error handling
@@ -83,7 +83,7 @@ type CouponService interface {
 type costService struct {
 	repo      repository.CostRepository
 	logger    *logger.Logger
-	jobQueue  jobs.Queue
+	jobQueue  *jobs.BackgroundJobClient
 	providers domain.ProviderRegistry
 }
 
@@ -105,7 +105,7 @@ type couponService struct {
 // NewCostService creates a new cost service
 func NewCostService(
 	repo repository.CostRepository,
-	jobQueue jobs.Queue,
+	jobQueue *jobs.BackgroundJobClient,
 	providers domain.ProviderRegistry,
 	log *logger.Logger,
 ) CostService {
@@ -281,29 +281,21 @@ func (s *costService) ImportCostData(ctx context.Context, tenantID string, provi
 	}
 
 	// Queue job for processing
-	job := jobs.Job{
-		ID:       costImport.ID,
-		Type:     "cost_import",
-		TenantID: tenantID,
-		Priority: jobs.PriorityNormal,
-		Payload: map[string]interface{}{
-			"import_id":  costImport.ID,
-			"tenant_id":  tenantID,
-			"provider":   string(provider),
-			"account_id": accountID,
-			"start_time": startTime,
-			"end_time":   endTime,
-		},
-		MaxRetries: 3,
+	payload := map[string]interface{}{
+		"import_id":  costImport.ID,
+		"tenant_id":  tenantID,
+		"provider":   string(provider),
+		"account_id": accountID,
+		"start_time": startTime,
+		"end_time":   endTime,
 	}
-
-	if err := s.jobQueue.Enqueue(ctx, job); err != nil {
+	_, err := s.jobQueue.Enqueue("cost_import", payload)
+	if err != nil {
 		s.logger.Error("Failed to queue cost import job",
 			logger.String("import_id", costImport.ID),
 			logger.String("tenant_id", tenantID),
 			logger.ErrorField(err),
 		)
-
 		// Update import status to failed
 		costImport.Status = "failed"
 		costImport.ErrorMessage = "Failed to queue import job"
@@ -314,7 +306,6 @@ func (s *costService) ImportCostData(ctx context.Context, tenantID string, provi
 				logger.ErrorField(updateErr),
 			)
 		}
-
 		return nil, ErrInternalError
 	}
 

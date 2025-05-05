@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -17,17 +18,28 @@ func RBACMiddleware(allowedRoles ...string) fiber.Handler {
 		if claims == nil {
 			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "forbidden: no user context"})
 		}
-		roleVal, ok := claims["role"]
+		rolesIface, ok := claims["roles"]
 		if !ok {
-			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "forbidden: no role claim"})
+			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "forbidden: no roles claim"})
 		}
-		role, ok := roleVal.(string)
-		if !ok {
-			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "forbidden: invalid role claim"})
+		var userRoles []string
+		switch v := rolesIface.(type) {
+		case []interface{}:
+			for _, r := range v {
+				if s, ok := r.(string); ok {
+					userRoles = append(userRoles, s)
+				}
+			}
+		case []string:
+			userRoles = v
+		case string:
+			userRoles = strings.Split(v, ",")
 		}
-		if _, allowed := roleSet[role]; !allowed {
-			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "forbidden: insufficient role"})
+		for _, r := range userRoles {
+			if _, allowed := roleSet[r]; allowed {
+				return c.Next()
+			}
 		}
-		return c.Next()
+		return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "forbidden: insufficient role"})
 	}
 }

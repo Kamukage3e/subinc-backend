@@ -12,6 +12,7 @@ import (
 	"github.com/subinc/subinc-backend/internal/cost/domain"
 	"github.com/subinc/subinc-backend/internal/cost/middleware"
 	"github.com/subinc/subinc-backend/internal/cost/service"
+	"github.com/subinc/subinc-backend/internal/pkg/idencode"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -158,6 +159,7 @@ func (h *BillingHandler) RegisterBillingRoutes(r fiber.Router) {
 	r.Post("/manual-adjustment", middleware.RBACMiddleware("admin"), h.CreateManualAdjustment)
 	r.Post("/manual-refund", middleware.RBACMiddleware("admin"), h.CreateManualRefund)
 	r.Post("/account-action", middleware.RBACMiddleware("admin"), h.PerformAccountAction)
+
 }
 
 func (h *BillingHandler) CreateAccount(c *fiber.Ctx) error {
@@ -169,6 +171,7 @@ func (h *BillingHandler) CreateAccount(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	out.Account.ID = encodeID(out.Account.ID)
 	return c.Status(http.StatusCreated).JSON(out.Account)
 }
 
@@ -182,6 +185,7 @@ func (h *BillingHandler) UpdateAccount(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	out.Account.ID = encodeID(out.Account.ID)
 	return c.JSON(out.Account)
 }
 
@@ -191,6 +195,7 @@ func (h *BillingHandler) GetAccount(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	out.Account.ID = encodeID(out.Account.ID)
 	return c.JSON(out.Account)
 }
 
@@ -204,6 +209,7 @@ func (h *BillingHandler) ListAccounts(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	encodeIDs(&out.Accounts)
 	return c.JSON(out)
 }
 
@@ -216,6 +222,7 @@ func (h *BillingHandler) CreatePlan(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	out.Plan.ID = encodeID(out.Plan.ID)
 	return c.Status(http.StatusCreated).JSON(out.Plan)
 }
 
@@ -229,6 +236,7 @@ func (h *BillingHandler) UpdatePlan(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	out.Plan.ID = encodeID(out.Plan.ID)
 	return c.JSON(out.Plan)
 }
 
@@ -238,6 +246,7 @@ func (h *BillingHandler) GetPlan(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	out.Plan.ID = encodeID(out.Plan.ID)
 	return c.JSON(out.Plan)
 }
 
@@ -251,6 +260,7 @@ func (h *BillingHandler) ListPlans(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	encodeIDs(&out.Plans)
 	return c.JSON(out)
 }
 
@@ -306,6 +316,7 @@ func (h *BillingHandler) CreateInvoice(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	out.Invoice.ID = encodeID(out.Invoice.ID)
 	return c.Status(http.StatusCreated).JSON(out.Invoice)
 }
 
@@ -319,6 +330,7 @@ func (h *BillingHandler) UpdateInvoice(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	out.Invoice.ID = encodeID(out.Invoice.ID)
 	return c.JSON(out.Invoice)
 }
 
@@ -328,6 +340,7 @@ func (h *BillingHandler) GetInvoice(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	out.Invoice.ID = encodeID(out.Invoice.ID)
 	return c.JSON(out.Invoice)
 }
 
@@ -342,6 +355,7 @@ func (h *BillingHandler) ListInvoices(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	encodeIDs(&out.Invoices)
 	return c.JSON(fiber.Map{"invoices": out.Invoices, "total": out.Total, "page": input.Page, "page_size": input.PageSize})
 }
 
@@ -354,6 +368,7 @@ func (h *BillingHandler) CreatePayment(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	out.Payment.ID = encodeID(out.Payment.ID)
 	return c.Status(http.StatusCreated).JSON(out.Payment)
 }
 
@@ -367,6 +382,7 @@ func (h *BillingHandler) UpdatePayment(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	out.Payment.ID = encodeID(out.Payment.ID)
 	return c.JSON(out.Payment)
 }
 
@@ -376,6 +392,7 @@ func (h *BillingHandler) GetPayment(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	out.Payment.ID = encodeID(out.Payment.ID)
 	return c.JSON(out.Payment)
 }
 
@@ -389,6 +406,7 @@ func (h *BillingHandler) ListPayments(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	encodeIDs(&out.Payments)
 	return c.JSON(out)
 }
 
@@ -480,6 +498,7 @@ func (h *BillingHandler) CreateDiscount(c *fiber.Ctx) error {
 	if err := h.service.CreateDiscount(context.Background(), discount.Discount); err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	discount.Discount.ID = encodeID(discount.Discount.ID)
 	return c.Status(http.StatusCreated).JSON(discount.Discount)
 }
 
@@ -509,6 +528,7 @@ func (h *BillingHandler) GetDiscount(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	discount.ID = encodeID(discount.ID)
 	return c.JSON(discount)
 }
 
@@ -533,6 +553,7 @@ func (h *BillingHandler) ListDiscounts(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	encodeIDs(&discounts)
 	return c.JSON(fiber.Map{"discounts": discounts, "total": total, "page": page, "page_size": pageSize})
 }
 
@@ -544,6 +565,7 @@ func (h *BillingHandler) CreateCoupon(c *fiber.Ctx) error {
 	if err := h.couponService.CreateCoupon(context.Background(), input.Coupon); err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	input.Coupon.ID = encodeID(input.Coupon.ID)
 	return c.Status(http.StatusCreated).JSON(input.Coupon)
 }
 
@@ -573,6 +595,7 @@ func (h *BillingHandler) GetCoupon(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	coupon.ID = encodeID(coupon.ID)
 	return c.JSON(coupon)
 }
 
@@ -598,6 +621,7 @@ func (h *BillingHandler) ListCoupons(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	encodeIDs(&coupons)
 	return c.JSON(fiber.Map{"coupons": coupons, "total": total, "page": page, "page_size": pageSize})
 }
 
@@ -609,6 +633,7 @@ func (h *BillingHandler) CreateCredit(c *fiber.Ctx) error {
 	if err := h.creditService.ApplyCredit(context.Background(), &credit); err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	credit.ID = encodeID(credit.ID)
 	return c.Status(http.StatusCreated).JSON(credit)
 }
 
@@ -622,6 +647,7 @@ func (h *BillingHandler) UpdateCredit(c *fiber.Ctx) error {
 	if err := h.creditService.ApplyCredit(context.Background(), &credit); err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	credit.ID = encodeID(credit.ID)
 	return c.JSON(credit)
 }
 
@@ -639,6 +665,7 @@ func (h *BillingHandler) GetCredit(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	credit.ID = encodeID(credit.ID)
 	return c.JSON(credit)
 }
 
@@ -652,6 +679,7 @@ func (h *BillingHandler) ListCredits(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	encodeIDs(&credits)
 	return c.JSON(fiber.Map{"credits": credits, "total": total, "page": page, "page_size": pageSize})
 }
 
@@ -663,6 +691,7 @@ func (h *BillingHandler) CreateRefund(c *fiber.Ctx) error {
 	if err := h.refundService.CreateRefund(context.Background(), &refund); err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	refund.ID = encodeID(refund.ID)
 	return c.Status(http.StatusCreated).JSON(refund)
 }
 
@@ -685,6 +714,7 @@ func (h *BillingHandler) GetRefund(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	refund.ID = encodeID(refund.ID)
 	return c.JSON(refund)
 }
 
@@ -698,6 +728,7 @@ func (h *BillingHandler) ListRefunds(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	encodeIDs(&refunds)
 	return c.JSON(fiber.Map{"refunds": refunds, "total": total, "page": page, "page_size": pageSize})
 }
 
@@ -712,6 +743,7 @@ func (h *BillingHandler) CreatePaymentMethod(c *fiber.Ctx) error {
 	if err := h.paymentMethodService.AddPaymentMethod(context.Background(), &req.PaymentMethod, req.PaymentData); err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	req.PaymentMethod.ID = encodeID(req.PaymentMethod.ID)
 	return c.Status(http.StatusCreated).JSON(req.PaymentMethod)
 }
 
@@ -742,6 +774,7 @@ func (h *BillingHandler) GetPaymentMethod(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	pm.ID = encodeID(pm.ID)
 	return c.JSON(pm)
 }
 
@@ -754,6 +787,7 @@ func (h *BillingHandler) ListPaymentMethods(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	encodeIDs(&methods)
 	return c.JSON(fiber.Map{"payment_methods": methods, "total": total, "page": page, "page_size": pageSize})
 }
 
@@ -765,6 +799,7 @@ func (h *BillingHandler) CreateSubscription(c *fiber.Ctx) error {
 	if err := h.subscriptionService.CreateSubscription(context.Background(), &sub); err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	sub.ID = encodeID(sub.ID)
 	return c.Status(http.StatusCreated).JSON(sub)
 }
 
@@ -795,6 +830,7 @@ func (h *BillingHandler) GetSubscription(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	sub.ID = encodeID(sub.ID)
 	return c.JSON(sub)
 }
 
@@ -807,6 +843,7 @@ func (h *BillingHandler) ListSubscriptions(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	encodeIDs(&subs)
 	return c.JSON(fiber.Map{"subscriptions": subs, "total": total, "page": page, "page_size": pageSize})
 }
 
@@ -818,6 +855,7 @@ func (h *BillingHandler) CreateWebhookEvent(c *fiber.Ctx) error {
 	if err := h.webhookEventService.ReceiveEvent(context.Background(), &event); err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	event.ID = encodeID(event.ID)
 	return c.Status(http.StatusCreated).JSON(event)
 }
 
@@ -843,6 +881,7 @@ func (h *BillingHandler) GetWebhookEvent(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	event.ID = encodeID(event.ID)
 	return c.JSON(event)
 }
 
@@ -856,6 +895,7 @@ func (h *BillingHandler) ListWebhookEvents(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	encodeIDs(&events)
 	return c.JSON(fiber.Map{"webhook_events": events, "total": total, "page": page, "page_size": pageSize})
 }
 
@@ -867,6 +907,7 @@ func (h *BillingHandler) CreateInvoiceAdjustment(c *fiber.Ctx) error {
 	if err := h.invoiceAdjustmentService.ApplyAdjustment(context.Background(), &adj); err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	adj.ID = encodeID(adj.ID)
 	return c.Status(http.StatusCreated).JSON(adj)
 }
 
@@ -886,6 +927,7 @@ func (h *BillingHandler) GetInvoiceAdjustment(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	adj.ID = encodeID(adj.ID)
 	return c.JSON(adj)
 }
 
@@ -898,6 +940,7 @@ func (h *BillingHandler) ListInvoiceAdjustments(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	encodeIDs(&adjs)
 	return c.JSON(fiber.Map{"invoice_adjustments": adjs, "total": total, "page": page, "page_size": pageSize})
 }
 
@@ -1223,4 +1266,76 @@ func (h *BillingHandler) PerformAccountAction(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(result)
+}
+
+func (h *BillingHandler) DeletePlan(c *fiber.Ctx) error {
+	id := c.Query("id")
+	if id == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+	if err := h.service.DeletePlan(context.Background(), id); err != nil {
+		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.SendStatus(http.StatusNoContent)
+}
+
+func encodeID(id string) string {
+	idHash, err := idencode.Encode(id)
+	if err != nil {
+		return ""
+	}
+	return idHash
+}
+
+func encodeIDs(objs interface{}) {
+	switch v := objs.(type) {
+	case *[]domain.BillingAccount:
+		for i := range *v {
+			(*v)[i].ID = encodeID((*v)[i].ID)
+		}
+	case *[]domain.BillingPlan:
+		for i := range *v {
+			(*v)[i].ID = encodeID((*v)[i].ID)
+		}
+	case *[]domain.Invoice:
+		for i := range *v {
+			(*v)[i].ID = encodeID((*v)[i].ID)
+		}
+	case *[]domain.Payment:
+		for i := range *v {
+			(*v)[i].ID = encodeID((*v)[i].ID)
+		}
+	case *[]domain.Credit:
+		for i := range *v {
+			(*v)[i].ID = encodeID((*v)[i].ID)
+		}
+	case *[]domain.Refund:
+		for i := range *v {
+			(*v)[i].ID = encodeID((*v)[i].ID)
+		}
+	case *[]domain.PaymentMethod:
+		for i := range *v {
+			(*v)[i].ID = encodeID((*v)[i].ID)
+		}
+	case *[]domain.Subscription:
+		for i := range *v {
+			(*v)[i].ID = encodeID((*v)[i].ID)
+		}
+	case *[]domain.WebhookEvent:
+		for i := range *v {
+			(*v)[i].ID = encodeID((*v)[i].ID)
+		}
+	case *[]domain.InvoiceAdjustment:
+		for i := range *v {
+			(*v)[i].ID = encodeID((*v)[i].ID)
+		}
+	case *[]domain.Coupon:
+		for i := range *v {
+			(*v)[i].ID = encodeID((*v)[i].ID)
+		}
+	case *[]domain.Discount:
+		for i := range *v {
+			(*v)[i].ID = encodeID((*v)[i].ID)
+		}
+	}
 }

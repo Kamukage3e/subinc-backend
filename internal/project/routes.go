@@ -4,7 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func RegisterProjectRoutes(app *fiber.App, handler *Handler) {
-	api := app.Group("/api")
+func RegisterProjectRoutes(app *fiber.App, apiPrefix string, handler *Handler) {
+	api := app.Group(apiPrefix)
 	handler.RegisterRoutes(api)
 }

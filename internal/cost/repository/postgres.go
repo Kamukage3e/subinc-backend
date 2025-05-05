@@ -3018,3 +3018,22 @@ func (r *PostgresBillingRepository) ListCredits(ctx context.Context, accountID, 
 	}
 	return credits, total, nil
 }
+
+func (r *PostgresBillingRepository) DeleteBillingPlan(ctx context.Context, id string) error {
+	if id == "" {
+		r.logger.Error("empty billing plan id provided")
+		return domain.ErrInvalidPlan
+	}
+	const q = `DELETE FROM billing_plans WHERE id = $1`
+	cmd, err := r.db.Exec(ctx, q, id)
+	if err != nil {
+		r.logger.Error("failed to delete billing plan", logger.ErrorField(err), logger.String("plan_id", id))
+		return err
+	}
+	if cmd.RowsAffected() == 0 {
+		r.logger.Warn("no billing plan deleted (not found)", logger.String("plan_id", id))
+		return domain.ErrInvalidPlan
+	}
+	r.logger.Info("successfully deleted billing plan", logger.String("plan_id", id))
+	return nil
+}

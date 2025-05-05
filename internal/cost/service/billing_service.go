@@ -62,6 +62,8 @@ type BillingService interface {
 	CreateManualAdjustment(ctx context.Context, accountID string, amount float64, reason string) (map[string]interface{}, error)
 	CreateManualRefund(ctx context.Context, paymentID string, amount float64, reason string) (map[string]interface{}, error)
 	PerformAccountAction(ctx context.Context, accountID, action, reason string) (map[string]interface{}, error)
+
+	DeletePlan(ctx context.Context, id string) error
 }
 
 // billingService implements BillingService
@@ -585,4 +587,11 @@ func (s *billingService) PerformAccountAction(ctx context.Context, accountID, ac
 		Details:   reason,
 	})
 	return map[string]interface{}{"status": "ok"}, nil
+}
+
+func (s *billingService) DeletePlan(ctx context.Context, id string) error {
+	if id == "" {
+		return domain.ErrInvalidPlan
+	}
+	return s.repo.DeleteBillingPlan(ctx, id)
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/subinc/subinc-backend/internal/pkg/idencode"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -41,26 +42,32 @@ func (h *Handler) Create(c *fiber.Ctx) error {
 		h.log.Error("failed to create project", logger.ErrorField(err))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
+	idHash, _ := idencode.Encode(out.Project.ID)
+	out.Project.ID = idHash
 	return c.Status(http.StatusCreated).JSON(out.Project)
 }
 
 func (h *Handler) Get(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing project id"})
+	id, err := decodeProjectIDParam(c)
+	if err != nil {
+		h.log.Error("failed to decode project id", logger.ErrorField(err))
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid project id"})
 	}
 	out, err := h.service.Get(context.Background(), GetProjectInput{ID: id})
 	if err != nil {
 		h.log.Error("failed to get project", logger.ErrorField(err))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	idHash, _ := idencode.Encode(out.Project.ID)
+	out.Project.ID = idHash
 	return c.JSON(out.Project)
 }
 
 func (h *Handler) Update(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing project id"})
+	id, err := decodeProjectIDParam(c)
+	if err != nil {
+		h.log.Error("failed to decode project id", logger.ErrorField(err))
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid project id"})
 	}
 	var req UpdateProjectInput
 	if err := c.BodyParser(&req); err != nil {
@@ -73,15 +80,18 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 		h.log.Error("failed to update project", logger.ErrorField(err))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
+	idHash, _ := idencode.Encode(out.Project.ID)
+	out.Project.ID = idHash
 	return c.JSON(out.Project)
 }
 
 func (h *Handler) Delete(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing project id"})
+	id, err := decodeProjectIDParam(c)
+	if err != nil {
+		h.log.Error("failed to decode project id", logger.ErrorField(err))
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid project id"})
 	}
-	_, err := h.service.Delete(context.Background(), DeleteProjectInput{ID: id})
+	_, err = h.service.Delete(context.Background(), DeleteProjectInput{ID: id})
 	if err != nil {
 		h.log.Error("failed to delete project", logger.ErrorField(err))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
@@ -99,6 +109,10 @@ func (h *Handler) ListByTenant(c *fiber.Ctx) error {
 		h.log.Error("failed to list projects by tenant", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
+	for _, p := range out.Projects {
+		idHash, _ := idencode.Encode(p.ID)
+		p.ID = idHash
+	}
 	return c.JSON(out.Projects)
 }
 
@@ -112,5 +126,13 @@ func (h *Handler) ListByOrg(c *fiber.Ctx) error {
 		h.log.Error("failed to list projects by org", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
+	for _, p := range out.Projects {
+		idHash, _ := idencode.Encode(p.ID)
+		p.ID = idHash
+	}
 	return c.JSON(out.Projects)
+}
+
+func decodeProjectIDParam(c *fiber.Ctx) (string, error) {
+	return idencode.Decode(c.Params("id"))
 }

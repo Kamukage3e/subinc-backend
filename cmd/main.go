@@ -13,15 +13,14 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	"github.com/hibiken/asynq"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
+	"github.com/subinc/subinc-backend/internal/admin"
 	"github.com/subinc/subinc-backend/internal/cost/cloud"
 	"github.com/subinc/subinc-backend/internal/cost/domain"
 	"github.com/subinc/subinc-backend/internal/cost/repository"
 	"github.com/subinc/subinc-backend/internal/cost/service"
-	jobsinternal "github.com/subinc/subinc-backend/internal/pkg/jobs"
 	. "github.com/subinc/subinc-backend/internal/pkg/logger"
 	"github.com/subinc/subinc-backend/internal/pkg/secrets"
 	"github.com/subinc/subinc-backend/internal/project"
@@ -30,7 +29,6 @@ import (
 	"github.com/subinc/subinc-backend/internal/server"
 	"github.com/subinc/subinc-backend/internal/server/middleware"
 	"github.com/subinc/subinc-backend/internal/user"
-	"github.com/subinc/subinc-backend/pkg/cache"
 	"github.com/subinc/subinc-backend/pkg/jobs"
 	"github.com/subinc/subinc-backend/pkg/session"
 )
@@ -50,10 +48,6 @@ type providerRegistryAdapter struct {
 func (a *providerRegistryAdapter) GetProvider(ctx context.Context, provider domain.CloudProvider, credentials map[string]string) (interface{}, error) {
 	return a.CostDataProviderRegistry.GetProviderAsInterface(ctx, provider, credentials)
 }
-
-// Adapter to make jobClient implement internal/pkg/jobs.Queue if needed
-// Only if jobs.NewQueue or jobs.NewRedisQueue is not available
-// Otherwise, use jobs.NewQueue(redisClient, log)
 
 func main() {
 	// Initialize logger
@@ -82,12 +76,6 @@ func main() {
 		log.Fatal("failed to connect to Postgres", ErrorField(err))
 	}
 	defer pgPool.Close()
-
-	// Initialize cache service
-	cacheService, err := cache.NewRedisCache(redisClient, log, viper.GetString("cache.prefix"))
-	if err != nil {
-		log.Fatal("failed to initialize cache service", ErrorField(err))
-	}
 
 	// Initialize session manager
 	sessionManager, err := session.NewSessionManager(redisClient, log, viper.GetString("session.prefix"))
@@ -131,7 +119,7 @@ func main() {
 		}
 
 		// Register job handlers
-		registerJobHandlers(jobServer, log, cacheService, pgPool, redisClient, sessionManager, tfProvisioner)
+		registerJobHandlers(jobServer, log, redisClient, sessionManager, tfProvisioner)
 
 		// Start job server
 		go func() {
@@ -150,11 +138,8 @@ func main() {
 		ErrorHandler:          customErrorHandler(log),
 	})
 
-	// Register health check routes
-	server.RegisterHealthRoutes(app, redisClient, pgPool)
-
 	// Apply global middleware
-	configureMiddleware(app, redisClient, log)
+	configureMiddleware(app, redisClient, log, admin.NewPostgresAdminStore(pgPool))
 
 	// Register Prometheus metrics endpoint
 	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
@@ -176,7 +161,7 @@ func main() {
 	// Job queue for cost service: use jobs.NewQueue(redisClient, log) if available, else use jobClient as is
 	providerFactory := cloud.NewProviderFactory(log)
 	providerRegistry := &providerRegistryAdapter{cloud.NewCostDataProviderRegistry(providerFactory)}
-	costJobQueue := jobsinternal.NewRedisQueue()
+	costJobQueue := jobClient
 	costService := service.NewCostService(costRepo, costJobQueue, providerRegistry, log)
 	// Cloud provider service
 	// Use a 32-byte encryption key from secrets manager (e.g., "cloud-creds-key")
@@ -195,21 +180,31 @@ func main() {
 	cloudProviderService := service.NewCloudProviderService(credRepo, providerFactory, costService, log)
 	// Billing service
 	billingService := service.NewBillingService(billingRepo, discountSvc, pgPool, log)
+	// Get API prefix from config
+	apiPrefix := viper.GetString("api.prefix")
+	if apiPrefix == "" {
+		apiPrefix = "/api/v1"
+	}
 	// Register all API routes, including provisioning
-	server.SetupRoutes(app, costService, cloudProviderService, billingService, couponSvc, log, tfProvisioner, secretsManager, jwtSecretName)
+	server.SetupRoutes(app, apiPrefix, costService, cloudProviderService, billingService, couponSvc, log, tfProvisioner, secretsManager, jwtSecretName, pgPool)
 
 	// Project management API wiring
 	projectRepo := project.NewPostgresRepository(pgPool)
 	projectService := project.NewService(projectRepo)
 	projectHandler := project.NewHandler(projectService, log)
-	project.RegisterProjectRoutes(app, projectHandler)
+	project.RegisterProjectRoutes(app, apiPrefix, projectHandler)
 
 	// User management API wiring
 	userStore := user.NewPostgresUserStore(pgPool)
 	userHandler := user.NewHandler(userStore, secretsManager, jwtSecretName)
-	app.Route("/api", func(router fiber.Router) {
+	app.Route(apiPrefix, func(router fiber.Router) {
 		userHandler.RegisterRoutes(router)
 	})
+
+	// Admin management API wiring
+	adminStore := admin.NewPostgresAdminStore(pgPool)
+	adminHandler := admin.NewHandler(adminStore)
+	adminHandler.RegisterRoutes(app, apiPrefix)
 
 	// Start server in a goroutine
 	go func() {
@@ -218,10 +213,7 @@ func main() {
 			port = "8080"
 		}
 
-		log.Info("Server starting",
-			String("port", port),
-			Bool("jobs_enabled", viper.GetBool("jobs.enabled")),
-		)
+		log.Info("Server starting", String("port", port), Bool("jobs_enabled", viper.GetBool("jobs.enabled")))
 
 		if err := app.Listen(":" + port); err != nil {
 			if err.Error() == "server closed" {
@@ -234,7 +226,7 @@ func main() {
 	}()
 
 	// Handle graceful shutdown
-	shutdownGracefully(app, log, ctx, cancel)
+	shutdownGracefully(app, log, cancel)
 }
 
 // configureViper sets up the configuration
@@ -269,7 +261,7 @@ func configureViper(logger *Logger) {
 }
 
 // configureMiddleware sets up all middleware for the application
-func configureMiddleware(app *fiber.App, redisClient *redis.Client, logger *Logger) {
+func configureMiddleware(app *fiber.App, redisClient *redis.Client, logger *Logger, adminStore *admin.PostgresAdminStore) {
 	// CORS middleware with secure settings
 	app.Use(middleware.ConfigureCORS())
 
@@ -277,7 +269,7 @@ func configureMiddleware(app *fiber.App, redisClient *redis.Client, logger *Logg
 	app.Use(middleware.SecurityHeaders())
 
 	// Request logging middleware
-	app.Use(middleware.RequestLogger(logger))
+	app.Use(middleware.RequestLogger(logger, adminStore))
 
 	// Distributed rate limiting if enabled
 	if viper.GetBool("rate_limit.enabled") {
@@ -294,8 +286,6 @@ func configureMiddleware(app *fiber.App, redisClient *redis.Client, logger *Logg
 func registerJobHandlers(
 	jobServer *jobs.BackgroundJobServer,
 	logger *Logger,
-	cacheService *cache.RedisCache,
-	pgPool *pgxpool.Pool,
 	redisClient *redis.Client,
 	sessionManager *session.SessionManager,
 	tfProvisioner *terraform.TerraformProvisioner,
@@ -311,9 +301,7 @@ func registerJobHandlers(
 			return err
 		}
 
-		logger.Info("Processing AWS cost sync",
-			String("tenant_id", payload.TenantID),
-		)
+		logger.Info("Processing AWS cost sync", String("tenant_id", payload.TenantID))
 
 		// Implement AWS cost sync logic
 		// This would typically involve fetching cost data from AWS APIs
@@ -446,12 +434,7 @@ func customErrorHandler(logger *Logger) fiber.ErrorHandler {
 		}
 
 		// Log the error
-		logger.Error("request error",
-			String("path", c.Path()),
-			String("method", c.Method()),
-			Int("status", code),
-			ErrorField(err),
-		)
+		logger.Error("request error", String("path", c.Path()), String("method", c.Method()), Int("status", code), ErrorField(err))
 
 		// Don't expose internal errors to the client
 		message := "An unexpected error occurred"
@@ -468,7 +451,7 @@ func customErrorHandler(logger *Logger) fiber.ErrorHandler {
 }
 
 // shutdownGracefully handles graceful shutdown with proper resource cleanup
-func shutdownGracefully(app *fiber.App, logger *Logger, ctx context.Context, cancel context.CancelFunc) {
+func shutdownGracefully(app *fiber.App, logger *Logger, cancel context.CancelFunc) {
 	// Wait for interrupt signal to gracefully shutdown the server
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)

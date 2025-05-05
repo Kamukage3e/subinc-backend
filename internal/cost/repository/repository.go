@@ -60,6 +60,7 @@ type BillingRepository interface {
 	UpdateBillingPlan(ctx context.Context, plan *domain.BillingPlan) error
 	GetBillingPlanByID(ctx context.Context, id string) (*domain.BillingPlan, error)
 	ListBillingPlans(ctx context.Context, activeOnly bool, page, pageSize int) ([]*domain.BillingPlan, int, error)
+	DeleteBillingPlan(ctx context.Context, id string) error
 
 	// UsageEvent operations
 	CreateUsageEvent(ctx context.Context, event *domain.UsageEvent) error
