@@ -3,8 +3,8 @@ package architecture
 import (
 	"context"
 	"errors"
-	"os"
 
+	"github.com/spf13/viper"
 	"github.com/subinc/subinc-backend/internal/architecture/types"
 	"github.com/subinc/subinc-backend/internal/cost/domain"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
@@ -27,11 +27,11 @@ func (inv *AWSInventory) ListResources(ctx context.Context, accountID string, cr
 }
 
 func (inv *AWSInventory) GetCredentials(ctx context.Context, tenantID string) (map[string]string, error) {
-	accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
-	secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
-	sessionToken := os.Getenv("AWS_SESSION_TOKEN")
+	accessKey := viper.GetString("AWS_ACCESS_KEY_ID")
+	secretKey := viper.GetString("AWS_SECRET_ACCESS_KEY")
+	sessionToken := viper.GetString("AWS_SESSION_TOKEN")
 	if accessKey == "" || secretKey == "" {
-		return nil, errors.New("AWS credentials not set in environment")
+		return nil, errors.New("AWS credentials not set in config")
 	}
 	return map[string]string{
 		domain.AWSAccessKeyID:     accessKey,
@@ -41,9 +41,9 @@ func (inv *AWSInventory) GetCredentials(ctx context.Context, tenantID string) (m
 }
 
 func (inv *AWSInventory) GetAccountID(ctx context.Context, tenantID string) (string, error) {
-	accountID := os.Getenv("AWS_ACCOUNT_ID")
+	accountID := viper.GetString("AWS_ACCOUNT_ID")
 	if accountID == "" {
-		return "", errors.New("AWS_ACCOUNT_ID not set in environment")
+		return "", errors.New("AWS_ACCOUNT_ID not set in config")
 	}
 	return accountID, nil
 }

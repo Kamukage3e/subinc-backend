@@ -1,16 +1,15 @@
 package idencode
 
 import (
-	"os"
-
 	"github.com/google/uuid"
 	"github.com/speps/go-hashids/v2"
+	"github.com/spf13/viper"
 )
 
 var hashID *hashids.HashID
 
 func init() {
-	salt := os.Getenv("HASHID_SALT")
+	salt := getSalt()
 	if salt == "" {
 		salt = "subinc-default-salt-change-me" // secure default, must override in prod
 	}
@@ -22,6 +21,11 @@ func init() {
 	if err != nil {
 		panic("failed to initialize hashids: " + err.Error())
 	}
+}
+
+func getSalt() string {
+	salt := viper.GetString("HASHID_SALT")
+	return salt
 }
 
 func Encode(id string) (string, error) {

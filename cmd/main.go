@@ -165,13 +165,19 @@ func main() {
 	costService := service.NewCostService(costRepo, costJobQueue, providerRegistry, log)
 	// Cloud provider service
 	// Use a 32-byte encryption key from secrets manager (e.g., "cloud-creds-key")
-	encryptionKeyStr, err := secretsManager.GetSecret(ctx, "cloud-creds-key")
-	if err != nil || len(encryptionKeyStr) != 44 { // base64-encoded 32 bytes
-		log.Fatal("failed to load cloud credential encryption key from secrets manager", ErrorField(err))
-	}
-	encryptionKey, err := base64.StdEncoding.DecodeString(encryptionKeyStr)
-	if err != nil || len(encryptionKey) != 32 {
-		log.Fatal("invalid cloud credential encryption key", ErrorField(err))
+	var encryptionKey []byte
+	if viper.GetBool("cloud.disableSecretManager") {
+		log.Warn("cloud credential encryption key: using dummy key (secret manager disabled via config)")
+		encryptionKey = make([]byte, 32) // 32 zero bytes (not secure, for dev/test only)
+	} else {
+		encryptionKeyStr, err := secretsManager.GetSecret(ctx, "cloud-creds-key")
+		if err != nil || len(encryptionKeyStr) != 44 { // base64-encoded 32 bytes
+			log.Fatal("failed to load cloud credential encryption key from secrets manager", ErrorField(err))
+		}
+		encryptionKey, err = base64.StdEncoding.DecodeString(encryptionKeyStr)
+		if err != nil || len(encryptionKey) != 32 {
+			log.Fatal("invalid cloud credential encryption key", ErrorField(err))
+		}
 	}
 	credRepo, err := repository.NewCredentialRepository(pgPool, encryptionKey, log)
 	if err != nil {
@@ -186,7 +192,7 @@ func main() {
 		apiPrefix = "/api/v1"
 	}
 	// Register all API routes, including provisioning
-	server.SetupRoutes(app, apiPrefix, costService, cloudProviderService, billingService, couponSvc, log, tfProvisioner, secretsManager, jwtSecretName, pgPool)
+	server.SetupRoutes(app, apiPrefix, costService, cloudProviderService, billingService, couponSvc, log, tfProvisioner, secretsManager, jwtSecretName, pgPool, costRepo)
 
 	// Project management API wiring
 	projectRepo := project.NewPostgresRepository(pgPool)

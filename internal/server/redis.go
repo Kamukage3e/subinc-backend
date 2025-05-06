@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
 	"strconv"
 	"time"
 
@@ -78,82 +77,61 @@ type RedisConfig struct {
 
 // NewRedisConfig creates a production-ready Redis configuration from environment or viper
 func NewRedisConfig(log *logger.Logger) (*RedisConfig, error) {
-	// Try Viper first, fallback to environment variables
+	// Try Viper only, no direct os.Getenv
 	url := viper.GetString("redis.url")
 	if url == "" {
-		url = os.Getenv("REDIS_URL")
+		// no fallback
 	}
 
 	host := viper.GetString("redis.host")
 	if host == "" {
-		host = os.Getenv("REDIS_HOST")
-		if host == "" {
-			host = "localhost" // Reasonable default for local dev
-		}
+		host = "localhost" // Reasonable default for local dev
 	}
 
 	port := viper.GetString("redis.port")
 	if port == "" {
-		port = os.Getenv("REDIS_PORT")
-		if port == "" {
-			port = "6379" // Redis default port
-		}
+		port = "6379" // Redis default port
 	}
 
 	password := viper.GetString("redis.password")
-	if password == "" {
-		password = os.Getenv("REDIS_PASSWORD")
-	}
 
 	dbStr := viper.GetString("redis.db")
-	if dbStr == "" {
-		dbStr = os.Getenv("REDIS_DB")
-	}
 	db := 0
 	if dbStr != "" {
 		var err error
 		db, err = strconv.Atoi(dbStr)
 		if err != nil {
-			log.Warn("invalid REDIS_DB value, using default (0)", logger.String("value", dbStr), logger.ErrorField(err))
+			log.Warn("invalid redis.db value, using default (0)", logger.String("value", dbStr), logger.ErrorField(err))
 		}
 	}
 
 	maxRetriesStr := viper.GetString("redis.max_retries")
-	if maxRetriesStr == "" {
-		maxRetriesStr = os.Getenv("REDIS_MAX_RETRIES")
-	}
 	maxRetries := 3 // Reasonable default
 	if maxRetriesStr != "" {
 		var err error
 		maxRetries, err = strconv.Atoi(maxRetriesStr)
 		if err != nil {
-			log.Warn("invalid REDIS_MAX_RETRIES value, using default", logger.String("value", maxRetriesStr), logger.ErrorField(err))
+			log.Warn("invalid redis.max_retries value, using default", logger.String("value", maxRetriesStr), logger.ErrorField(err))
 		}
 	}
 
 	minIdleConnsStr := viper.GetString("redis.min_idle_conns")
-	if minIdleConnsStr == "" {
-		minIdleConnsStr = os.Getenv("REDIS_MIN_IDLE_CONNS")
-	}
 	minIdleConns := 10 // Reasonable default for production
 	if minIdleConnsStr != "" {
 		var err error
 		minIdleConns, err = strconv.Atoi(minIdleConnsStr)
 		if err != nil {
-			log.Warn("invalid REDIS_MIN_IDLE_CONNS value, using default", logger.String("value", minIdleConnsStr), logger.ErrorField(err))
+			log.Warn("invalid redis.min_idle_conns value, using default", logger.String("value", minIdleConnsStr), logger.ErrorField(err))
 		}
 	}
 
 	poolSizeStr := viper.GetString("redis.pool_size")
-	if poolSizeStr == "" {
-		poolSizeStr = os.Getenv("REDIS_POOL_SIZE")
-	}
 	poolSize := 50 // Reasonable default for production
 	if poolSizeStr != "" {
 		var err error
 		poolSize, err = strconv.Atoi(poolSizeStr)
 		if err != nil {
-			log.Warn("invalid REDIS_POOL_SIZE value, using default", logger.String("value", poolSizeStr), logger.ErrorField(err))
+			log.Warn("invalid redis.pool_size value, using default", logger.String("value", poolSizeStr), logger.ErrorField(err))
 		}
 	}
 

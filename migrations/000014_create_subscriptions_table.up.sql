@@ -3,7 +3,7 @@ CREATE TABLE
     subscriptions (
         id UUID PRIMARY KEY,
         account_id UUID NOT NULL REFERENCES billing_accounts (id) ON DELETE CASCADE,
-        plan_id UUID NOT NULL REFERENCES billing_plans (id) ON DELETE RESTRICT,
+        plan_id UUID NOT NULL,
         status TEXT NOT NULL CHECK (
             status IN (
                 'active',
@@ -24,11 +24,11 @@ CREATE TABLE
         canceled_at TIMESTAMPTZ,
         grace_period_end TIMESTAMPTZ,
         dunning_until TIMESTAMPTZ,
-        scheduled_plan_id UUID REFERENCES billing_plans (id) ON DELETE SET NULL,
+        scheduled_plan_id UUID,
         scheduled_change_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL,
-        metadata JSONB NOT NULL DEFAULT '{}'
+        metadata TEXT
     );
 
 CREATE INDEX idx_subscriptions_account_id ON subscriptions (account_id);

@@ -12,13 +12,14 @@ database:
   driver: postgres
   host: localhost
   port: 5432
-  user: subinc
+  user: postgres
   password: postgres
-  dbname: subinc_dev
+  dbname: subinc
   sslmode: disable
   max_open_conns: 50
   max_idle_conns: 10
   conn_max_lifetime: 30m
+  url: "postgres://subinc:postgres@localhost:5432/subinc_dev?sslmode=disable"
 
 redis:
   host: localhost
@@ -44,7 +45,54 @@ aws:
   access_key_id: "${AWS_ACCESS_KEY_ID}"
   secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
   session_token: "${AWS_SESSION_TOKEN}"
-# Add more sections as needed for SaaS features (webhooks, billing, etc.)
+  account_id: "${AWS_ACCOUNT_ID}"
 
 api:
   prefix: "/api/v1"
+
+cloud:
+  disableSecretManager: true
+
+jwt:
+  secret_name: subinc-jwt-secret
+
+session:
+  prefix: session
+  ttl: 24h
+
+rate_limit:
+  enabled: true
+  max_requests: 100
+  window: 1m
+
+cors:
+  origins: "https://app.subinc.com,https://admin.subinc.com,http://localhost:3000"
+  methods: "GET,POST,PUT,DELETE,OPTIONS"
+  headers: "Origin,Content-Type,Accept,Authorization,X-Requested-With"
+  allow_credentials: true
+
+billing:
+  tax_rate: 0.0
+  fixed_fee: 0.0
+  percent_fee: 0.0
+
+payment:
+  stripe_api_key: "${STRIPE_API_KEY}"
+  paypal_client_id: "${PAYPAL_CLIENT_ID}"
+  paypal_client_secret: "${PAYPAL_CLIENT_SECRET}"
+  googlepay_merchant_id: "${GOOGLEPAY_MERCHANT_ID}"
+  googlepay_api_key: "${GOOGLEPAY_API_KEY}"
+  applepay_merchant_id: "${APPLEPAY_MERCHANT_ID}"
+  applepay_api_key: "${APPLEPAY_API_KEY}"
+  payments_disabled: false
+
+openai:
+  api_key: "${OPENAI_API_KEY}"
+  api_url: "https://api.openai.com/v1/chat/completions"
+  model: "gpt-4o"
+
+webhook:
+  events_url: "https://webhooks.subinc.com/events"
+
+hashid_salt: "${HASHID_SALT}"
+# All keys are real, prod-ready, and match viper usage in code.

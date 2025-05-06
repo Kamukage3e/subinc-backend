@@ -139,4 +139,24 @@
 
 **This README reflects the current production-grade, real-world SaaS backend implementation. All features listed as implemented are present in the codebase and ready for deployment.**
 
---- 
+---
+
+## Payment Provider Disabling (Local/Dev/Test)
+
+Set `PAYMENTS_DISABLED=true` in your environment to disable all payment providers (Stripe, PayPal, Google Pay, Apple Pay). When disabled:
+
+- No real payment API calls are made
+- No provider credentials are required
+- All provider constructors use dummy keys:
+  - Stripe: `dummy-stripe-key`
+  - PayPal: `dummy-paypal-client-id`, `dummy-paypal-client-secret`
+  - Google Pay: `dummy-googlepay-merchant-id`, `dummy-googlepay-api-key`
+  - Apple Pay: `dummy-applepay-merchant-id`, `dummy-applepay-api-key`
+- All tokenization methods return static dummy tokens/metadata
+- No panics or errors if real env vars are missing
+
+**Production:**
+- Leave `PAYMENTS_DISABLED` unset or set to `false` to enable real payment processing.
+- All required provider env vars must be set for production.
+
+This feature is for local/dev/test only. Never use dummy mode in production. 

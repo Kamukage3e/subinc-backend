@@ -11,7 +11,7 @@ CREATE TABLE
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMPTZ NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL,
-        metadata JSONB NOT NULL DEFAULT '{}'
+        metadata TEXT
     );
 
 CREATE INDEX idx_coupons_code ON coupons (code);

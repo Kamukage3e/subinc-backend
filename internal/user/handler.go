@@ -2,11 +2,13 @@ package user
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"net/mail"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/subinc/subinc-backend/internal/cost/middleware"
 	"github.com/subinc/subinc-backend/internal/pkg/idencode"
 	"github.com/subinc/subinc-backend/internal/pkg/secrets"
 )
@@ -15,30 +17,21 @@ import (
 // Modular, SaaS-grade, handler-based routing
 // All endpoints must be production-ready and secure
 
+// EmailSender defines the interface for sending emails (real provider, not dummy)
+type EmailSender interface {
+	SendResetEmail(to, token string) error
+	SendVerificationEmail(to, token string) error
+}
+
 type UserHandler struct {
 	store         UserStore
 	secrets       secrets.SecretsManager
 	jwtSecretName string
+	emailSender   EmailSender
 }
 
-func NewHandler(store UserStore, secrets secrets.SecretsManager, jwtSecretName string) *UserHandler {
-	return &UserHandler{store: store, secrets: secrets, jwtSecretName: jwtSecretName}
-}
-
-func (h *UserHandler) RegisterRoutes(router fiber.Router) {
-	users := router.Group("/users")
-
-	users.Get("/", h.ListUsers)
-	users.Get(":id", h.GetUserByID)
-	users.Put(":id", h.UpdateUser)
-	users.Delete(":id", h.DeleteUser)
-	users.Post("/login", h.Login)
-	users.Post("/register", h.Register)
-	// RBAC/ABAC endpoints
-	users.Post(":id/roles", middleware.RBACMiddleware("admin", "owner"), h.AssignRole)
-	users.Delete(":id/roles/:role", middleware.RBACMiddleware("admin", "owner"), h.RemoveRole)
-	users.Post(":id/attributes", middleware.RBACMiddleware("admin", "owner"), h.SetAttribute)
-	users.Delete(":id/attributes/:key", middleware.RBACMiddleware("admin", "owner"), h.RemoveAttribute)
+func NewHandler(store UserStore, secrets secrets.SecretsManager, jwtSecretName string, emailSender EmailSender) *UserHandler {
+	return &UserHandler{store: store, secrets: secrets, jwtSecretName: jwtSecretName, emailSender: emailSender}
 }
 
 func decodeIDParam(c *fiber.Ctx) (string, error) {
@@ -331,4 +324,211 @@ func (h *UserHandler) RemoveAttribute(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "failed to update user attributes"})
 	}
 	return c.JSON(fiber.Map{"attributes": u.Attributes})
+}
+
+func generateSecureToken(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+func (h *UserHandler) Logout(c *fiber.Ctx) error {
+	refreshToken := c.Cookies("refresh_token")
+	if refreshToken != "" {
+		h.store.RevokeRefreshToken(c.Context(), refreshToken)
+	}
+	c.ClearCookie("refresh_token")
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *UserHandler) Refresh(c *fiber.Ctx) error {
+	refreshToken := c.Cookies("refresh_token")
+	if refreshToken == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "missing refresh token"})
+	}
+	t, err := h.store.GetRefreshToken(c.Context(), refreshToken)
+	if err != nil || t.Revoked || t.ExpiresAt.Before(time.Now()) {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid or expired refresh token"})
+	}
+	user, err := h.store.GetByID(c.Context(), t.UserID)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "user not found"})
+	}
+	jwtSecret, err := h.secrets.GetSecret(c.Context(), h.jwtSecretName)
+	if err != nil || jwtSecret == "" {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "server misconfiguration"})
+	}
+	claims := jwt.MapClaims{
+		"sub":        user.Username,
+		"exp":        time.Now().Add(24 * time.Hour).Unix(),
+		"tenant_id":  user.TenantID,
+		"roles":      user.Roles,
+		"attributes": user.Attributes,
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(jwtSecret))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to sign token"})
+	}
+	// Rotate refresh token
+	newRefresh, err := generateSecureToken(32)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to generate refresh token"})
+	}
+	h.store.RevokeRefreshToken(c.Context(), refreshToken)
+	rtok := &RefreshToken{
+		TokenID:   GenerateUUID(),
+		UserID:    user.ID,
+		TenantID:  user.TenantID,
+		Token:     newRefresh,
+		ExpiresAt: time.Now().Add(30 * 24 * time.Hour),
+		CreatedAt: time.Now().UTC(),
+		Revoked:   false,
+	}
+	h.store.CreateRefreshToken(c.Context(), rtok)
+	c.Cookie(&fiber.Cookie{
+		Name:     "refresh_token",
+		Value:    newRefresh,
+		Path:     "/",
+		HTTPOnly: true,
+		Secure:   true,
+		SameSite: "Strict",
+		Expires:  rtok.ExpiresAt,
+	})
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"token": tokenString})
+}
+
+// getUserByEmail is a real DB lookup via UserStore
+func (h *UserHandler) getUserByEmail(ctx context.Context, email string) (*User, error) {
+	return h.store.GetByEmail(ctx, email)
+}
+
+// sendResetEmail and sendVerificationEmail call the real email provider
+func (h *UserHandler) sendResetEmail(email, token string) error {
+	return h.emailSender.SendResetEmail(email, token)
+}
+
+func (h *UserHandler) sendVerificationEmail(email, token string) error {
+	return h.emailSender.SendVerificationEmail(email, token)
+}
+
+func (h *UserHandler) ForgotPassword(c *fiber.Ctx) error {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := c.BodyParser(&req); err != nil || req.Email == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid email"})
+	}
+	if _, err := mail.ParseAddress(req.Email); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid email format"})
+	}
+	ctx := c.Context()
+	user, err := h.store.GetByUsername(ctx, req.Email)
+	if err != nil {
+		// Try by email if username lookup fails
+		user, err = h.getUserByEmail(ctx, req.Email)
+		if err != nil {
+			return c.SendStatus(fiber.StatusNoContent)
+		}
+	}
+	token, err := generateSecureToken(32)
+	if err != nil {
+		return c.SendStatus(fiber.StatusNoContent)
+	}
+	reset := &PasswordResetToken{
+		Token:     token,
+		UserID:    user.ID,
+		TenantID:  user.TenantID,
+		ExpiresAt: time.Now().Add(1 * time.Hour),
+		Used:      false,
+		CreatedAt: time.Now().UTC(),
+	}
+	h.store.CreatePasswordResetToken(ctx, reset)
+	h.sendResetEmail(user.Email, token)
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *UserHandler) ResetPassword(c *fiber.Ctx) error {
+	var req struct {
+		Token    string `json:"token"`
+		Password string `json:"password"`
+	}
+	if err := c.BodyParser(&req); err != nil || req.Token == "" || req.Password == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request"})
+	}
+	tok, err := h.store.GetPasswordResetToken(c.Context(), req.Token)
+	if err != nil || tok.Used || tok.ExpiresAt.Before(time.Now()) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid or expired token"})
+	}
+	user, err := h.store.GetByID(c.Context(), tok.UserID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user not found"})
+	}
+	hash, err := HashPassword(req.Password)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to hash password"})
+	}
+	user.PasswordHash = hash
+	h.store.Update(c.Context(), user)
+	h.store.MarkPasswordResetTokenUsed(c.Context(), req.Token)
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *UserHandler) VerifyEmail(c *fiber.Ctx) error {
+	var req struct {
+		Token string `json:"token"`
+	}
+	if err := c.BodyParser(&req); err != nil || req.Token == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid token"})
+	}
+	tok, err := h.store.GetEmailVerificationToken(c.Context(), req.Token)
+	if err != nil || tok.Used || tok.ExpiresAt.Before(time.Now()) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid or expired token"})
+	}
+	user, err := h.store.GetByID(c.Context(), tok.UserID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user not found"})
+	}
+	user.Attributes["email_verified"] = "true"
+	h.store.Update(c.Context(), user)
+	h.store.MarkEmailVerificationTokenUsed(c.Context(), req.Token)
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *UserHandler) ResendVerification(c *fiber.Ctx) error {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := c.BodyParser(&req); err != nil || req.Email == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid email"})
+	}
+	if _, err := mail.ParseAddress(req.Email); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid email format"})
+	}
+	ctx := c.Context()
+	user, err := h.store.GetByUsername(ctx, req.Email)
+	if err != nil {
+		// Try by email if username lookup fails
+		user, err = h.getUserByEmail(ctx, req.Email)
+		if err != nil {
+			return c.SendStatus(fiber.StatusNoContent)
+		}
+	}
+	token, err := generateSecureToken(32)
+	if err != nil {
+		return c.SendStatus(fiber.StatusNoContent)
+	}
+	verif := &EmailVerificationToken{
+		Token:     token,
+		UserID:    user.ID,
+		TenantID:  user.TenantID,
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+		Used:      false,
+		CreatedAt: time.Now().UTC(),
+	}
+	h.store.CreateEmailVerificationToken(ctx, verif)
+	h.sendVerificationEmail(user.Email, token)
+	return c.SendStatus(fiber.StatusNoContent)
 }

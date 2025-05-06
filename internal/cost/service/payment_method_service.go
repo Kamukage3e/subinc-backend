@@ -135,15 +135,25 @@ type StripeTokenizationProvider struct {
 }
 
 func NewStripeTokenizationProvider() *StripeTokenizationProvider {
+	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+		return &StripeTokenizationProvider{apiKey: "dummy-stripe-key"}
+	}
 	apiKey := os.Getenv("STRIPE_API_KEY")
 	if apiKey == "" {
-		panic("STRIPE_API_KEY not set")
+		// In production, fail fast with clear error; in dev/test, return dummy provider
+		if os.Getenv("ENV") == "production" {
+			panic("STRIPE_API_KEY not set: required for production payments") // Explicitly panic in prod for safety
+		}
+		return &StripeTokenizationProvider{apiKey: "dummy-stripe-key"}
 	}
 	stripe.Key = apiKey
 	return &StripeTokenizationProvider{apiKey: apiKey}
 }
 
 func (s *StripeTokenizationProvider) CreateToken(ctx context.Context, accountID string, paymentData map[string]string) (string, error) {
+	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+		return "dummy-token", nil
+	}
 	// paymentData must contain a Stripe payment method token (from client)
 	token, ok := paymentData["stripe_token"]
 	if !ok || token == "" {
@@ -154,6 +164,9 @@ func (s *StripeTokenizationProvider) CreateToken(ctx context.Context, accountID 
 }
 
 func (s *StripeTokenizationProvider) GetToken(ctx context.Context, accountID, token string) (map[string]string, error) {
+	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+		return map[string]string{"provider": "stripe", "token": token, "last4": "0000", "brand": "dummy"}, nil
+	}
 	pm, err := paymentmethod.Get(token, nil)
 	if err != nil {
 		return nil, err
@@ -168,6 +181,9 @@ func (s *StripeTokenizationProvider) GetToken(ctx context.Context, accountID, to
 }
 
 func (s *StripeTokenizationProvider) DeleteToken(ctx context.Context, accountID, token string) error {
+	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+		return nil
+	}
 	_, err := paymentmethod.Detach(token, nil)
 	return err
 }
@@ -214,6 +230,14 @@ type PayPalTokenizationProvider struct {
 }
 
 func NewPayPalTokenizationProvider() *PayPalTokenizationProvider {
+	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+		return &PayPalTokenizationProvider{
+			clientID:     "dummy-paypal-client-id",
+			clientSecret: "dummy-paypal-client-secret",
+			apiBase:      "https://api.sandbox.paypal.com",
+			httpClient:   &http.Client{Timeout: 5 * time.Second},
+		}
+	}
 	clientID := os.Getenv("PAYPAL_CLIENT_ID")
 	clientSecret := os.Getenv("PAYPAL_CLIENT_SECRET")
 	apiBase := os.Getenv("PAYPAL_API_BASE")
@@ -221,7 +245,15 @@ func NewPayPalTokenizationProvider() *PayPalTokenizationProvider {
 		apiBase = "https://api.paypal.com"
 	}
 	if clientID == "" || clientSecret == "" {
-		panic("PayPal credentials not set in env")
+		if os.Getenv("ENV") == "production" {
+			panic("PayPal credentials not set in env: required for production payments") // Explicitly panic in prod for safety
+		}
+		return &PayPalTokenizationProvider{
+			clientID:     "dummy-paypal-client-id",
+			clientSecret: "dummy-paypal-client-secret",
+			apiBase:      "https://api.sandbox.paypal.com",
+			httpClient:   &http.Client{Timeout: 5 * time.Second},
+		}
 	}
 	return &PayPalTokenizationProvider{
 		clientID:     clientID,
@@ -257,6 +289,9 @@ func (p *PayPalTokenizationProvider) getAccessToken(ctx context.Context) (string
 }
 
 func (p *PayPalTokenizationProvider) CreateToken(ctx context.Context, accountID string, paymentData map[string]string) (string, error) {
+	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+		return "dummy-token", nil
+	}
 	token, ok := paymentData["paypal_token"]
 	if !ok || token == "" {
 		return "", domain.NewValidationError("paypal_token", "must be provided by client (PCI compliance)")
@@ -265,6 +300,9 @@ func (p *PayPalTokenizationProvider) CreateToken(ctx context.Context, accountID 
 }
 
 func (p *PayPalTokenizationProvider) GetToken(ctx context.Context, accountID, token string) (map[string]string, error) {
+	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+		return map[string]string{"provider": "paypal", "token": token, "last4": "0000", "brand": "dummy"}, nil
+	}
 	accessToken, err := p.getAccessToken(ctx)
 	if err != nil {
 		return nil, err
@@ -300,6 +338,9 @@ func (p *PayPalTokenizationProvider) GetToken(ctx context.Context, accountID, to
 }
 
 func (p *PayPalTokenizationProvider) DeleteToken(ctx context.Context, accountID, token string) error {
+	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+		return nil
+	}
 	accessToken, err := p.getAccessToken(ctx)
 	if err != nil {
 		return err
@@ -334,6 +375,14 @@ type GooglePayTokenizationProvider struct {
 }
 
 func NewGooglePayTokenizationProvider() *GooglePayTokenizationProvider {
+	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+		return &GooglePayTokenizationProvider{
+			merchantID: "dummy-googlepay-merchant-id",
+			apiKey:     "dummy-googlepay-api-key",
+			apiBase:    "https://payments.googleapis.com",
+			httpClient: &http.Client{Timeout: 5 * time.Second},
+		}
+	}
 	merchantID := os.Getenv("GOOGLEPAY_MERCHANT_ID")
 	apiKey := os.Getenv("GOOGLEPAY_API_KEY")
 	apiBase := os.Getenv("GOOGLEPAY_API_BASE")
@@ -341,7 +390,15 @@ func NewGooglePayTokenizationProvider() *GooglePayTokenizationProvider {
 		apiBase = "https://payments.googleapis.com"
 	}
 	if merchantID == "" || apiKey == "" {
-		panic("Google Pay credentials not set in env")
+		if os.Getenv("ENV") == "production" {
+			panic("Google Pay credentials not set in env: required for production payments")
+		}
+		return &GooglePayTokenizationProvider{
+			merchantID: "dummy-googlepay-merchant-id",
+			apiKey:     "dummy-googlepay-api-key",
+			apiBase:    "https://payments.googleapis.com",
+			httpClient: &http.Client{Timeout: 5 * time.Second},
+		}
 	}
 	return &GooglePayTokenizationProvider{
 		merchantID: merchantID,
@@ -352,6 +409,9 @@ func NewGooglePayTokenizationProvider() *GooglePayTokenizationProvider {
 }
 
 func (g *GooglePayTokenizationProvider) CreateToken(ctx context.Context, accountID string, paymentData map[string]string) (string, error) {
+	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+		return "dummy-token", nil
+	}
 	token, ok := paymentData["googlepay_token"]
 	if !ok || token == "" {
 		return "", domain.NewValidationError("googlepay_token", "must be provided by client (PCI compliance)")
@@ -360,6 +420,9 @@ func (g *GooglePayTokenizationProvider) CreateToken(ctx context.Context, account
 }
 
 func (g *GooglePayTokenizationProvider) GetToken(ctx context.Context, accountID, token string) (map[string]string, error) {
+	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+		return map[string]string{"provider": "googlepay", "token": token, "last4": "0000", "brand": "dummy"}, nil
+	}
 	url := fmt.Sprintf("%s/v1/paymentTokens/%s?merchantId=%s", g.apiBase, token, g.merchantID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -391,6 +454,9 @@ func (g *GooglePayTokenizationProvider) GetToken(ctx context.Context, accountID,
 }
 
 func (g *GooglePayTokenizationProvider) DeleteToken(ctx context.Context, accountID, token string) error {
+	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+		return nil
+	}
 	url := fmt.Sprintf("%s/v1/paymentTokens/%s?merchantId=%s", g.apiBase, token, g.merchantID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
 	if err != nil {
@@ -421,6 +487,14 @@ type ApplePayTokenizationProvider struct {
 }
 
 func NewApplePayTokenizationProvider() *ApplePayTokenizationProvider {
+	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+		return &ApplePayTokenizationProvider{
+			merchantID: "dummy-applepay-merchant-id",
+			apiKey:     "dummy-applepay-api-key",
+			apiBase:    "https://apple-pay-gateway.apple.com",
+			httpClient: &http.Client{Timeout: 5 * time.Second},
+		}
+	}
 	merchantID := os.Getenv("APPLEPAY_MERCHANT_ID")
 	apiKey := os.Getenv("APPLEPAY_API_KEY")
 	apiBase := os.Getenv("APPLEPAY_API_BASE")
@@ -428,7 +502,15 @@ func NewApplePayTokenizationProvider() *ApplePayTokenizationProvider {
 		apiBase = "https://apple-pay-gateway.apple.com"
 	}
 	if merchantID == "" || apiKey == "" {
-		panic("Apple Pay credentials not set in env")
+		if os.Getenv("ENV") == "production" {
+			panic("Apple Pay credentials not set in env: required for production payments")
+		}
+		return &ApplePayTokenizationProvider{
+			merchantID: "dummy-applepay-merchant-id",
+			apiKey:     "dummy-applepay-api-key",
+			apiBase:    "https://apple-pay-gateway.apple.com",
+			httpClient: &http.Client{Timeout: 5 * time.Second},
+		}
 	}
 	return &ApplePayTokenizationProvider{
 		merchantID: merchantID,
@@ -439,6 +521,9 @@ func NewApplePayTokenizationProvider() *ApplePayTokenizationProvider {
 }
 
 func (a *ApplePayTokenizationProvider) CreateToken(ctx context.Context, accountID string, paymentData map[string]string) (string, error) {
+	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+		return "dummy-token", nil
+	}
 	token, ok := paymentData["applepay_token"]
 	if !ok || token == "" {
 		return "", domain.NewValidationError("applepay_token", "must be provided by client (PCI compliance)")
@@ -447,6 +532,9 @@ func (a *ApplePayTokenizationProvider) CreateToken(ctx context.Context, accountI
 }
 
 func (a *ApplePayTokenizationProvider) GetToken(ctx context.Context, accountID, token string) (map[string]string, error) {
+	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+		return map[string]string{"provider": "applepay", "token": token, "last4": "0000", "brand": "dummy"}, nil
+	}
 	url := fmt.Sprintf("%s/paymentservices/paymentTokens/%s?merchantIdentifier=%s", a.apiBase, token, a.merchantID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -478,6 +566,9 @@ func (a *ApplePayTokenizationProvider) GetToken(ctx context.Context, accountID, 
 }
 
 func (a *ApplePayTokenizationProvider) DeleteToken(ctx context.Context, accountID, token string) error {
+	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+		return nil
+	}
 	url := fmt.Sprintf("%s/paymentservices/paymentTokens/%s?merchantIdentifier=%s", a.apiBase, token, a.merchantID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
 	if err != nil {
@@ -499,8 +590,34 @@ func (a *ApplePayTokenizationProvider) DeleteToken(ctx context.Context, accountI
 
 func (a *ApplePayTokenizationProvider) ProviderName() string { return "applepay" }
 
+// DummyTokenizationProvider implements TokenizationProvider for disabled payments
+// Returns static tokens and does not require any credentials
+// Used when PAYMENTS_DISABLED=true for local/dev/test
+// All methods are no-ops and never panic
+
+type DummyTokenizationProvider struct{}
+
+func (d *DummyTokenizationProvider) CreateToken(ctx context.Context, accountID string, paymentData map[string]string) (string, error) {
+	return "dummy-token", nil
+}
+
+func (d *DummyTokenizationProvider) GetToken(ctx context.Context, accountID, token string) (map[string]string, error) {
+	return map[string]string{"provider": "dummy", "token": token, "last4": "0000", "brand": "dummy"}, nil
+}
+
+func (d *DummyTokenizationProvider) DeleteToken(ctx context.Context, accountID, token string) error {
+	return nil
+}
+
+func (d *DummyTokenizationProvider) ProviderName() string { return "dummy" }
+
 // NewDefaultTokenizationProviderRegistry wires up all prod providers using env/config
+// If PAYMENTS_DISABLED=true, only dummy provider is registered
 func NewDefaultTokenizationProviderRegistry(logger *logger.Logger) *TokenizationProviderRegistry {
+	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+		logger.Warn("Payments are DISABLED via PAYMENTS_DISABLED env; using dummy tokenization provider only")
+		return NewTokenizationProviderRegistry(logger, &DummyTokenizationProvider{})
+	}
 	return NewTokenizationProviderRegistry(
 		logger,
 		NewStripeTokenizationProvider(),

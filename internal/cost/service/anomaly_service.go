@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 
 	"github.com/google/uuid"
+	"github.com/spf13/viper"
 	"github.com/subinc/subinc-backend/internal/cost/domain"
 	"github.com/subinc/subinc-backend/internal/cost/repository"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
@@ -46,6 +46,19 @@ type AIAnomalyProvider interface {
 	ProviderName() string
 }
 
+// DummyAIAnomalyProvider is used when OpenAI is not configured (dev/test)
+type DummyAIAnomalyProvider struct{ logger *logger.Logger }
+
+func (d *DummyAIAnomalyProvider) ProviderName() string { return "dummy" }
+func (d *DummyAIAnomalyProvider) DetectAnomalies(ctx context.Context, tenantID string, costs []*domain.Cost) ([]*domain.Anomaly, error) {
+	d.logger.Warn("OpenAI anomaly detection is disabled: no OPENAI_API_KEY set")
+	return nil, nil
+}
+func (d *DummyAIAnomalyProvider) GetRecommendation(ctx context.Context, anomaly *domain.Anomaly) (string, error) {
+	d.logger.Warn("OpenAI recommendation is disabled: no OPENAI_API_KEY set")
+	return "AI anomaly detection is disabled in this environment.", nil
+}
+
 // OpenAIAnomalyProvider implements AIAnomalyProvider using OpenAI's API.
 type OpenAIAnomalyProvider struct {
 	apiKey     string
@@ -55,16 +68,19 @@ type OpenAIAnomalyProvider struct {
 	httpClient *http.Client
 }
 
-func NewOpenAIAnomalyProvider(log *logger.Logger) *OpenAIAnomalyProvider {
-	apiKey := os.Getenv("OPENAI_API_KEY")
+func NewOpenAIAnomalyProvider(log *logger.Logger) AIAnomalyProvider {
+	apiKey := viper.GetString("OPENAI_API_KEY")
 	if apiKey == "" {
-		panic("OPENAI_API_KEY not set")
+		if viper.GetString("ENV") == "production" {
+			panic("OPENAI_API_KEY not set: required for production AI anomaly detection")
+		}
+		return &DummyAIAnomalyProvider{logger: log}
 	}
-	apiURL := os.Getenv("OPENAI_API_URL")
+	apiURL := viper.GetString("OPENAI_API_URL")
 	if apiURL == "" {
 		apiURL = "https://api.openai.com/v1/chat/completions"
 	}
-	model := os.Getenv("OPENAI_MODEL")
+	model := viper.GetString("OPENAI_MODEL")
 	if model == "" {
 		model = "gpt-4o"
 	}

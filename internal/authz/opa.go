@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/spf13/viper"
@@ -22,9 +21,6 @@ type OPAClient struct {
 // NewOPAClient creates a new OPA client with config from Viper/env.
 func NewOPAClient() *OPAClient {
 	baseURL := viper.GetString("OPA_URL")
-	if baseURL == "" {
-		baseURL = os.Getenv("OPA_URL")
-	}
 	if baseURL == "" {
 		baseURL = "http://localhost:8181" // secure default for local dev only
 	}

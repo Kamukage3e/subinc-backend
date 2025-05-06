@@ -1,31 +1,71 @@
 package user
 
 import (
+	"strconv"
 	"time"
-
-	"os"
 
 	"github.com/google/uuid"
 	"github.com/speps/go-hashids/v2"
+	"github.com/spf13/viper"
 )
 
 // User represents a real SaaS user. All fields are required for prod.
 type User struct {
-	ID           string            `json:"id" db:"id"`
-	TenantID     string            `json:"tenant_id" db:"tenant_id"`
-	Username     string            `json:"username" db:"username"`
-	Email        string            `json:"email" db:"email"`
-	PasswordHash string            `json:"-" db:"password_hash"`
-	Roles        []string          `json:"roles" db:"roles"`
-	Attributes   map[string]string `json:"attributes" db:"attributes"`
-	CreatedAt    time.Time         `json:"created_at" db:"created_at"`
-	UpdatedAt    time.Time         `json:"updated_at" db:"updated_at"`
+	ID            string            `json:"id" db:"id"`
+	TenantID      string            `json:"tenant_id" db:"tenant_id"`
+	Username      string            `json:"username" db:"username"`
+	Email         string            `json:"email" db:"email"`
+	PasswordHash  string            `json:"-" db:"password_hash"`
+	Roles         []string          `json:"roles" db:"roles"`
+	Attributes    map[string]string `json:"attributes" db:"attributes"`
+	CreatedAt     time.Time         `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time         `json:"updated_at" db:"updated_at"`
+	EmailVerified bool              `json:"email_verified" db:"email_verified"`
+}
+
+// RefreshToken represents a JWT refresh token for a user session
+// All tokens are DB-backed, secure, and time-limited for SaaS
+// This struct is used for real token rotation and revocation
+// Table: refresh_tokens
+// PK: TokenID (UUID)
+type RefreshToken struct {
+	TokenID   string    `json:"token_id" db:"token_id"`
+	UserID    string    `json:"user_id" db:"user_id"`
+	TenantID  string    `json:"tenant_id" db:"tenant_id"`
+	Token     string    `json:"token" db:"token"`
+	ExpiresAt time.Time `json:"expires_at" db:"expires_at"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	Revoked   bool      `json:"revoked" db:"revoked"`
+}
+
+// PasswordResetToken represents a secure, time-limited password reset token
+// Table: password_reset_tokens
+// PK: Token (UUID)
+type PasswordResetToken struct {
+	Token     string    `json:"token" db:"token"`
+	UserID    string    `json:"user_id" db:"user_id"`
+	TenantID  string    `json:"tenant_id" db:"tenant_id"`
+	ExpiresAt time.Time `json:"expires_at" db:"expires_at"`
+	Used      bool      `json:"used" db:"used"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+}
+
+// EmailVerificationToken represents a secure, time-limited email verification token
+// Table: email_verification_tokens
+// PK: Token (UUID)
+type EmailVerificationToken struct {
+	Token     string    `json:"token" db:"token"`
+	UserID    string    `json:"user_id" db:"user_id"`
+	TenantID  string    `json:"tenant_id" db:"tenant_id"`
+	ExpiresAt time.Time `json:"expires_at" db:"expires_at"`
+	Used      bool      `json:"used" db:"used"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
 
 var hashID *hashids.HashID
 
 func init() {
-	salt := os.Getenv("HASHID_SALT")
+	salt := getSalt()
 	if salt == "" {
 		salt = "subinc-default-salt-change-me" // secure default, must override in prod
 	}
@@ -37,6 +77,11 @@ func init() {
 	if err != nil {
 		panic("failed to initialize hashids: " + err.Error())
 	}
+}
+
+func getSalt() string {
+	salt := viper.GetString("HASHID_SALT")
+	return salt
 }
 
 func (u *User) HasRole(role string) bool {
@@ -85,4 +130,21 @@ func (u *User) RemoveAttribute(key string) {
 // GenerateUUID returns a new random UUID string for use as a user ID.
 func GenerateUUID() string {
 	return uuid.NewString()
+}
+
+func (u *User) HashID() string {
+	salt := getSalt()
+	if salt == "" {
+		salt = "subinc-default-salt-change-me" // secure default, must override in prod
+	}
+	idInt, err := strconv.ParseInt(u.ID, 10, 64)
+	if err != nil {
+		return "" // fallback: return empty string if ID is not numeric
+	}
+	ids := []int64{idInt}
+	hid, err := hashID.EncodeInt64(ids)
+	if err != nil {
+		return ""
+	}
+	return hid
 }

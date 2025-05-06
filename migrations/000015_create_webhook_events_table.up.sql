@@ -4,12 +4,12 @@ CREATE TABLE
         id UUID PRIMARY KEY,
         provider TEXT NOT NULL,
         event_type TEXT NOT NULL,
-        payload JSONB NOT NULL,
+        payload TEXT NOT NULL,
         status TEXT NOT NULL CHECK (status IN ('received', 'processed', 'failed')),
         received_at TIMESTAMPTZ NOT NULL,
         processed_at TIMESTAMPTZ,
         error TEXT,
-        metadata JSONB NOT NULL DEFAULT '{}'
+        metadata TEXT
     );
 
 CREATE INDEX idx_webhook_events_provider ON webhook_events (provider);

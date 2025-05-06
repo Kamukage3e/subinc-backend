@@ -9,7 +9,7 @@ CREATE TABLE
         reason TEXT NOT NULL,
         created_at TIMESTAMPTZ NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL,
-        metadata JSONB NOT NULL DEFAULT '{}'
+        metadata TEXT
     );
 
 CREATE INDEX idx_invoice_adjustments_invoice_id ON invoice_adjustments (invoice_id);

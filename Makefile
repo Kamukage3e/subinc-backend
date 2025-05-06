@@ -29,7 +29,7 @@ tidy:
 
 # Run DB migrations (if using golang-migrate)
 migrate:
-	migrate -path migrations -database "$$DATABASE_URL" up
+	migrate -path migrations -database "$(shell yq e '.database.url' config/config.yaml)" up
 
 # Build and run Docker image
 docker:

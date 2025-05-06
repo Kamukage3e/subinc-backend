@@ -1,7 +1,7 @@
 CREATE TABLE
-    IF NOT EXISTS cost_imports (
-        id TEXT PRIMARY KEY,
-        tenant_id TEXT NOT NULL,
+    cost_imports (
+        id UUID PRIMARY KEY,
+        tenant_id UUID NOT NULL,
         provider TEXT NOT NULL,
         account_id TEXT NOT NULL,
         start_time TIMESTAMPTZ NOT NULL,
@@ -14,10 +14,10 @@ CREATE TABLE
         completed_at TIMESTAMPTZ
     );
 
-CREATE INDEX IF NOT EXISTS idx_cost_imports_tenant_id ON cost_imports (tenant_id);
+CREATE INDEX idx_cost_imports_tenant_id ON cost_imports (tenant_id);
 
-CREATE INDEX IF NOT EXISTS idx_cost_imports_provider ON cost_imports (provider);
+CREATE INDEX idx_cost_imports_provider ON cost_imports (provider);
 
-CREATE INDEX IF NOT EXISTS idx_cost_imports_account_id ON cost_imports (account_id);
+CREATE INDEX idx_cost_imports_account_id ON cost_imports (account_id);
 
-CREATE INDEX IF NOT EXISTS idx_cost_imports_status ON cost_imports (status);
+CREATE INDEX idx_cost_imports_status ON cost_imports (status);

@@ -15,9 +15,11 @@ CREATE TABLE
         status TEXT NOT NULL CHECK (
             status IN ('active', 'inactive', 'expired', 'failed')
         ),
+        token TEXT NOT NULL,
+        token_provider TEXT NOT NULL,
         created_at TIMESTAMPTZ NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL,
-        metadata JSONB NOT NULL DEFAULT '{}'
+        metadata TEXT
     );
 
 CREATE INDEX idx_payment_methods_account_id ON payment_methods (account_id);
