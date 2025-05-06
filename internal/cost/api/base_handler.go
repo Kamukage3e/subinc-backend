@@ -7,25 +7,7 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-const (
-	// TenantIDHeader is the header containing the tenant ID
-	TenantIDHeader = "X-Tenant-ID"
 
-	// DefaultErrorMessage is the default error message
-	DefaultErrorMessage = "An unexpected error occurred"
-)
-
-// ErrorResponse represents an error response
-type ErrorResponse struct {
-	Error   string `json:"error"`
-	Message string `json:"message"`
-	Status  int    `json:"status"`
-}
-
-// BaseHandler provides common functionality for all handlers
-type BaseHandler struct {
-	logger *logger.Logger
-}
 
 // NewBaseHandler creates a new base handler
 func NewBaseHandler(log *logger.Logger) *BaseHandler {

@@ -17,18 +17,8 @@ import (
 // Modular, SaaS-grade, handler-based routing
 // All endpoints must be production-ready and secure
 
-// EmailSender defines the interface for sending emails (real provider, not dummy)
-type EmailSender interface {
-	SendResetEmail(to, token string) error
-	SendVerificationEmail(to, token string) error
-}
 
-type UserHandler struct {
-	store         UserStore
-	secrets       secrets.SecretsManager
-	jwtSecretName string
-	emailSender   EmailSender
-}
+
 
 func NewHandler(store UserStore, secrets secrets.SecretsManager, jwtSecretName string, emailSender EmailSender) *UserHandler {
 	return &UserHandler{store: store, secrets: secrets, jwtSecretName: jwtSecretName, emailSender: emailSender}
@@ -532,3 +522,5 @@ func (h *UserHandler) ResendVerification(c *fiber.Ctx) error {
 	h.sendVerificationEmail(user.Email, token)
 	return c.SendStatus(fiber.StatusNoContent)
 }
+
+// RegisterRoutes registers all user endpoints at the given router group

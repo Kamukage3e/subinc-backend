@@ -10,11 +10,7 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-// CloudHandler handles API requests for cloud provider integrations
-type CloudHandler struct {
-	cloudProviderService service.CloudProviderService
-	logger               *logger.Logger
-}
+
 
 // NewCloudHandler creates a new cloud handler
 func NewCloudHandler(cloudProviderService service.CloudProviderService, log *logger.Logger) *CloudHandler {
@@ -28,29 +24,7 @@ func NewCloudHandler(cloudProviderService service.CloudProviderService, log *log
 	}
 }
 
-// RegisterRoutes registers the cloud provider API routes
-func (h *CloudHandler) RegisterRoutes(router fiber.Router) {
-	cloudRouter := router.Group("/cloud")
 
-	// Provider information routes
-	cloudRouter.Get("/providers", h.ListProviders)
-	cloudRouter.Get("/providers/:provider", h.GetProviderInfo)
-
-	// Integration management routes
-	cloudRouter.Post("/integrations", h.CreateIntegration)
-	cloudRouter.Get("/integrations", h.ListIntegrations)
-	cloudRouter.Get("/integrations/:id", h.GetIntegration)
-	cloudRouter.Put("/integrations/:id", h.UpdateIntegration)
-	cloudRouter.Delete("/integrations/:id", h.DeleteIntegration)
-	cloudRouter.Post("/integrations/:id/validate", h.ValidateIntegration)
-
-	// Account management routes
-	cloudRouter.Get("/integrations/:id/accounts", h.ListAccounts)
-	cloudRouter.Put("/integrations/:id/accounts/default", h.SetDefaultAccount)
-
-	// Cost import routes
-	cloudRouter.Post("/import", h.ImportCostData)
-}
 
 // ListProviders lists all supported cloud providers
 // @Summary List all supported cloud providers
@@ -654,115 +628,6 @@ func (h *CloudHandler) ImportCostData(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusAccepted).JSON(response)
 }
 
-// Request/Response types
-
-// CreateIntegrationRequest represents a request to create a new integration
-type CreateIntegrationRequest struct {
-	Name        string            `json:"name"`
-	Provider    string            `json:"provider"`
-	Credentials map[string]string `json:"credentials"`
-}
-
-// UpdateIntegrationRequest represents a request to update an integration
-type UpdateIntegrationRequest struct {
-	Credentials map[string]string `json:"credentials"`
-}
-
-// IntegrationResponse represents a cloud provider integration response
-type IntegrationResponse struct {
-	ID              string     `json:"id"`
-	Name            string     `json:"name"`
-	Provider        string     `json:"provider"`
-	DefaultAccount  string     `json:"default_account,omitempty"`
-	AccountCount    int        `json:"account_count"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
-	LastValidatedAt *time.Time `json:"last_validated_at,omitempty"`
-	IsValid         bool       `json:"is_valid"`
-}
-
-// IntegrationsResponse represents a list of cloud provider integrations
-type IntegrationsResponse struct {
-	Integrations []IntegrationResponse `json:"integrations"`
-	Count        int                   `json:"count"`
-}
-
-// ProviderResponse represents a cloud provider response
-type ProviderResponse struct {
-	ID          string   `json:"id"`
-	DisplayName string   `json:"display_name"`
-	Description string   `json:"description"`
-	Features    []string `json:"features,omitempty"`
-	DocsURL     string   `json:"docs_url,omitempty"`
-}
-
-// ProviderInfoResponse represents detailed information about a cloud provider
-type ProviderInfoResponse struct {
-	ID          string   `json:"id"`
-	DisplayName string   `json:"display_name"`
-	Description string   `json:"description"`
-	APIVersion  string   `json:"api_version,omitempty"`
-	Features    []string `json:"features,omitempty"`
-	DocsURL     string   `json:"docs_url,omitempty"`
-}
-
-// ProvidersResponse represents a list of cloud providers
-type ProvidersResponse struct {
-	Providers []ProviderResponse `json:"providers"`
-}
-
-// ValidationResponse represents the result of a validation check
-type ValidationResponse struct {
-	Valid       bool       `json:"valid"`
-	LastChecked *time.Time `json:"last_checked,omitempty"`
-	Message     string     `json:"message"`
-}
-
-// AccountResponse represents a cloud account response
-type AccountResponse struct {
-	ID        string            `json:"id"`
-	Name      string            `json:"name"`
-	Type      string            `json:"type"`
-	Status    string            `json:"status"`
-	CreatedAt time.Time         `json:"created_at"`
-	Owner     string            `json:"owner,omitempty"`
-	Tags      map[string]string `json:"tags,omitempty"`
-	IsDefault bool              `json:"is_default"`
-}
-
-// AccountsResponse represents a list of cloud accounts
-type AccountsResponse struct {
-	Accounts []AccountResponse `json:"accounts"`
-	Count    int               `json:"count"`
-}
-
-// SetDefaultAccountRequest represents a request to set the default account
-type SetDefaultAccountRequest struct {
-	AccountID string `json:"account_id"`
-}
-
-// ImportCostDataRequest represents a request to import cost data
-type ImportCostDataRequest struct {
-	Provider  string    `json:"provider"`
-	StartDate time.Time `json:"start_date"`
-	EndDate   time.Time `json:"end_date"`
-}
-
-// ImportResponse represents the result of a cost import request
-type ImportResponse struct {
-	ImportID  string    `json:"import_id"`
-	Status    string    `json:"status"`
-	StartDate time.Time `json:"start_date"`
-	EndDate   time.Time `json:"end_date"`
-	Provider  string    `json:"provider"`
-	Message   string    `json:"message"`
-}
-
-// SuccessResponse represents a generic success response
-type SuccessResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-}
 
 // Helper functions
 

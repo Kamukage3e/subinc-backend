@@ -3,12 +3,13 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"os"
+
 	"strconv"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/spf13/viper"
 	"github.com/subinc/subinc-backend/internal/cost/domain"
 	"github.com/subinc/subinc-backend/internal/cost/repository"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
@@ -183,19 +184,19 @@ func (s *billingService) CreateInvoice(ctx context.Context, input CreateInvoiceI
 	}
 	// Tax calculation: configurable rate (env or plan)
 	taxRate := 0.0
-	if v := os.Getenv("BILLING_TAX_RATE"); v != "" {
+	if v := viper.GetString("billing.tax_rate"); v != "" {
 		if r, err := strconv.ParseFloat(v, 64); err == nil {
 			taxRate = r
 		}
 	}
 	// Fee calculation: fixed + percentage (env, can be extended)
 	fees := []domain.Fee{}
-	if v := os.Getenv("BILLING_FIXED_FEE"); v != "" {
+	if v := viper.GetString("billing.fixed_fee"); v != "" {
 		if amt, err := strconv.ParseFloat(v, 64); err == nil && amt > 0 {
 			fees = append(fees, domain.Fee{Type: "fixed", Amount: amt, Currency: input.Invoice.Currency})
 		}
 	}
-	if v := os.Getenv("BILLING_PERCENT_FEE"); v != "" {
+	if v := viper.GetString("billing.percent_fee"); v != "" {
 		if pct, err := strconv.ParseFloat(v, 64); err == nil && pct > 0 {
 			fees = append(fees, domain.Fee{Type: "percent", Amount: pct, Currency: input.Invoice.Currency})
 		}

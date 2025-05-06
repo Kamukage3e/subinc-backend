@@ -11,10 +11,7 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-type AnomalyHandler struct {
-	anomalyService service.AnomalyDetectionService
-	logger         *logger.Logger
-}
+
 
 func NewAnomalyHandler(anomalyService service.AnomalyDetectionService, log *logger.Logger) *AnomalyHandler {
 	if log == nil {

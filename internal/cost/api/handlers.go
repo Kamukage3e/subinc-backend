@@ -9,11 +9,7 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-// CostHandler handles HTTP requests related to cost management
-type CostHandler struct {
-	service service.CostService
-	logger  *logger.Logger
-}
+
 
 // NewCostHandler creates a new cost handler
 func NewCostHandler(service service.CostService, log *logger.Logger) *CostHandler {
@@ -23,55 +19,10 @@ func NewCostHandler(service service.CostService, log *logger.Logger) *CostHandle
 	}
 }
 
-// RegisterRoutes registers all cost management routes
-func (h *CostHandler) RegisterRoutes(router fiber.Router) {
-	costs := router.Group("/costs")
 
-	// Cost data endpoints
-	costs.Get("/:id", h.GetCostByID)
-	costs.Post("/query", h.QueryCosts)
-	costs.Get("/summary", h.GetCostSummary)
-
-	// Import endpoints
-	imports := costs.Group("/imports")
-	imports.Post("/", h.ImportCostData)
-	imports.Get("/:id", h.GetCostImportStatus)
-	imports.Get("/", h.ListCostImports)
-
-	// Budget endpoints
-	budgets := costs.Group("/budgets")
-	budgets.Post("/", h.CreateBudget)
-	budgets.Put("/:id", h.UpdateBudget)
-	budgets.Delete("/:id", h.DeleteBudget)
-	budgets.Get("/:id", h.GetBudgetByID)
-	budgets.Get("/", h.ListBudgets)
-
-	// Anomaly endpoints
-	anomalies := costs.Group("/anomalies")
-	anomalies.Get("/:id", h.GetAnomalyByID)
-	anomalies.Put("/:id", h.UpdateAnomaly)
-	anomalies.Get("/", h.ListAnomalies)
-	anomalies.Post("/detect", h.DetectAnomalies)
-
-	// Forecast endpoints
-	forecasts := costs.Group("/forecasts")
-	forecasts.Post("/", h.GenerateForecast)
-	forecasts.Get("/", h.GetForecast)
-}
 
 // Response formats
-type errorResponse struct {
-	Error   string `json:"error"`
-	Message string `json:"message,omitempty"`
-	Code    string `json:"code,omitempty"`
-}
 
-type paginatedResponse struct {
-	Data       interface{} `json:"data"`
-	TotalCount int         `json:"total_count"`
-	Page       int         `json:"page"`
-	PageSize   int         `json:"page_size"`
-}
 
 // Helper function to parse time params
 func parseTimeParams(c *fiber.Ctx, startParam, endParam string, defaults bool) (time.Time, time.Time, error) {

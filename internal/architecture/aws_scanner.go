@@ -64,8 +64,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/aws-sdk-go-v2/service/transcribe"
-	"github.com/subinc/subinc-backend/internal/architecture/types"
+
+
 	"github.com/subinc/subinc-backend/internal/cost/domain"
+	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
 // DynamicServiceAPI defines the interface for listing resources for a given AWS service
@@ -74,78 +76,14 @@ import (
 
 // / serviceRegistry maps all AWS service codes to their real ListResources implementations
 // If a service is not yet implemented, NoopService is used (returns no resources, no error)
-var serviceRegistry = map[string]DynamicServiceAPI{
-	"ec2":               &EC2Service{},
-	"s3":                &S3Service{},
-	"rds":               &RDSService{},
-	"lambda":            &LambdaService{},
-	"iam":               &IAMService{},
-	"sqs":               &SQSService{},
-	"sns":               &SNSService{},
-	"efs":               &EFSService{},
-	"ecr":               &ECRService{},
-	"eks":               &EKSService{},
-	"cloudfront":        &CloudFrontService{},
-	"elasticache":       &ElasticacheService{},
-	"redshift":          &RedshiftService{},
-	"secretsmanager":    &SecretsManagerService{},
-	"dynamodb":          &DynamoDBService{},
-	"s3control":         &S3ControlService{},
-	"kms":               &KMSService{},
-	"glue":              &GlueService{},
-	"athena":            &AthenaService{},
-	"sfn":               &StepFunctionsService{},
-	"cloudwatch":        &CloudWatchService{},
-	"fsx":               &FSxService{},
-	"appmesh":           &AppMeshService{},
-	"codebuild":         &CodeBuildService{},
-	"ecs":               &ECSService{},
-	"elb":               &ELBService{},
-	"elbv2":             &ELBV2Service{},
-	"apigateway":        &APIGatewayService{},
-	"cloudformation":    &CloudFormationService{},
-	"autoscaling":       &AutoscalingService{},
-	"acm":               &ACMService{},
-	"batch":             &BatchService{},
-	"backup":            &BackupService{},
-	"codecommit":        &CodeCommitService{},
-	"codepipeline":      &CodePipelineService{},
-	"cognito-idp":       &CognitoIDPService{},
-	"route53":           &Route53Service{},
-	"cloudtrail":        &CloudTrailService{},
-	"cloudwatchlogs":    &CloudWatchLogsService{},
-	"elasticbeanstalk":  &ElasticBeanstalkService{},
-	"sagemaker":         &SagemakerService{},
-	"neptune":           &NeptuneService{},
-	"lightsail":         &LightsailService{},
-	"ebs":               &EBSService{},
-	"glacier":           &GlacierService{},
-	"directconnect":     &DirectConnectService{},
-	"comprehend":        &ComprehendService{},
-	"rekognition":       &RekognitionService{},
-	"polly":             &PollyService{},
-	"transcribe":        &TranscribeService{},
-	"lex":               &LexService{},
-	"forecast":          &ForecastService{},
-	"personalize":       &PersonalizeService{},
-	"kendra":            &KendraService{},
-	"vpc":               &VPCService{},
-	"transitgateway":    &TransitGatewayService{},
-	"vpce":              &VpcEndpointService{},
-	"globalaccelerator": &GlobalAcceleratorService{},
-}
-
-type DynamicServiceAPI interface {
-	ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error)
-}
 
 // RDSService implements DynamicServiceAPI for RDS
 // Real, production-grade implementation
 type RDSService struct{}
 
-func (s *RDSService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *RDSService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	rdsClient := rds.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &rds.DescribeDBInstancesInput{}
 	for {
 		resp, err := rdsClient.DescribeDBInstances(ctx, input)
@@ -153,7 +91,7 @@ func (s *RDSService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 			return nil, err
 		}
 		for _, db := range resp.DBInstances {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(db.DBInstanceIdentifier),
 				Type:     "rds_instance",
 				Provider: "aws",
@@ -176,9 +114,9 @@ func (s *RDSService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 // LambdaService implements DynamicServiceAPI for Lambda
 type LambdaService struct{}
 
-func (s *LambdaService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *LambdaService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	lambdaClient := lambda.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &lambda.ListFunctionsInput{}
 	for {
 		resp, err := lambdaClient.ListFunctions(ctx, input)
@@ -186,7 +124,7 @@ func (s *LambdaService) ListResources(ctx context.Context, cfg aws.Config) ([]ty
 			return nil, err
 		}
 		for _, fn := range resp.Functions {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(fn.FunctionArn),
 				Type:     "lambda_function",
 				Provider: "aws",
@@ -210,9 +148,9 @@ func (s *LambdaService) ListResources(ctx context.Context, cfg aws.Config) ([]ty
 // Enumerates users, roles, and groups
 type IAMService struct{}
 
-func (s *IAMService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *IAMService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	iamClient := iam.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	// Users
 	userInput := &iam.ListUsersInput{}
 	for {
@@ -221,7 +159,7 @@ func (s *IAMService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 			return nil, err
 		}
 		for _, u := range resp.Users {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(u.UserId),
 				Type:     "iam_user",
 				Provider: "aws",
@@ -244,7 +182,7 @@ func (s *IAMService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 			return nil, err
 		}
 		for _, r := range resp.Roles {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(r.RoleId),
 				Type:     "iam_role",
 				Provider: "aws",
@@ -267,7 +205,7 @@ func (s *IAMService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 			return nil, err
 		}
 		for _, g := range resp.Groups {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(g.GroupId),
 				Type:     "iam_group",
 				Provider: "aws",
@@ -288,16 +226,16 @@ func (s *IAMService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 // SQSService implements DynamicServiceAPI for SQS
 type SQSService struct{}
 
-func (s *SQSService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *SQSService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	sqsClient := sqs.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &sqs.ListQueuesInput{}
 	resp, err := sqsClient.ListQueues(ctx, input)
 	if err != nil {
 		return nil, err
 	}
 	for _, url := range resp.QueueUrls {
-		nodes = append(nodes, types.ResourceNode{
+		nodes = append(nodes, ResourceNode{
 			ID:         url,
 			Type:       "sqs_queue",
 			Provider:   "aws",
@@ -311,9 +249,9 @@ func (s *SQSService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 // SNSService implements DynamicServiceAPI for SNS
 type SNSService struct{}
 
-func (s *SNSService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *SNSService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	snsClient := sns.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &sns.ListTopicsInput{}
 	for {
 		resp, err := snsClient.ListTopics(ctx, input)
@@ -321,7 +259,7 @@ func (s *SNSService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 			return nil, err
 		}
 		for _, t := range resp.Topics {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:         aws.ToString(t.TopicArn),
 				Type:       "sns_topic",
 				Provider:   "aws",
@@ -340,16 +278,16 @@ func (s *SNSService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 // EFSService implements DynamicServiceAPI for EFS
 type EFSService struct{}
 
-func (s *EFSService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *EFSService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	efsClient := efs.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &efs.DescribeFileSystemsInput{}
 	resp, err := efsClient.DescribeFileSystems(ctx, input)
 	if err != nil {
 		return nil, err
 	}
 	for _, fs := range resp.FileSystems {
-		nodes = append(nodes, types.ResourceNode{
+		nodes = append(nodes, ResourceNode{
 			ID:       aws.ToString(fs.FileSystemId),
 			Type:     "efs_filesystem",
 			Provider: "aws",
@@ -366,9 +304,9 @@ func (s *EFSService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 // ECRService implements DynamicServiceAPI for ECR
 type ECRService struct{}
 
-func (s *ECRService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *ECRService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	ecrClient := ecr.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &ecr.DescribeRepositoriesInput{}
 	for {
 		resp, err := ecrClient.DescribeRepositories(ctx, input)
@@ -376,7 +314,7 @@ func (s *ECRService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 			return nil, err
 		}
 		for _, repo := range resp.Repositories {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(repo.RepositoryArn),
 				Type:     "ecr_repository",
 				Provider: "aws",
@@ -397,9 +335,9 @@ func (s *ECRService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 // EKSService implements DynamicServiceAPI for EKS
 type EKSService struct{}
 
-func (s *EKSService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *EKSService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	eksClient := eks.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &eks.ListClustersInput{}
 	for {
 		resp, err := eksClient.ListClusters(ctx, input)
@@ -411,7 +349,7 @@ func (s *EKSService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 			if err != nil {
 				continue
 			}
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(cluster.Cluster.Arn),
 				Type:     "eks_cluster",
 				Provider: "aws",
@@ -433,9 +371,9 @@ func (s *EKSService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 // CloudFrontService implements DynamicServiceAPI for CloudFront
 type CloudFrontService struct{}
 
-func (s *CloudFrontService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *CloudFrontService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	cfClient := cloudfront.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &cloudfront.ListDistributionsInput{}
 	resp, err := cfClient.ListDistributions(ctx, input)
 	if err != nil {
@@ -445,7 +383,7 @@ func (s *CloudFrontService) ListResources(ctx context.Context, cfg aws.Config) (
 		return nodes, nil
 	}
 	for _, dist := range resp.DistributionList.Items {
-		nodes = append(nodes, types.ResourceNode{
+		nodes = append(nodes, ResourceNode{
 			ID:       aws.ToString(dist.ARN),
 			Type:     "cloudfront_distribution",
 			Provider: "aws",
@@ -462,9 +400,9 @@ func (s *CloudFrontService) ListResources(ctx context.Context, cfg aws.Config) (
 // ElasticacheService implements DynamicServiceAPI for Elasticache
 type ElasticacheService struct{}
 
-func (s *ElasticacheService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *ElasticacheService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	client := elasticache.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &elasticache.DescribeCacheClustersInput{ShowCacheNodeInfo: aws.Bool(true)}
 	for {
 		resp, err := client.DescribeCacheClusters(ctx, input)
@@ -472,7 +410,7 @@ func (s *ElasticacheService) ListResources(ctx context.Context, cfg aws.Config) 
 			return nil, err
 		}
 		for _, cluster := range resp.CacheClusters {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(cluster.CacheClusterId),
 				Type:     "elasticache_cluster",
 				Provider: "aws",
@@ -494,9 +432,9 @@ func (s *ElasticacheService) ListResources(ctx context.Context, cfg aws.Config) 
 // RedshiftService implements DynamicServiceAPI for Redshift
 type RedshiftService struct{}
 
-func (s *RedshiftService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *RedshiftService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	client := redshift.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &redshift.DescribeClustersInput{}
 	for {
 		resp, err := client.DescribeClusters(ctx, input)
@@ -504,7 +442,7 @@ func (s *RedshiftService) ListResources(ctx context.Context, cfg aws.Config) ([]
 			return nil, err
 		}
 		for _, cluster := range resp.Clusters {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(cluster.ClusterIdentifier),
 				Type:     "redshift_cluster",
 				Provider: "aws",
@@ -526,9 +464,9 @@ func (s *RedshiftService) ListResources(ctx context.Context, cfg aws.Config) ([]
 // SecretsManagerService implements DynamicServiceAPI for SecretsManager
 type SecretsManagerService struct{}
 
-func (s *SecretsManagerService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *SecretsManagerService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	client := secretsmanager.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &secretsmanager.ListSecretsInput{}
 	for {
 		resp, err := client.ListSecrets(ctx, input)
@@ -536,7 +474,7 @@ func (s *SecretsManagerService) ListResources(ctx context.Context, cfg aws.Confi
 			return nil, err
 		}
 		for _, secret := range resp.SecretList {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:         aws.ToString(secret.ARN),
 				Type:       "secretsmanager_secret",
 				Provider:   "aws",
@@ -555,9 +493,9 @@ func (s *SecretsManagerService) ListResources(ctx context.Context, cfg aws.Confi
 // GlueService implements DynamicServiceAPI for Glue
 type GlueService struct{}
 
-func (s *GlueService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *GlueService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	client := glue.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &glue.GetDatabasesInput{}
 	for {
 		resp, err := client.GetDatabases(ctx, input)
@@ -565,7 +503,7 @@ func (s *GlueService) ListResources(ctx context.Context, cfg aws.Config) ([]type
 			return nil, err
 		}
 		for _, db := range resp.DatabaseList {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:         aws.ToString(db.Name),
 				Type:       "glue_database",
 				Provider:   "aws",
@@ -584,9 +522,9 @@ func (s *GlueService) ListResources(ctx context.Context, cfg aws.Config) ([]type
 // AthenaService implements DynamicServiceAPI for Athena
 type AthenaService struct{}
 
-func (s *AthenaService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *AthenaService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	client := athena.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &athena.ListWorkGroupsInput{}
 	for {
 		resp, err := client.ListWorkGroups(ctx, input)
@@ -594,7 +532,7 @@ func (s *AthenaService) ListResources(ctx context.Context, cfg aws.Config) ([]ty
 			return nil, err
 		}
 		for _, wg := range resp.WorkGroups {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:         aws.ToString(wg.Name),
 				Type:       "athena_workgroup",
 				Provider:   "aws",
@@ -613,9 +551,9 @@ func (s *AthenaService) ListResources(ctx context.Context, cfg aws.Config) ([]ty
 // StepFunctionsService implements DynamicServiceAPI for StepFunctions
 type StepFunctionsService struct{}
 
-func (s *StepFunctionsService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *StepFunctionsService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	client := sfn.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &sfn.ListStateMachinesInput{}
 	for {
 		resp, err := client.ListStateMachines(ctx, input)
@@ -623,7 +561,7 @@ func (s *StepFunctionsService) ListResources(ctx context.Context, cfg aws.Config
 			return nil, err
 		}
 		for _, sm := range resp.StateMachines {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:         aws.ToString(sm.StateMachineArn),
 				Type:       "stepfunctions_statemachine",
 				Provider:   "aws",
@@ -642,9 +580,9 @@ func (s *StepFunctionsService) ListResources(ctx context.Context, cfg aws.Config
 // CloudWatchService implements DynamicServiceAPI for CloudWatch
 type CloudWatchService struct{}
 
-func (s *CloudWatchService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *CloudWatchService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	client := cloudwatch.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &cloudwatch.DescribeAlarmsInput{}
 	for {
 		resp, err := client.DescribeAlarms(ctx, input)
@@ -652,7 +590,7 @@ func (s *CloudWatchService) ListResources(ctx context.Context, cfg aws.Config) (
 			return nil, err
 		}
 		for _, alarm := range resp.MetricAlarms {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(alarm.AlarmArn),
 				Type:     "cloudwatch_alarm",
 				Provider: "aws",
@@ -673,9 +611,9 @@ func (s *CloudWatchService) ListResources(ctx context.Context, cfg aws.Config) (
 // FSxService implements DynamicServiceAPI for FSx
 type FSxService struct{}
 
-func (s *FSxService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *FSxService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	client := fsx.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &fsx.DescribeFileSystemsInput{}
 	for {
 		resp, err := client.DescribeFileSystems(ctx, input)
@@ -683,7 +621,7 @@ func (s *FSxService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 			return nil, err
 		}
 		for _, fs := range resp.FileSystems {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(fs.FileSystemId),
 				Type:     "fsx_filesystem",
 				Provider: "aws",
@@ -705,9 +643,9 @@ func (s *FSxService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 // AppMeshService implements DynamicServiceAPI for AppMesh
 type AppMeshService struct{}
 
-func (s *AppMeshService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *AppMeshService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	client := appmesh.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &appmesh.ListMeshesInput{}
 	for {
 		resp, err := client.ListMeshes(ctx, input)
@@ -715,7 +653,7 @@ func (s *AppMeshService) ListResources(ctx context.Context, cfg aws.Config) ([]t
 			return nil, err
 		}
 		for _, mesh := range resp.Meshes {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:         aws.ToString(mesh.Arn),
 				Type:       "appmesh_mesh",
 				Provider:   "aws",
@@ -734,9 +672,9 @@ func (s *AppMeshService) ListResources(ctx context.Context, cfg aws.Config) ([]t
 // CodeBuildService implements DynamicServiceAPI for CodeBuild
 type CodeBuildService struct{}
 
-func (s *CodeBuildService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *CodeBuildService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	client := codebuild.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &codebuild.ListProjectsInput{}
 	for {
 		resp, err := client.ListProjects(ctx, input)
@@ -744,7 +682,7 @@ func (s *CodeBuildService) ListResources(ctx context.Context, cfg aws.Config) ([
 			return nil, err
 		}
 		for _, proj := range resp.Projects {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:         proj,
 				Type:       "codebuild_project",
 				Provider:   "aws",
@@ -765,9 +703,9 @@ func (s *CodeBuildService) ListResources(ctx context.Context, cfg aws.Config) ([
 // Only real, production-grade code
 type ECSService struct{}
 
-func (s *ECSService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *ECSService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	ecsClient := ecs.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	clusterInput := &ecs.ListClustersInput{}
 	for {
 		clusterResp, err := ecsClient.ListClusters(ctx, clusterInput)
@@ -778,7 +716,7 @@ func (s *ECSService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 			clusterDesc, err := ecsClient.DescribeClusters(ctx, &ecs.DescribeClustersInput{Clusters: []string{arn}})
 			if err == nil && len(clusterDesc.Clusters) > 0 {
 				c := clusterDesc.Clusters[0]
-				nodes = append(nodes, types.ResourceNode{
+				nodes = append(nodes, ResourceNode{
 					ID:       arn,
 					Type:     "ecs_cluster",
 					Provider: "aws",
@@ -798,7 +736,7 @@ func (s *ECSService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 						svcDesc, err := ecsClient.DescribeServices(ctx, &ecs.DescribeServicesInput{Cluster: &arn, Services: serviceResp.ServiceArns})
 						if err == nil {
 							for _, svc := range svcDesc.Services {
-								nodes = append(nodes, types.ResourceNode{
+								nodes = append(nodes, ResourceNode{
 									ID:       aws.ToString(svc.ServiceArn),
 									Type:     "ecs_service",
 									Provider: "aws",
@@ -830,9 +768,9 @@ func (s *ECSService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 // Only real, production-grade code
 type ELBService struct{}
 
-func (s *ELBService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *ELBService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	elbClient := elasticloadbalancing.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &elasticloadbalancing.DescribeLoadBalancersInput{}
 	for {
 		resp, err := elbClient.DescribeLoadBalancers(ctx, input)
@@ -840,7 +778,7 @@ func (s *ELBService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 			return nil, err
 		}
 		for _, lb := range resp.LoadBalancerDescriptions {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(lb.DNSName),
 				Type:     "elb",
 				Provider: "aws",
@@ -861,9 +799,9 @@ func (s *ELBService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 // ELBV2Service implements DynamicServiceAPI for Application/Network Load Balancers
 type ELBV2Service struct{}
 
-func (s *ELBV2Service) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *ELBV2Service) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	elbv2Client := elasticloadbalancingv2.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &elasticloadbalancingv2.DescribeLoadBalancersInput{}
 	for {
 		resp, err := elbv2Client.DescribeLoadBalancers(ctx, input)
@@ -871,7 +809,7 @@ func (s *ELBV2Service) ListResources(ctx context.Context, cfg aws.Config) ([]typ
 			return nil, err
 		}
 		for _, lb := range resp.LoadBalancers {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(lb.LoadBalancerArn),
 				Type:     "elbv2",
 				Provider: "aws",
@@ -894,9 +832,9 @@ func (s *ELBV2Service) ListResources(ctx context.Context, cfg aws.Config) ([]typ
 // Only real, production-grade code
 type APIGatewayService struct{}
 
-func (s *APIGatewayService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *APIGatewayService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	apigwClient := apigateway.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &apigateway.GetRestApisInput{}
 	for {
 		resp, err := apigwClient.GetRestApis(ctx, input)
@@ -904,7 +842,7 @@ func (s *APIGatewayService) ListResources(ctx context.Context, cfg aws.Config) (
 			return nil, err
 		}
 		for _, api := range resp.Items {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(api.Id),
 				Type:     "apigateway_restapi",
 				Provider: "aws",
@@ -926,9 +864,9 @@ func (s *APIGatewayService) ListResources(ctx context.Context, cfg aws.Config) (
 // Only real, production-grade code
 type CloudFormationService struct{}
 
-func (s *CloudFormationService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *CloudFormationService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	cfnClient := cloudformation.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &cloudformation.ListStacksInput{}
 	for {
 		resp, err := cfnClient.ListStacks(ctx, input)
@@ -936,7 +874,7 @@ func (s *CloudFormationService) ListResources(ctx context.Context, cfg aws.Confi
 			return nil, err
 		}
 		for _, stack := range resp.StackSummaries {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(stack.StackId),
 				Type:     "cloudformation_stack",
 				Provider: "aws",
@@ -958,9 +896,9 @@ func (s *CloudFormationService) ListResources(ctx context.Context, cfg aws.Confi
 // Only real, production-grade code
 type AutoscalingService struct{}
 
-func (s *AutoscalingService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *AutoscalingService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	autoClient := autoscaling.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &autoscaling.DescribeAutoScalingGroupsInput{}
 	for {
 		resp, err := autoClient.DescribeAutoScalingGroups(ctx, input)
@@ -968,7 +906,7 @@ func (s *AutoscalingService) ListResources(ctx context.Context, cfg aws.Config) 
 			return nil, err
 		}
 		for _, asg := range resp.AutoScalingGroups {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(asg.AutoScalingGroupARN),
 				Type:     "autoscaling_group",
 				Provider: "aws",
@@ -991,9 +929,9 @@ func (s *AutoscalingService) ListResources(ctx context.Context, cfg aws.Config) 
 // ACMService implements DynamicServiceAPI for ACM (Certificate Manager)
 type ACMService struct{}
 
-func (s *ACMService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *ACMService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	acmClient := acm.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &acm.ListCertificatesInput{}
 	for {
 		resp, err := acmClient.ListCertificates(ctx, input)
@@ -1001,7 +939,7 @@ func (s *ACMService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 			return nil, err
 		}
 		for _, cert := range resp.CertificateSummaryList {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:         aws.ToString(cert.CertificateArn),
 				Type:       "acm_certificate",
 				Provider:   "aws",
@@ -1021,16 +959,16 @@ func (s *ACMService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 // Only real, production-grade code
 type BatchService struct{}
 
-func (s *BatchService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *BatchService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	batchClient := batch.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &batch.DescribeJobQueuesInput{}
 	resp, err := batchClient.DescribeJobQueues(ctx, input)
 	if err != nil {
 		return nil, err
 	}
 	for _, jq := range resp.JobQueues {
-		nodes = append(nodes, types.ResourceNode{
+		nodes = append(nodes, ResourceNode{
 			ID:       aws.ToString(jq.JobQueueArn),
 			Type:     "batch_job_queue",
 			Provider: "aws",
@@ -1048,9 +986,9 @@ func (s *BatchService) ListResources(ctx context.Context, cfg aws.Config) ([]typ
 // Only real, production-grade code
 type BackupService struct{}
 
-func (s *BackupService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *BackupService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	backupClient := backup.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &backup.ListBackupVaultsInput{}
 	for {
 		resp, err := backupClient.ListBackupVaults(ctx, input)
@@ -1058,7 +996,7 @@ func (s *BackupService) ListResources(ctx context.Context, cfg aws.Config) ([]ty
 			return nil, err
 		}
 		for _, vault := range resp.BackupVaultList {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:         aws.ToString(vault.BackupVaultArn),
 				Type:       "backup_vault",
 				Provider:   "aws",
@@ -1078,9 +1016,9 @@ func (s *BackupService) ListResources(ctx context.Context, cfg aws.Config) ([]ty
 // Only real, production-grade code
 type CodeCommitService struct{}
 
-func (s *CodeCommitService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *CodeCommitService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	ccClient := codecommit.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &codecommit.ListRepositoriesInput{}
 	for {
 		resp, err := ccClient.ListRepositories(ctx, input)
@@ -1088,7 +1026,7 @@ func (s *CodeCommitService) ListResources(ctx context.Context, cfg aws.Config) (
 			return nil, err
 		}
 		for _, repo := range resp.Repositories {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:         aws.ToString(repo.RepositoryId),
 				Type:       "codecommit_repository",
 				Provider:   "aws",
@@ -1108,9 +1046,9 @@ func (s *CodeCommitService) ListResources(ctx context.Context, cfg aws.Config) (
 // Only real, production-grade code
 type CodePipelineService struct{}
 
-func (s *CodePipelineService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *CodePipelineService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	cpClient := codepipeline.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &codepipeline.ListPipelinesInput{}
 	for {
 		resp, err := cpClient.ListPipelines(ctx, input)
@@ -1118,7 +1056,7 @@ func (s *CodePipelineService) ListResources(ctx context.Context, cfg aws.Config)
 			return nil, err
 		}
 		for _, pipeline := range resp.Pipelines {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(pipeline.Name),
 				Type:     "codepipeline_pipeline",
 				Provider: "aws",
@@ -1140,9 +1078,9 @@ func (s *CodePipelineService) ListResources(ctx context.Context, cfg aws.Config)
 // Only real, production-grade code
 type CognitoIDPService struct{}
 
-func (s *CognitoIDPService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *CognitoIDPService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	cognitoClient := cognitoidentityprovider.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &cognitoidentityprovider.ListUserPoolsInput{MaxResults: aws.Int32(60)}
 	for {
 		resp, err := cognitoClient.ListUserPools(ctx, input)
@@ -1150,7 +1088,7 @@ func (s *CognitoIDPService) ListResources(ctx context.Context, cfg aws.Config) (
 			return nil, err
 		}
 		for _, pool := range resp.UserPools {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:         aws.ToString(pool.Id),
 				Type:       "cognito_user_pool",
 				Provider:   "aws",
@@ -1170,9 +1108,9 @@ func (s *CognitoIDPService) ListResources(ctx context.Context, cfg aws.Config) (
 // Only real, production-grade code
 type SagemakerService struct{}
 
-func (s *SagemakerService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *SagemakerService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	sm := sagemaker.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	// Notebook Instances
 	niInput := &sagemaker.ListNotebookInstancesInput{}
 	for {
@@ -1181,7 +1119,7 @@ func (s *SagemakerService) ListResources(ctx context.Context, cfg aws.Config) ([
 			return nil, err
 		}
 		for _, ni := range niResp.NotebookInstances {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(ni.NotebookInstanceArn),
 				Type:     "sagemaker_notebook_instance",
 				Provider: "aws",
@@ -1205,7 +1143,7 @@ func (s *SagemakerService) ListResources(ctx context.Context, cfg aws.Config) ([
 			return nil, err
 		}
 		for _, tj := range tjResp.TrainingJobSummaries {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(tj.TrainingJobArn),
 				Type:     "sagemaker_training_job",
 				Provider: "aws",
@@ -1228,7 +1166,7 @@ func (s *SagemakerService) ListResources(ctx context.Context, cfg aws.Config) ([
 			return nil, err
 		}
 		for _, ep := range epResp.Endpoints {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(ep.EndpointArn),
 				Type:     "sagemaker_endpoint",
 				Provider: "aws",
@@ -1250,9 +1188,9 @@ func (s *SagemakerService) ListResources(ctx context.Context, cfg aws.Config) ([
 // Only real, production-grade code
 type ElasticBeanstalkService struct{}
 
-func (s *ElasticBeanstalkService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *ElasticBeanstalkService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	eb := elasticbeanstalk.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	// Applications
 	appInput := &elasticbeanstalk.DescribeApplicationsInput{}
 	appResp, err := eb.DescribeApplications(ctx, appInput)
@@ -1260,7 +1198,7 @@ func (s *ElasticBeanstalkService) ListResources(ctx context.Context, cfg aws.Con
 		return nil, err
 	}
 	for _, app := range appResp.Applications {
-		nodes = append(nodes, types.ResourceNode{
+		nodes = append(nodes, ResourceNode{
 			ID:       aws.ToString(app.ApplicationArn),
 			Type:     "elasticbeanstalk_application",
 			Provider: "aws",
@@ -1277,7 +1215,7 @@ func (s *ElasticBeanstalkService) ListResources(ctx context.Context, cfg aws.Con
 		return nil, err
 	}
 	for _, env := range envResp.Environments {
-		nodes = append(nodes, types.ResourceNode{
+		nodes = append(nodes, ResourceNode{
 			ID:       aws.ToString(env.EnvironmentArn),
 			Type:     "elasticbeanstalk_environment",
 			Provider: "aws",
@@ -1295,9 +1233,9 @@ func (s *ElasticBeanstalkService) ListResources(ctx context.Context, cfg aws.Con
 // Only real, production-grade code
 type NeptuneService struct{}
 
-func (s *NeptuneService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *NeptuneService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	np := neptune.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	// DB Clusters
 	clInput := &neptune.DescribeDBClustersInput{}
 	for {
@@ -1306,7 +1244,7 @@ func (s *NeptuneService) ListResources(ctx context.Context, cfg aws.Config) ([]t
 			return nil, err
 		}
 		for _, cl := range clResp.DBClusters {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(cl.DBClusterArn),
 				Type:     "neptune_db_cluster",
 				Provider: "aws",
@@ -1329,7 +1267,7 @@ func (s *NeptuneService) ListResources(ctx context.Context, cfg aws.Config) ([]t
 			return nil, err
 		}
 		for _, inst := range instResp.DBInstances {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(inst.DBInstanceArn),
 				Type:     "neptune_db_instance",
 				Provider: "aws",
@@ -1352,16 +1290,16 @@ func (s *NeptuneService) ListResources(ctx context.Context, cfg aws.Config) ([]t
 // Only real, production-grade code
 type LightsailService struct{}
 
-func (s *LightsailService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *LightsailService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	ls := lightsail.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &lightsail.GetInstancesInput{}
 	resp, err := ls.GetInstances(ctx, input)
 	if err != nil {
 		return nil, err
 	}
 	for _, inst := range resp.Instances {
-		nodes = append(nodes, types.ResourceNode{
+		nodes = append(nodes, ResourceNode{
 			ID:       aws.ToString(inst.Arn),
 			Type:     "lightsail_instance",
 			Provider: "aws",
@@ -1380,9 +1318,9 @@ func (s *LightsailService) ListResources(ctx context.Context, cfg aws.Config) ([
 // Only real, production-grade code
 type EBSService struct{}
 
-func (s *EBSService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *EBSService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	ec2Client := ec2.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &ec2.DescribeVolumesInput{}
 	for {
 		resp, err := ec2Client.DescribeVolumes(ctx, input)
@@ -1390,7 +1328,7 @@ func (s *EBSService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 			return nil, err
 		}
 		for _, vol := range resp.Volumes {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(vol.VolumeId),
 				Type:     "ebs_volume",
 				Provider: "aws",
@@ -1414,9 +1352,9 @@ func (s *EBSService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 // Only real, production-grade code
 type GlacierService struct{}
 
-func (s *GlacierService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *GlacierService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	gl := glacier.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &glacier.ListVaultsInput{}
 	for {
 		resp, err := gl.ListVaults(ctx, input)
@@ -1424,7 +1362,7 @@ func (s *GlacierService) ListResources(ctx context.Context, cfg aws.Config) ([]t
 			return nil, err
 		}
 		for _, vault := range resp.VaultList {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(vault.VaultARN),
 				Type:     "glacier_vault",
 				Provider: "aws",
@@ -1445,9 +1383,9 @@ func (s *GlacierService) ListResources(ctx context.Context, cfg aws.Config) ([]t
 
 type DynamoDBService struct{}
 
-func (s *DynamoDBService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *DynamoDBService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	dynamoClient := dynamodb.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &dynamodb.ListTablesInput{}
 	for {
 		resp, err := dynamoClient.ListTables(ctx, input)
@@ -1455,7 +1393,7 @@ func (s *DynamoDBService) ListResources(ctx context.Context, cfg aws.Config) ([]
 			return nil, err
 		}
 		for _, table := range resp.TableNames {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:         table,
 				Type:       "dynamodb_table",
 				Provider:   "aws",
@@ -1474,7 +1412,7 @@ func (s *DynamoDBService) ListResources(ctx context.Context, cfg aws.Config) ([]
 // S3ControlService implements DynamicServiceAPI for S3Control
 type S3ControlService struct{}
 
-func (s *S3ControlService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *S3ControlService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	s3c := s3control.NewFromConfig(cfg)
 	stsClient := sts.NewFromConfig(cfg)
 	stsOut, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
@@ -1482,7 +1420,7 @@ func (s *S3ControlService) ListResources(ctx context.Context, cfg aws.Config) ([
 		return nil, err
 	}
 	accountID := aws.ToString(stsOut.Account)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &s3control.ListAccessPointsInput{AccountId: &accountID}
 	for {
 		resp, err := s3c.ListAccessPoints(ctx, input)
@@ -1490,7 +1428,7 @@ func (s *S3ControlService) ListResources(ctx context.Context, cfg aws.Config) ([
 			return nil, err
 		}
 		for _, ap := range resp.AccessPointList {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(ap.Name),
 				Type:     "s3control_accesspoint",
 				Provider: "aws",
@@ -1511,9 +1449,9 @@ func (s *S3ControlService) ListResources(ctx context.Context, cfg aws.Config) ([
 // KMSService implements DynamicServiceAPI for KMS
 type KMSService struct{}
 
-func (s *KMSService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *KMSService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	kmsClient := kms.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &kms.ListKeysInput{}
 	for {
 		resp, err := kmsClient.ListKeys(ctx, input)
@@ -1521,7 +1459,7 @@ func (s *KMSService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 			return nil, err
 		}
 		for _, key := range resp.Keys {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:         aws.ToString(key.KeyId),
 				Type:       "kms_key",
 				Provider:   "aws",
@@ -1541,16 +1479,16 @@ func (s *KMSService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 // Only real, production-grade code
 type EC2Service struct{}
 
-func (s *EC2Service) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *EC2Service) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	ec2Client := ec2.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	resp, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{})
 	if err != nil {
 		return nil, err
 	}
 	for _, r := range resp.Reservations {
 		for _, inst := range r.Instances {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(inst.InstanceId),
 				Type:     "ec2_instance",
 				Provider: "aws",
@@ -1569,15 +1507,15 @@ func (s *EC2Service) ListResources(ctx context.Context, cfg aws.Config) ([]types
 // S3Service implements DynamicServiceAPI for S3
 type S3Service struct{}
 
-func (s *S3Service) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *S3Service) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	s3Client := s3.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	resp, err := s3Client.ListBuckets(ctx, &s3.ListBucketsInput{})
 	if err != nil {
 		return nil, err
 	}
 	for _, b := range resp.Buckets {
-		nodes = append(nodes, types.ResourceNode{
+		nodes = append(nodes, ResourceNode{
 			ID:       aws.ToString(b.Name),
 			Type:     "s3_bucket",
 			Provider: "aws",
@@ -1591,7 +1529,7 @@ func (s *S3Service) ListResources(ctx context.Context, cfg aws.Config) ([]types.
 }
 
 // ScanAWSResourcesFormer2Style dynamically scans all AWS services/resources like Former2
-func ScanAWSResourcesFormer2Style(ctx context.Context, creds map[string]string, region string) ([]types.ResourceNode, error) {
+func ScanAWSResourcesFormer2Style(ctx context.Context, creds map[string]string, region string) ([]ResourceNode, error) {
 	if creds[domain.AWSAccessKeyID] == "" || creds[domain.AWSSecretAccessKey] == "" {
 		return nil, fmt.Errorf("missing AWS credentials")
 	}
@@ -1617,7 +1555,7 @@ func ScanAWSResourcesFormer2Style(ctx context.Context, creds map[string]string, 
 	var (
 		wg    sync.WaitGroup
 		mu    sync.Mutex
-		all   []types.ResourceNode
+		all   []ResourceNode
 		errCh = make(chan error, len(serviceRegistry))
 	)
 	for svc, api := range serviceRegistry {
@@ -1638,13 +1576,13 @@ func ScanAWSResourcesFormer2Style(ctx context.Context, creds map[string]string, 
 	close(errCh)
 	for err := range errCh {
 		// Log errors, but do not fail the whole scan
-		fmt.Printf("[WARN] resource scan error: %v\n", err)
+		logger.Default.Warn("resource scan error", logger.ErrorField(err))
 	}
 	return all, nil
 }
 
 // ScanAWSResources discovers EC2, S3, and VPC resources for the given credentials/account
-func ScanAWSResources(ctx context.Context, creds map[string]string, region string) ([]types.ResourceNode, error) {
+func ScanAWSResources(ctx context.Context, creds map[string]string, region string) ([]ResourceNode, error) {
 	if creds["access_key_id"] == "" || creds["secret_access_key"] == "" {
 		return nil, fmt.Errorf("missing AWS credentials")
 	}
@@ -1678,7 +1616,7 @@ func ScanAWSResources(ctx context.Context, creds map[string]string, region strin
 		return nil, fmt.Errorf("invalid AWS credentials: %w", err)
 	}
 
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 
 	// EC2 Instances
 	ec2Client := ec2.NewFromConfig(cfg)
@@ -1686,7 +1624,7 @@ func ScanAWSResources(ctx context.Context, creds map[string]string, region strin
 	if err == nil {
 		for _, r := range ec2Resp.Reservations {
 			for _, inst := range r.Instances {
-				nodes = append(nodes, types.ResourceNode{
+				nodes = append(nodes, ResourceNode{
 					ID:       aws.ToString(inst.InstanceId),
 					Type:     "ec2_instance",
 					Provider: "aws",
@@ -1706,7 +1644,7 @@ func ScanAWSResources(ctx context.Context, creds map[string]string, region strin
 	s3Resp, err := s3Client.ListBuckets(ctx, &s3.ListBucketsInput{})
 	if err == nil {
 		for _, b := range s3Resp.Buckets {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(b.Name),
 				Type:     "s3_bucket",
 				Provider: "aws",
@@ -1722,7 +1660,7 @@ func ScanAWSResources(ctx context.Context, creds map[string]string, region strin
 	vpcResp, err := ec2Client.DescribeVpcs(ctx, &ec2.DescribeVpcsInput{})
 	if err == nil {
 		for _, v := range vpcResp.Vpcs {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(v.VpcId),
 				Type:     "vpc",
 				Provider: "aws",
@@ -2046,7 +1984,7 @@ func checkAWSKeysAndRoleAndPolicy(ctx context.Context, creds map[string]string, 
 }
 
 // ScanAWSResourcesFormer2StyleWithConfig scans all resources and parses full configuration, then infers service-to-service connections
-func ScanAWSResourcesFormer2StyleWithConfig(ctx context.Context, creds map[string]string, region string) ([]types.ResourceNode, []types.ResourceEdge, error) {
+func ScanAWSResourcesFormer2StyleWithConfig(ctx context.Context, creds map[string]string, region string) ([]ResourceNode, []ResourceEdge, error) {
 	if err := checkAWSKeysAndRoleAndPolicy(ctx, creds, region); err != nil {
 		return nil, nil, err
 	}
@@ -2066,8 +2004,8 @@ func ScanAWSResourcesFormer2StyleWithConfig(ctx context.Context, creds map[strin
 	var (
 		wg    sync.WaitGroup
 		mu    sync.Mutex
-		all   []types.ResourceNode
-		edges []types.ResourceEdge
+		all   []ResourceNode
+		edges []ResourceEdge
 		errCh = make(chan error, len(serviceRegistry))
 	)
 	for svc, api := range serviceRegistry {
@@ -2087,7 +2025,7 @@ func ScanAWSResourcesFormer2StyleWithConfig(ctx context.Context, creds map[strin
 	wg.Wait()
 	close(errCh)
 	for err := range errCh {
-		fmt.Printf("[WARN] resource scan error: %v\n", err)
+		logger.Default.Warn("resource scan error", logger.ErrorField(err))
 	}
 	// Infer service-to-service connections from resource configuration
 	edges = inferServiceConnections(all)
@@ -2095,23 +2033,23 @@ func ScanAWSResourcesFormer2StyleWithConfig(ctx context.Context, creds map[strin
 }
 
 // inferServiceConnections analyzes resource configs to infer service-to-service connections
-func inferServiceConnections(nodes []types.ResourceNode) []types.ResourceEdge {
-	edgeMap := make(map[string]types.ResourceEdge)
+func inferServiceConnections(nodes []ResourceNode) []ResourceEdge {
+	edgeMap := make(map[string]ResourceEdge)
 	for _, n := range nodes {
 		// Example: if EC2 instance has subnet/vpc, create edge to VPC
 		if n.Type == "ec2_instance" {
 			if vpcID, ok := n.Properties["vpc_id"]; ok {
-				edge := types.ResourceEdge{SourceID: n.ID, TargetID: vpcID, Type: "attached_to_vpc"}
+				edge := ResourceEdge{SourceID: n.ID, TargetID: vpcID, Type: "attached_to_vpc"}
 				edgeMap[n.ID+"->"+vpcID] = edge
 			}
 			if subnetID, ok := n.Properties["subnet_id"]; ok {
-				edge := types.ResourceEdge{SourceID: n.ID, TargetID: subnetID, Type: "attached_to_subnet"}
+				edge := ResourceEdge{SourceID: n.ID, TargetID: subnetID, Type: "attached_to_subnet"}
 				edgeMap[n.ID+"->"+subnetID] = edge
 			}
 		}
 		// Add more rules for other resource types as needed
 	}
-	edges := make([]types.ResourceEdge, 0, len(edgeMap))
+	edges := make([]ResourceEdge, 0, len(edgeMap))
 	for _, e := range edgeMap {
 		edges = append(edges, e)
 	}
@@ -2123,9 +2061,9 @@ func inferServiceConnections(nodes []types.ResourceNode) []types.ResourceEdge {
 // Only real, production-grade code
 type Route53Service struct{}
 
-func (s *Route53Service) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *Route53Service) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	r53 := route53.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &route53.ListHostedZonesInput{}
 	for {
 		resp, err := r53.ListHostedZones(ctx, input)
@@ -2133,7 +2071,7 @@ func (s *Route53Service) ListResources(ctx context.Context, cfg aws.Config) ([]t
 			return nil, err
 		}
 		for _, hz := range resp.HostedZones {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(hz.Id),
 				Type:     "route53_hostedzone",
 				Provider: "aws",
@@ -2156,16 +2094,16 @@ func (s *Route53Service) ListResources(ctx context.Context, cfg aws.Config) ([]t
 // Only real, production-grade code
 type CloudTrailService struct{}
 
-func (s *CloudTrailService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *CloudTrailService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	ct := cloudtrail.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &cloudtrail.ListTrailsInput{}
 	resp, err := ct.ListTrails(ctx, input)
 	if err != nil {
 		return nil, err
 	}
 	for _, trail := range resp.Trails {
-		nodes = append(nodes, types.ResourceNode{
+		nodes = append(nodes, ResourceNode{
 			ID:       aws.ToString(trail.TrailARN),
 			Type:     "cloudtrail_trail",
 			Provider: "aws",
@@ -2183,9 +2121,9 @@ func (s *CloudTrailService) ListResources(ctx context.Context, cfg aws.Config) (
 // Only real, production-grade code
 type CloudWatchLogsService struct{}
 
-func (s *CloudWatchLogsService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *CloudWatchLogsService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	logs := cloudwatchlogs.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &cloudwatchlogs.DescribeLogGroupsInput{}
 	for {
 		resp, err := logs.DescribeLogGroups(ctx, input)
@@ -2193,7 +2131,7 @@ func (s *CloudWatchLogsService) ListResources(ctx context.Context, cfg aws.Confi
 			return nil, err
 		}
 		for _, lg := range resp.LogGroups {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(lg.LogGroupName),
 				Type:     "cloudwatch_loggroup",
 				Provider: "aws",
@@ -2215,16 +2153,16 @@ func (s *CloudWatchLogsService) ListResources(ctx context.Context, cfg aws.Confi
 // Only real, production-grade code
 type DirectConnectService struct{}
 
-func (s *DirectConnectService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *DirectConnectService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	dc := directconnect.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &directconnect.DescribeConnectionsInput{}
 	resp, err := dc.DescribeConnections(ctx, input)
 	if err != nil {
 		return nil, err
 	}
 	for _, conn := range resp.Connections {
-		nodes = append(nodes, types.ResourceNode{
+		nodes = append(nodes, ResourceNode{
 			ID:       aws.ToString(conn.ConnectionId),
 			Type:     "directconnect_connection",
 			Provider: "aws",
@@ -2243,9 +2181,9 @@ func (s *DirectConnectService) ListResources(ctx context.Context, cfg aws.Config
 // Only real, production-grade code
 type ComprehendService struct{}
 
-func (s *ComprehendService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *ComprehendService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	comp := comprehend.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &comprehend.ListEndpointsInput{}
 	for {
 		resp, err := comp.ListEndpoints(ctx, input)
@@ -2253,7 +2191,7 @@ func (s *ComprehendService) ListResources(ctx context.Context, cfg aws.Config) (
 			return nil, err
 		}
 		for _, ep := range resp.EndpointPropertiesList {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(ep.EndpointArn),
 				Type:     "comprehend_endpoint",
 				Provider: "aws",
@@ -2275,9 +2213,9 @@ func (s *ComprehendService) ListResources(ctx context.Context, cfg aws.Config) (
 // Only real, production-grade code
 type RekognitionService struct{}
 
-func (s *RekognitionService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *RekognitionService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	rek := rekognition.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &rekognition.ListCollectionsInput{}
 	for {
 		resp, err := rek.ListCollections(ctx, input)
@@ -2285,7 +2223,7 @@ func (s *RekognitionService) ListResources(ctx context.Context, cfg aws.Config) 
 			return nil, err
 		}
 		for _, col := range resp.CollectionIds {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:         col,
 				Type:       "rekognition_collection",
 				Provider:   "aws",
@@ -2305,16 +2243,16 @@ func (s *RekognitionService) ListResources(ctx context.Context, cfg aws.Config) 
 // Only real, production-grade code
 type PollyService struct{}
 
-func (s *PollyService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *PollyService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	pollyClient := polly.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &polly.DescribeVoicesInput{}
 	resp, err := pollyClient.DescribeVoices(ctx, input)
 	if err != nil {
 		return nil, err
 	}
 	for _, voice := range resp.Voices {
-		nodes = append(nodes, types.ResourceNode{
+		nodes = append(nodes, ResourceNode{
 			ID:       string(voice.Id),
 			Type:     "polly_voice",
 			Provider: "aws",
@@ -2331,9 +2269,9 @@ func (s *PollyService) ListResources(ctx context.Context, cfg aws.Config) ([]typ
 // Only real, production-grade code
 type TranscribeService struct{}
 
-func (s *TranscribeService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *TranscribeService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	trans := transcribe.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &transcribe.ListTranscriptionJobsInput{}
 	for {
 		resp, err := trans.ListTranscriptionJobs(ctx, input)
@@ -2341,7 +2279,7 @@ func (s *TranscribeService) ListResources(ctx context.Context, cfg aws.Config) (
 			return nil, err
 		}
 		for _, job := range resp.TranscriptionJobSummaries {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(job.TranscriptionJobName),
 				Type:     "transcribe_job",
 				Provider: "aws",
@@ -2363,9 +2301,9 @@ func (s *TranscribeService) ListResources(ctx context.Context, cfg aws.Config) (
 // Only real, production-grade code
 type LexService struct{}
 
-func (s *LexService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *LexService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	lex := lexmodelsv2.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &lexmodelsv2.ListBotsInput{}
 	for {
 		resp, err := lex.ListBots(ctx, input)
@@ -2373,7 +2311,7 @@ func (s *LexService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 			return nil, err
 		}
 		for _, bot := range resp.BotSummaries {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(bot.BotId),
 				Type:     "lex_bot",
 				Provider: "aws",
@@ -2395,9 +2333,9 @@ func (s *LexService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 // Only real, production-grade code
 type ForecastService struct{}
 
-func (s *ForecastService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *ForecastService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	fc := forecast.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &forecast.ListPredictorsInput{}
 	for {
 		resp, err := fc.ListPredictors(ctx, input)
@@ -2405,7 +2343,7 @@ func (s *ForecastService) ListResources(ctx context.Context, cfg aws.Config) ([]
 			return nil, err
 		}
 		for _, pred := range resp.Predictors {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(pred.PredictorArn),
 				Type:     "forecast_predictor",
 				Provider: "aws",
@@ -2427,9 +2365,9 @@ func (s *ForecastService) ListResources(ctx context.Context, cfg aws.Config) ([]
 // Only real, production-grade code
 type PersonalizeService struct{}
 
-func (s *PersonalizeService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *PersonalizeService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	ps := personalize.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &personalize.ListDatasetsInput{}
 	for {
 		resp, err := ps.ListDatasets(ctx, input)
@@ -2437,7 +2375,7 @@ func (s *PersonalizeService) ListResources(ctx context.Context, cfg aws.Config) 
 			return nil, err
 		}
 		for _, ds := range resp.Datasets {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(ds.DatasetArn),
 				Type:     "personalize_dataset",
 				Provider: "aws",
@@ -2459,9 +2397,9 @@ func (s *PersonalizeService) ListResources(ctx context.Context, cfg aws.Config) 
 // Only real, production-grade code
 type KendraService struct{}
 
-func (s *KendraService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *KendraService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	kendraClient := kendra.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &kendra.ListIndicesInput{}
 	for {
 		resp, err := kendraClient.ListIndices(ctx, input)
@@ -2469,7 +2407,7 @@ func (s *KendraService) ListResources(ctx context.Context, cfg aws.Config) ([]ty
 			return nil, err
 		}
 		for _, idx := range resp.IndexConfigurationSummaryItems {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(idx.Id),
 				Type:     "kendra_index",
 				Provider: "aws",
@@ -2491,16 +2429,16 @@ func (s *KendraService) ListResources(ctx context.Context, cfg aws.Config) ([]ty
 // Only real, production-grade code
 type VPCService struct{}
 
-func (s *VPCService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *VPCService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	ec2Client := ec2.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &ec2.DescribeVpcsInput{}
 	resp, err := ec2Client.DescribeVpcs(ctx, input)
 	if err != nil {
 		return nil, err
 	}
 	for _, vpc := range resp.Vpcs {
-		nodes = append(nodes, types.ResourceNode{
+		nodes = append(nodes, ResourceNode{
 			ID:       aws.ToString(vpc.VpcId),
 			Type:     "vpc",
 			Provider: "aws",
@@ -2518,16 +2456,16 @@ func (s *VPCService) ListResources(ctx context.Context, cfg aws.Config) ([]types
 // Only real, production-grade code
 type TransitGatewayService struct{}
 
-func (s *TransitGatewayService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *TransitGatewayService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	ec2Client := ec2.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &ec2.DescribeTransitGatewaysInput{}
 	resp, err := ec2Client.DescribeTransitGateways(ctx, input)
 	if err != nil {
 		return nil, err
 	}
 	for _, tg := range resp.TransitGateways {
-		nodes = append(nodes, types.ResourceNode{
+		nodes = append(nodes, ResourceNode{
 			ID:       aws.ToString(tg.TransitGatewayId),
 			Type:     "transit_gateway",
 			Provider: "aws",
@@ -2544,16 +2482,16 @@ func (s *TransitGatewayService) ListResources(ctx context.Context, cfg aws.Confi
 // Only real, production-grade code
 type VpcEndpointService struct{}
 
-func (s *VpcEndpointService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *VpcEndpointService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	ec2Client := ec2.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &ec2.DescribeVpcEndpointsInput{}
 	resp, err := ec2Client.DescribeVpcEndpoints(ctx, input)
 	if err != nil {
 		return nil, err
 	}
 	for _, ep := range resp.VpcEndpoints {
-		nodes = append(nodes, types.ResourceNode{
+		nodes = append(nodes, ResourceNode{
 			ID:       aws.ToString(ep.VpcEndpointId),
 			Type:     "vpc_endpoint",
 			Provider: "aws",
@@ -2571,9 +2509,9 @@ func (s *VpcEndpointService) ListResources(ctx context.Context, cfg aws.Config) 
 // Only real, production-grade code
 type GlobalAcceleratorService struct{}
 
-func (s *GlobalAcceleratorService) ListResources(ctx context.Context, cfg aws.Config) ([]types.ResourceNode, error) {
+func (s *GlobalAcceleratorService) ListResources(ctx context.Context, cfg aws.Config) ([]ResourceNode, error) {
 	ga := globalaccelerator.NewFromConfig(cfg)
-	var nodes []types.ResourceNode
+	var nodes []ResourceNode
 	input := &globalaccelerator.ListAcceleratorsInput{}
 	for {
 		resp, err := ga.ListAccelerators(ctx, input)
@@ -2581,7 +2519,7 @@ func (s *GlobalAcceleratorService) ListResources(ctx context.Context, cfg aws.Co
 			return nil, err
 		}
 		for _, acc := range resp.Accelerators {
-			nodes = append(nodes, types.ResourceNode{
+			nodes = append(nodes, ResourceNode{
 				ID:       aws.ToString(acc.AcceleratorArn),
 				Type:     "global_accelerator",
 				Provider: "aws",
@@ -2597,4 +2535,66 @@ func (s *GlobalAcceleratorService) ListResources(ctx context.Context, cfg aws.Co
 		input.NextToken = resp.NextToken
 	}
 	return nodes, nil
+}
+
+// serviceRegistry maps AWS service names to their real DynamicServiceAPI implementations
+var serviceRegistry = map[string]DynamicServiceAPI{
+	"rds":               &RDSService{},
+	"lambda":            &LambdaService{},
+	"iam":               &IAMService{},
+	"sqs":               &SQSService{},
+	"sns":               &SNSService{},
+	"efs":               &EFSService{},
+	"ecr":               &ECRService{},
+	"eks":               &EKSService{},
+	"cloudfront":        &CloudFrontService{},
+	"elasticache":       &ElasticacheService{},
+	"redshift":          &RedshiftService{},
+	"secretsmanager":    &SecretsManagerService{},
+	"glue":              &GlueService{},
+	"athena":            &AthenaService{},
+	"sfn":               &StepFunctionsService{},
+	"cloudwatch":        &CloudWatchService{},
+	"fsx":               &FSxService{},
+	"appmesh":           &AppMeshService{},
+	"codebuild":         &CodeBuildService{},
+	"ecs":               &ECSService{},
+	"elb":               &ELBService{},
+	"elbv2":             &ELBV2Service{},
+	"apigateway":        &APIGatewayService{},
+	"cloudformation":    &CloudFormationService{},
+	"autoscaling":       &AutoscalingService{},
+	"acm":               &ACMService{},
+	"batch":             &BatchService{},
+	"backup":            &BackupService{},
+	"codecommit":        &CodeCommitService{},
+	"codepipeline":      &CodePipelineService{},
+	"cognito-idp":       &CognitoIDPService{},
+	"sagemaker":         &SagemakerService{},
+	"elasticbeanstalk":  &ElasticBeanstalkService{},
+	"neptune":           &NeptuneService{},
+	"lightsail":         &LightsailService{},
+	"ebs":               &EBSService{},
+	"glacier":           &GlacierService{},
+	"dynamodb":          &DynamoDBService{},
+	"s3control":         &S3ControlService{},
+	"kms":               &KMSService{},
+	"ec2":               &EC2Service{},
+	"s3":                &S3Service{},
+	"route53":           &Route53Service{},
+	"cloudtrail":        &CloudTrailService{},
+	"cloudwatchlogs":    &CloudWatchLogsService{},
+	"directconnect":     &DirectConnectService{},
+	"comprehend":        &ComprehendService{},
+	"rekognition":       &RekognitionService{},
+	"polly":             &PollyService{},
+	"transcribe":        &TranscribeService{},
+	"lex":               &LexService{},
+	"forecast":          &ForecastService{},
+	"personalize":       &PersonalizeService{},
+	"kendra":            &KendraService{},
+	"vpc":               &VPCService{},
+	"transitgateway":    &TransitGatewayService{},
+	"vpcendpoint":       &VpcEndpointService{},
+	"globalaccelerator": &GlobalAcceleratorService{},
 }

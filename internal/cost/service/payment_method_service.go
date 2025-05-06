@@ -2,9 +2,10 @@ package service
 
 import (
 	"context"
-	"os"
+
 	"time"
 
+	"github.com/spf13/viper"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -135,13 +136,13 @@ type StripeTokenizationProvider struct {
 }
 
 func NewStripeTokenizationProvider() *StripeTokenizationProvider {
-	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+	if viper.GetString("payments.disabled") == "true" {
 		return &StripeTokenizationProvider{apiKey: "dummy-stripe-key"}
 	}
-	apiKey := os.Getenv("STRIPE_API_KEY")
+	apiKey := viper.GetString("payments.stripe_api_key")
 	if apiKey == "" {
 		// In production, fail fast with clear error; in dev/test, return dummy provider
-		if os.Getenv("ENV") == "production" {
+		if viper.GetString("env") == "production" {
 			panic("STRIPE_API_KEY not set: required for production payments") // Explicitly panic in prod for safety
 		}
 		return &StripeTokenizationProvider{apiKey: "dummy-stripe-key"}
@@ -151,7 +152,7 @@ func NewStripeTokenizationProvider() *StripeTokenizationProvider {
 }
 
 func (s *StripeTokenizationProvider) CreateToken(ctx context.Context, accountID string, paymentData map[string]string) (string, error) {
-	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+	if viper.GetString("payments.disabled") == "true" {
 		return "dummy-token", nil
 	}
 	// paymentData must contain a Stripe payment method token (from client)
@@ -164,7 +165,7 @@ func (s *StripeTokenizationProvider) CreateToken(ctx context.Context, accountID 
 }
 
 func (s *StripeTokenizationProvider) GetToken(ctx context.Context, accountID, token string) (map[string]string, error) {
-	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+	if viper.GetString("payments.disabled") == "true" {
 		return map[string]string{"provider": "stripe", "token": token, "last4": "0000", "brand": "dummy"}, nil
 	}
 	pm, err := paymentmethod.Get(token, nil)
@@ -181,7 +182,7 @@ func (s *StripeTokenizationProvider) GetToken(ctx context.Context, accountID, to
 }
 
 func (s *StripeTokenizationProvider) DeleteToken(ctx context.Context, accountID, token string) error {
-	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+	if viper.GetString("payments.disabled") == "true" {
 		return nil
 	}
 	_, err := paymentmethod.Detach(token, nil)
@@ -230,7 +231,7 @@ type PayPalTokenizationProvider struct {
 }
 
 func NewPayPalTokenizationProvider() *PayPalTokenizationProvider {
-	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+	if viper.GetString("payments.disabled") == "true" {
 		return &PayPalTokenizationProvider{
 			clientID:     "dummy-paypal-client-id",
 			clientSecret: "dummy-paypal-client-secret",
@@ -238,14 +239,14 @@ func NewPayPalTokenizationProvider() *PayPalTokenizationProvider {
 			httpClient:   &http.Client{Timeout: 5 * time.Second},
 		}
 	}
-	clientID := os.Getenv("PAYPAL_CLIENT_ID")
-	clientSecret := os.Getenv("PAYPAL_CLIENT_SECRET")
-	apiBase := os.Getenv("PAYPAL_API_BASE")
+	clientID := viper.GetString("payments.paypal_client_id")
+	clientSecret := viper.GetString("payments.paypal_client_secret")
+	apiBase := viper.GetString("payments.paypal_api_base")
 	if apiBase == "" {
 		apiBase = "https://api.paypal.com"
 	}
 	if clientID == "" || clientSecret == "" {
-		if os.Getenv("ENV") == "production" {
+		if viper.GetString("env") == "production" {
 			panic("PayPal credentials not set in env: required for production payments") // Explicitly panic in prod for safety
 		}
 		return &PayPalTokenizationProvider{
@@ -289,7 +290,7 @@ func (p *PayPalTokenizationProvider) getAccessToken(ctx context.Context) (string
 }
 
 func (p *PayPalTokenizationProvider) CreateToken(ctx context.Context, accountID string, paymentData map[string]string) (string, error) {
-	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+	if viper.GetString("payments.disabled") == "true" {
 		return "dummy-token", nil
 	}
 	token, ok := paymentData["paypal_token"]
@@ -300,7 +301,7 @@ func (p *PayPalTokenizationProvider) CreateToken(ctx context.Context, accountID 
 }
 
 func (p *PayPalTokenizationProvider) GetToken(ctx context.Context, accountID, token string) (map[string]string, error) {
-	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+	if viper.GetString("payments.disabled") == "true" {
 		return map[string]string{"provider": "paypal", "token": token, "last4": "0000", "brand": "dummy"}, nil
 	}
 	accessToken, err := p.getAccessToken(ctx)
@@ -338,7 +339,7 @@ func (p *PayPalTokenizationProvider) GetToken(ctx context.Context, accountID, to
 }
 
 func (p *PayPalTokenizationProvider) DeleteToken(ctx context.Context, accountID, token string) error {
-	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+	if viper.GetString("payments.disabled") == "true" {
 		return nil
 	}
 	accessToken, err := p.getAccessToken(ctx)
@@ -375,7 +376,7 @@ type GooglePayTokenizationProvider struct {
 }
 
 func NewGooglePayTokenizationProvider() *GooglePayTokenizationProvider {
-	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+	if viper.GetString("payments.disabled") == "true" {
 		return &GooglePayTokenizationProvider{
 			merchantID: "dummy-googlepay-merchant-id",
 			apiKey:     "dummy-googlepay-api-key",
@@ -383,14 +384,14 @@ func NewGooglePayTokenizationProvider() *GooglePayTokenizationProvider {
 			httpClient: &http.Client{Timeout: 5 * time.Second},
 		}
 	}
-	merchantID := os.Getenv("GOOGLEPAY_MERCHANT_ID")
-	apiKey := os.Getenv("GOOGLEPAY_API_KEY")
-	apiBase := os.Getenv("GOOGLEPAY_API_BASE")
+	merchantID := viper.GetString("payments.googlepay_merchant_id")
+	apiKey := viper.GetString("payments.googlepay_api_key")
+	apiBase := viper.GetString("payments.googlepay_api_base")
 	if apiBase == "" {
 		apiBase = "https://payments.googleapis.com"
 	}
 	if merchantID == "" || apiKey == "" {
-		if os.Getenv("ENV") == "production" {
+		if viper.GetString("env") == "production" {
 			panic("Google Pay credentials not set in env: required for production payments")
 		}
 		return &GooglePayTokenizationProvider{
@@ -409,7 +410,7 @@ func NewGooglePayTokenizationProvider() *GooglePayTokenizationProvider {
 }
 
 func (g *GooglePayTokenizationProvider) CreateToken(ctx context.Context, accountID string, paymentData map[string]string) (string, error) {
-	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+	if viper.GetString("payments.disabled") == "true" {
 		return "dummy-token", nil
 	}
 	token, ok := paymentData["googlepay_token"]
@@ -420,7 +421,7 @@ func (g *GooglePayTokenizationProvider) CreateToken(ctx context.Context, account
 }
 
 func (g *GooglePayTokenizationProvider) GetToken(ctx context.Context, accountID, token string) (map[string]string, error) {
-	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+	if viper.GetString("payments.disabled") == "true" {
 		return map[string]string{"provider": "googlepay", "token": token, "last4": "0000", "brand": "dummy"}, nil
 	}
 	url := fmt.Sprintf("%s/v1/paymentTokens/%s?merchantId=%s", g.apiBase, token, g.merchantID)
@@ -454,7 +455,7 @@ func (g *GooglePayTokenizationProvider) GetToken(ctx context.Context, accountID,
 }
 
 func (g *GooglePayTokenizationProvider) DeleteToken(ctx context.Context, accountID, token string) error {
-	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+	if viper.GetString("payments.disabled") == "true" {
 		return nil
 	}
 	url := fmt.Sprintf("%s/v1/paymentTokens/%s?merchantId=%s", g.apiBase, token, g.merchantID)
@@ -487,7 +488,7 @@ type ApplePayTokenizationProvider struct {
 }
 
 func NewApplePayTokenizationProvider() *ApplePayTokenizationProvider {
-	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+	if viper.GetString("payments.disabled") == "true" {
 		return &ApplePayTokenizationProvider{
 			merchantID: "dummy-applepay-merchant-id",
 			apiKey:     "dummy-applepay-api-key",
@@ -495,14 +496,14 @@ func NewApplePayTokenizationProvider() *ApplePayTokenizationProvider {
 			httpClient: &http.Client{Timeout: 5 * time.Second},
 		}
 	}
-	merchantID := os.Getenv("APPLEPAY_MERCHANT_ID")
-	apiKey := os.Getenv("APPLEPAY_API_KEY")
-	apiBase := os.Getenv("APPLEPAY_API_BASE")
+	merchantID := viper.GetString("payments.applepay_merchant_id")
+	apiKey := viper.GetString("payments.applepay_api_key")
+	apiBase := viper.GetString("payments.applepay_api_base")
 	if apiBase == "" {
 		apiBase = "https://apple-pay-gateway.apple.com"
 	}
 	if merchantID == "" || apiKey == "" {
-		if os.Getenv("ENV") == "production" {
+		if viper.GetString("env") == "production" {
 			panic("Apple Pay credentials not set in env: required for production payments")
 		}
 		return &ApplePayTokenizationProvider{
@@ -521,7 +522,7 @@ func NewApplePayTokenizationProvider() *ApplePayTokenizationProvider {
 }
 
 func (a *ApplePayTokenizationProvider) CreateToken(ctx context.Context, accountID string, paymentData map[string]string) (string, error) {
-	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+	if viper.GetString("payments.disabled") == "true" {
 		return "dummy-token", nil
 	}
 	token, ok := paymentData["applepay_token"]
@@ -532,7 +533,7 @@ func (a *ApplePayTokenizationProvider) CreateToken(ctx context.Context, accountI
 }
 
 func (a *ApplePayTokenizationProvider) GetToken(ctx context.Context, accountID, token string) (map[string]string, error) {
-	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+	if viper.GetString("payments.disabled") == "true" {
 		return map[string]string{"provider": "applepay", "token": token, "last4": "0000", "brand": "dummy"}, nil
 	}
 	url := fmt.Sprintf("%s/paymentservices/paymentTokens/%s?merchantIdentifier=%s", a.apiBase, token, a.merchantID)
@@ -566,7 +567,7 @@ func (a *ApplePayTokenizationProvider) GetToken(ctx context.Context, accountID, 
 }
 
 func (a *ApplePayTokenizationProvider) DeleteToken(ctx context.Context, accountID, token string) error {
-	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+	if viper.GetString("payments.disabled") == "true" {
 		return nil
 	}
 	url := fmt.Sprintf("%s/paymentservices/paymentTokens/%s?merchantIdentifier=%s", a.apiBase, token, a.merchantID)
@@ -614,7 +615,7 @@ func (d *DummyTokenizationProvider) ProviderName() string { return "dummy" }
 // NewDefaultTokenizationProviderRegistry wires up all prod providers using env/config
 // If PAYMENTS_DISABLED=true, only dummy provider is registered
 func NewDefaultTokenizationProviderRegistry(logger *logger.Logger) *TokenizationProviderRegistry {
-	if os.Getenv("PAYMENTS_DISABLED") == "true" {
+	if viper.GetString("payments.disabled") == "true" {
 		logger.Warn("Payments are DISABLED via PAYMENTS_DISABLED env; using dummy tokenization provider only")
 		return NewTokenizationProviderRegistry(logger, &DummyTokenizationProvider{})
 	}

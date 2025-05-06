@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"errors"
+
 	"fmt"
 	"net"
 	"strconv"
@@ -14,38 +14,7 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-var (
-	// ErrRedisConnection represents Redis connection failures
-	ErrRedisConnection = errors.New("failed to connect to Redis")
 
-	// ErrRedisOperation represents Redis operation failures
-	ErrRedisOperation = errors.New("Redis operation failed")
-
-	// Redis metrics for Prometheus
-	redisOperations = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "redis_operations_total",
-			Help: "Total number of Redis operations",
-		},
-		[]string{"operation", "status"},
-	)
-
-	redisOperationDuration = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "redis_operation_duration_seconds",
-			Help:    "Duration of Redis operations in seconds",
-			Buckets: prometheus.DefBuckets,
-		},
-		[]string{"operation"},
-	)
-
-	redisConnectionsActive = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "redis_connections_active",
-			Help: "Number of active Redis connections",
-		},
-	)
-)
 
 func init() {
 	// Register metrics with Prometheus
@@ -54,26 +23,7 @@ func init() {
 	prometheus.MustRegister(redisConnectionsActive)
 }
 
-// Use custom type for context keys to avoid collisions
-type redisContextKey string
 
-// RedisConfig contains all Redis configuration parameters
-type RedisConfig struct {
-	URL             string
-	Host            string
-	Port            string
-	Password        string
-	DB              int
-	MaxRetries      int
-	MinIdleConns    int
-	PoolSize        int
-	PoolTimeout     time.Duration
-	DialTimeout     time.Duration
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
-	ConnMaxIdleTime time.Duration
-	ConnMaxLifetime time.Duration
-}
 
 // NewRedisConfig creates a production-ready Redis configuration from environment or viper
 func NewRedisConfig(log *logger.Logger) (*RedisConfig, error) {
@@ -273,10 +223,6 @@ func RedisHealthCheck(ctx context.Context, client *redis.Client) error {
 	return nil
 }
 
-// RedisHook implements redis.Hook for metrics and logging
-type RedisHook struct {
-	logger *logger.Logger
-}
 
 // BeforeProcess logs and records metrics before each Redis command
 func (hook *RedisHook) BeforeProcess(ctx context.Context, cmd redis.Cmder) (context.Context, error) {

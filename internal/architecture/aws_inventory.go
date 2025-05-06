@@ -5,14 +5,13 @@ import (
 	"errors"
 
 	"github.com/spf13/viper"
-	"github.com/subinc/subinc-backend/internal/architecture/types"
+
 	"github.com/subinc/subinc-backend/internal/cost/domain"
+
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-type AWSInventory struct {
-	Logger *logger.Logger
-}
+
 
 func NewAWSInventory(log *logger.Logger) *AWSInventory {
 	if log == nil {
@@ -21,7 +20,7 @@ func NewAWSInventory(log *logger.Logger) *AWSInventory {
 	return &AWSInventory{Logger: log}
 }
 
-func (inv *AWSInventory) ListResources(ctx context.Context, accountID string, credentials map[string]string) ([]types.ResourceNode, error) {
+func (inv *AWSInventory) ListResources(ctx context.Context, accountID string, credentials map[string]string) ([]ResourceNode, error) {
 	// Use the real scanner for EC2, S3, VPC
 	return ScanAWSResources(ctx, credentials, "")
 }

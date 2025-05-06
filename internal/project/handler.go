@@ -10,23 +10,13 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-type Handler struct {
-	service Service
-	log     *logger.Logger
-}
+
 
 func NewHandler(service Service, log *logger.Logger) *Handler {
 	return &Handler{service: service, log: log}
 }
 
-func (h *Handler) RegisterRoutes(router fiber.Router) {
-	router.Post("/projects", h.Create)
-	router.Get("/projects/:id", h.Get)
-	router.Put("/projects/:id", h.Update)
-	router.Delete("/projects/:id", h.Delete)
-	router.Get("/tenants/:tenant_id/projects", h.ListByTenant)
-	router.Get("/orgs/:org_id/projects", h.ListByOrg)
-}
+
 
 func (h *Handler) Create(c *fiber.Ctx) error {
 	var req CreateProjectInput

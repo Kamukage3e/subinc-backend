@@ -8,18 +8,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type Repository interface {
-	Create(ctx context.Context, p *Project) error
-	Get(ctx context.Context, id string) (*Project, error)
-	Update(ctx context.Context, p *Project) error
-	Delete(ctx context.Context, id string) error
-	ListByTenant(ctx context.Context, tenantID string) ([]*Project, error)
-	ListByOrg(ctx context.Context, orgID string) ([]*Project, error)
-}
 
-type postgresRepository struct {
-	db *pgxpool.Pool
-}
+
 
 func NewPostgresRepository(db *pgxpool.Pool) Repository {
 	return &postgresRepository{db: db}

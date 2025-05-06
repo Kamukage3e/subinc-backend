@@ -3,9 +3,10 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"strconv"
 	"time"
+
+	"github.com/spf13/viper"
 
 	"github.com/google/uuid"
 	"github.com/subinc/subinc-backend/enterprise/notifications"
@@ -277,18 +278,18 @@ func (s *subscriptionService) NextInvoicePreview(ctx context.Context, accountID 
 	}
 	// Tax/fee logic (same as CreateInvoice)
 	taxRate := 0.0
-	if v := os.Getenv("BILLING_TAX_RATE"); v != "" {
+	if v := viper.GetString("billing.tax_rate"); v != "" {
 		if r, err := strconv.ParseFloat(v, 64); err == nil {
 			taxRate = r
 		}
 	}
 	fees := []domain.Fee{}
-	if v := os.Getenv("BILLING_FIXED_FEE"); v != "" {
+	if v := viper.GetString("billing.fixed_fee"); v != "" {
 		if amt, err := strconv.ParseFloat(v, 64); err == nil && amt > 0 {
 			fees = append(fees, domain.Fee{Type: "fixed", Amount: amt, Currency: planPricing.Currency})
 		}
 	}
-	if v := os.Getenv("BILLING_PERCENT_FEE"); v != "" {
+	if v := viper.GetString("billing.percent_fee"); v != "" {
 		if pct, err := strconv.ParseFloat(v, 64); err == nil && pct > 0 {
 			fees = append(fees, domain.Fee{Type: "percent", Amount: pct, Currency: planPricing.Currency})
 		}

@@ -8,8 +8,6 @@ import (
 	"syscall"
 	"time"
 
-	"encoding/base64"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	"github.com/hibiken/asynq"
@@ -19,16 +17,12 @@ import (
 	"github.com/subinc/subinc-backend/internal/admin"
 	"github.com/subinc/subinc-backend/internal/cost/cloud"
 	"github.com/subinc/subinc-backend/internal/cost/domain"
-	"github.com/subinc/subinc-backend/internal/cost/repository"
-	"github.com/subinc/subinc-backend/internal/cost/service"
 	. "github.com/subinc/subinc-backend/internal/pkg/logger"
 	"github.com/subinc/subinc-backend/internal/pkg/secrets"
-	"github.com/subinc/subinc-backend/internal/project"
 	"github.com/subinc/subinc-backend/internal/provisioning"
 	"github.com/subinc/subinc-backend/internal/provisioning/terraform"
 	"github.com/subinc/subinc-backend/internal/server"
 	"github.com/subinc/subinc-backend/internal/server/middleware"
-	"github.com/subinc/subinc-backend/internal/user"
 	"github.com/subinc/subinc-backend/pkg/jobs"
 	"github.com/subinc/subinc-backend/pkg/session"
 )
@@ -40,7 +34,6 @@ var ErrServerClosed = errors.New("server closed")
 var log *Logger
 
 // Adapter to make cloud.CostDataProviderRegistry implement domain.ProviderRegistry
-
 type providerRegistryAdapter struct {
 	*cloud.CostDataProviderRegistry
 }
@@ -145,72 +138,44 @@ func main() {
 	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
 
 	// Wire up repositories
-	costRepo, err := repository.NewPostgresCostRepository(pgPool, log)
-	if err != nil {
-		log.Fatal("failed to initialize cost repository", ErrorField(err))
-	}
-	billingRepo, err := repository.NewPostgresBillingRepository(pgPool, log)
-	if err != nil {
-		log.Fatal("failed to initialize billing repository", ErrorField(err))
-	}
-	// Discount and coupon services use the correct repository implementations
-	discountRepo := billingRepo.(repository.DiscountRepository)
-	couponRepo := billingRepo.(repository.CouponRepository)
-	discountSvc := service.NewDiscountService(discountRepo, log)
-	couponSvc := service.NewCouponService(couponRepo, log)
-	// Job queue for cost service: use jobs.NewQueue(redisClient, log) if available, else use jobClient as is
-	providerFactory := cloud.NewProviderFactory(log)
-	providerRegistry := &providerRegistryAdapter{cloud.NewCostDataProviderRegistry(providerFactory)}
-	costJobQueue := jobClient
-	costService := service.NewCostService(costRepo, costJobQueue, providerRegistry, log)
+	// costRepo, err := repository.NewPostgresCostRepository(pgPool, log)
+	// if err != nil {
+	// 	log.Fatal("failed to initialize cost repository", ErrorField(err))
+	// }
+	// billingRepo, err := repository.NewPostgresBillingRepository(pgPool, log)
+	// if err != nil {
+	// 	log.Fatal("failed to initialize billing repository", ErrorField(err))
+	// }
+
+	// Provider services
+	// providerFactory := cloud.NewProviderFactory(log)
+	// providerRegistry := &providerRegistryAdapter{cloud.NewCostDataProviderRegistry(providerFactory)}
+	// costJobQueue := jobClient
+
 	// Cloud provider service
-	// Use a 32-byte encryption key from secrets manager (e.g., "cloud-creds-key")
 	var encryptionKey []byte
 	if viper.GetBool("cloud.disableSecretManager") {
 		log.Warn("cloud credential encryption key: using dummy key (secret manager disabled via config)")
 		encryptionKey = make([]byte, 32) // 32 zero bytes (not secure, for dev/test only)
 	} else {
 		encryptionKeyStr, err := secretsManager.GetSecret(ctx, "cloud-creds-key")
-		if err != nil || len(encryptionKeyStr) != 44 { // base64-encoded 32 bytes
+		if err != nil {
 			log.Fatal("failed to load cloud credential encryption key from secrets manager", ErrorField(err))
 		}
-		encryptionKey, err = base64.StdEncoding.DecodeString(encryptionKeyStr)
-		if err != nil || len(encryptionKey) != 32 {
-			log.Fatal("invalid cloud credential encryption key", ErrorField(err))
+		encryptionKey = []byte(encryptionKeyStr)
+		if len(encryptionKey) < 32 {
+			log.Fatal("invalid cloud credential encryption key: insufficient length")
 		}
 	}
-	credRepo, err := repository.NewCredentialRepository(pgPool, encryptionKey, log)
-	if err != nil {
-		log.Fatal("failed to initialize credential repository", ErrorField(err))
-	}
-	cloudProviderService := service.NewCloudProviderService(credRepo, providerFactory, costService, log)
-	// Billing service
-	billingService := service.NewBillingService(billingRepo, discountSvc, pgPool, log)
+
 	// Get API prefix from config
 	apiPrefix := viper.GetString("api.prefix")
 	if apiPrefix == "" {
 		apiPrefix = "/api/v1"
 	}
-	// Register all API routes, including provisioning
-	server.SetupRoutes(app, apiPrefix, costService, cloudProviderService, billingService, couponSvc, log, tfProvisioner, secretsManager, jwtSecretName, pgPool, costRepo)
 
-	// Project management API wiring
-	projectRepo := project.NewPostgresRepository(pgPool)
-	projectService := project.NewService(projectRepo)
-	projectHandler := project.NewHandler(projectService, log)
-	project.RegisterProjectRoutes(app, apiPrefix, projectHandler)
-
-	// User management API wiring
-	userStore := user.NewPostgresUserStore(pgPool)
-	userHandler := user.NewHandler(userStore, secretsManager, jwtSecretName)
-	app.Route(apiPrefix, func(router fiber.Router) {
-		userHandler.RegisterRoutes(router)
-	})
-
-	// Admin management API wiring
-	adminStore := admin.NewPostgresAdminStore(pgPool)
-	adminHandler := admin.NewHandler(adminStore)
-	adminHandler.RegisterRoutes(app, apiPrefix)
+	// Setup all routes using the centralized router
+	app = server.SetupRouter(apiPrefix, pgPool, secretsManager, jwtSecretName)
 
 	// Start server in a goroutine
 	go func() {

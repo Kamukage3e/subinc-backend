@@ -4,7 +4,7 @@ info:
   version: "1.0"
   description: Production-grade API for multi-tenant SaaS cloud cost management. RBAC/ABAC endpoints included.
 servers:
-  - url: /api
+  - url: /api/v1
 paths:
   /users:
     get:

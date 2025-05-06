@@ -1,37 +1,35 @@
-package server
+package aws
 
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/subinc/subinc-backend/internal/admin"
 	"github.com/subinc/subinc-backend/internal/architecture"
 	"github.com/subinc/subinc-backend/internal/cost/api"
-	"github.com/subinc/subinc-backend/internal/email"
+	"github.com/subinc/subinc-backend/internal/cost/middleware"
 	"github.com/subinc/subinc-backend/internal/pkg/secrets"
 	"github.com/subinc/subinc-backend/internal/project"
 	"github.com/subinc/subinc-backend/internal/provisioning"
 	"github.com/subinc/subinc-backend/internal/provisioning/terraform"
-	"github.com/subinc/subinc-backend/internal/server/middleware"
-	
 	"github.com/subinc/subinc-backend/internal/tenant"
 	"github.com/subinc/subinc-backend/internal/user"
 )
 
-// Deps struct for all handlers and services
-// This is required for modular, testable, and linter-clean route registration
-// All handler dependencies must be injected here
+// Deps struct for all handlers and services required for route registration
+// All handler dependencies must be injected here for modular, testable, and linter-clean route registration
+// Only real, production-grade handlers allowed
+// Extend as needed for other domains
 type Deps struct {
-	UserHandler          *user.Handler
+	UserHandler          *user.UserHandler
+	SecretsManager       secrets.SecretsManager
+	JWTSecretName        string
 	TenantHandler        *tenant.TenantHandler
 	ProjectHandler       *project.Handler
 	CostHandler          *api.CostHandler
 	CloudHandler         *api.CloudHandler
 	BillingHandler       *api.BillingHandler
 	AdminHandler         *admin.AdminHandler
-	ArchitectureHandler  *architecture.Handler
 	TerraformProvisioner *terraform.TerraformProvisioner
-	EmailManager         *email.Manager
-	SecretsManager       secrets.SecretsManager
-	JWTSecretName        string
+	ArchitectureHandler  *architecture.Handler
 }
 
 // RegisterRoutes centralizes all route registration for the microservice.
@@ -51,10 +49,12 @@ func RegisterRoutes(app *fiber.App, apiPrefix string, deps Deps) {
 		return c.JSON(fiber.Map{"status": "ok", "service": "cost-management"})
 	})
 	// Authenticated user endpoints
+	// AuthMiddleware enforces JWT-based authentication for all /users endpoints below
 	authUserGroup := userGroup.Group("", middleware.AuthMiddleware(middleware.AuthMiddlewareConfig{
 		SecretsManager: deps.SecretsManager,
 		JWTSecretName:  deps.JWTSecretName,
 	}))
+	// RBACMiddleware enforces role-based access control for sensitive user operations
 	authUserGroup.Post("/logout", deps.UserHandler.Logout)
 	authUserGroup.Post("/refresh", deps.UserHandler.Refresh)
 	authUserGroup.Get("/", deps.UserHandler.ListUsers)
@@ -67,26 +67,41 @@ func RegisterRoutes(app *fiber.App, apiPrefix string, deps Deps) {
 	authUserGroup.Delete(":id/attributes/:key", middleware.RBACMiddleware("admin", "owner"), deps.UserHandler.RemoveAttribute)
 
 	// Tenant routes
-	deps.TenantHandler.RegisterRoutes(apiGroup)
+	tenantGroup := apiGroup.Group("/tenants")
+	tenantGroup.Get("/", deps.TenantHandler.ListTenants)
+	tenantGroup.Get(":id", deps.TenantHandler.GetTenantByID)
+	tenantGroup.Delete(":id", deps.TenantHandler.DeleteTenant)
 
 	// Project routes
-	deps.ProjectHandler.RegisterRoutes(apiGroup)
+	projectGroup := apiGroup.Group("")
+	projectGroup.Post("/projects", deps.ProjectHandler.Create)
+	projectGroup.Get("/projects/:id", deps.ProjectHandler.Get)
+	projectGroup.Put("/projects/:id", deps.ProjectHandler.Update)
+	projectGroup.Delete("/projects/:id", deps.ProjectHandler.Delete)
+	projectGroup.Get("/tenants/:tenant_id/projects", deps.ProjectHandler.ListByTenant)
+	projectGroup.Get("/orgs/:org_id/projects", deps.ProjectHandler.ListByOrg)
 
-	// Cost, billing, cloud routes
+	// Cost routes (with auth middleware)
 	costGroup := apiGroup.Group("/cost", middleware.AuthMiddleware(middleware.AuthMiddlewareConfig{
 		SecretsManager: deps.SecretsManager,
 		JWTSecretName:  deps.JWTSecretName,
 	}))
 	deps.CostHandler.RegisterRoutes(costGroup)
 	deps.CloudHandler.RegisterRoutes(costGroup)
-	billingGroup := apiGroup.Group("/billing", middleware.AuthMiddleware(middleware.AuthMiddlewareConfig{
-		SecretsManager: deps.SecretsManager,
-		JWTSecretName:  deps.JWTSecretName,
-	}), middleware.LoggingMiddleware(), middleware.RateLimitMiddleware())
+
+	// Billing routes (with auth, logging, and rate limit middleware)
+	billingGroup := apiGroup.Group("/billing",
+		middleware.AuthMiddleware(middleware.AuthMiddlewareConfig{
+			SecretsManager: deps.SecretsManager,
+			JWTSecretName:  deps.JWTSecretName,
+		}),
+		middleware.LoggingMiddleware(),
+		middleware.RateLimitMiddleware(),
+	)
 	deps.BillingHandler.RegisterBillingRoutes(billingGroup)
 
 	// Admin routes
-	deps.AdminHandler.RegisterRoutes(apiGroup, "")
+	deps.AdminHandler.RegisterRoutes(apiGroup)
 
 	// Provisioning routes
 	provGroup := apiGroup.Group("/provisioning")
@@ -128,12 +143,5 @@ func RegisterRoutes(app *fiber.App, apiPrefix string, deps Deps) {
 	})
 
 	// Architecture routes
-	deps.ArchitectureHandler.RegisterRoutes(apiGroup)
-
-	// Email management routes
-	emailGroup := apiGroup.Group("/email", middleware.AuthMiddleware(middleware.AuthMiddlewareConfig{
-		SecretsManager: deps.SecretsManager,
-		JWTSecretName:  deps.JWTSecretName,
-	}))
-	deps.EmailManager.RegisterRoutes(emailGroup)
+	deps.ArchitectureHandler.RegisterRoutes(apiGroup, deps.SecretsManager, deps.JWTSecretName)
 }

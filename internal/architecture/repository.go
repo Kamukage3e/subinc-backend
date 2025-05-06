@@ -3,24 +3,11 @@ package architecture
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-type Repository interface {
-	CreateDoc(ctx context.Context, doc *ArchitectureDoc) error
-	GetDoc(ctx context.Context, tenantID, projectID, docID string) (*ArchitectureDoc, error)
-	ListDocs(ctx context.Context, tenantID, projectID string, limit, offset int) ([]*ArchitectureDoc, error)
-	GetLatestDoc(ctx context.Context, tenantID, projectID string) (*ArchitectureDoc, error)
-	CreateDiagram(ctx context.Context, diagram *ArchitectureDiagram) error
-	GetDiagram(ctx context.Context, tenantID, projectID, diagramID string) (*ArchitectureDiagram, error)
-	ListDiagrams(ctx context.Context, tenantID, projectID string, limit, offset int) ([]*ArchitectureDiagram, error)
-}
-
-type postgresRepository struct {
-	db *pgxpool.Pool
-}
 
 func NewPostgresRepository(db *pgxpool.Pool) Repository {
 	return &postgresRepository{db: db}
@@ -107,4 +94,16 @@ func (r *postgresRepository) ListDiagrams(ctx context.Context, tenantID, project
 		diagrams = append(diagrams, &d)
 	}
 	return diagrams, rows.Err()
+}
+
+func (r *postgresRepository) PingDB(ctx context.Context) error {
+	if r.db == nil {
+		return fmt.Errorf("db not initialized")
+	}
+	return r.db.Ping(ctx)
+}
+
+func (r *postgresRepository) PingRedis(ctx context.Context) error {
+	// No Redis in this repo, always healthy
+	return nil
 }

@@ -9,9 +9,6 @@ import (
 	"github.com/subinc/subinc-backend/internal/cost/service"
 )
 
-type OptimizationHandler struct {
-	service *service.OptimizationService
-}
 
 func NewOptimizationHandler(svc *service.OptimizationService) *OptimizationHandler {
 	return &OptimizationHandler{service: svc}
@@ -23,7 +20,7 @@ func (h *OptimizationHandler) GenerateRecommendations(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid request payload"})
 	}
-	ctx := c.UserContext()
+	ctx := c.Context()
 	recs, err := h.service.GenerateRecommendations(ctx, &req)
 	if err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
@@ -37,7 +34,7 @@ func (h *OptimizationHandler) GetRecommendation(c *fiber.Ctx) error {
 	if id == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing id"})
 	}
-	ctx := c.UserContext()
+	ctx := c.Context()
 	rec, err := h.service.GetRecommendation(ctx, id)
 	if err != nil {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "not found"})
@@ -51,7 +48,7 @@ func (h *OptimizationHandler) ListHistory(c *fiber.Ctx) error {
 	projectID := c.Query("project_id")
 	limit, _ := strconv.Atoi(c.Query("limit", "20"))
 	offset, _ := strconv.Atoi(c.Query("offset", "0"))
-	ctx := c.UserContext()
+	ctx := c.Context()
 	recs, total, err := h.service.ListHistory(ctx, tenantID, projectID, limit, offset)
 	if err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})

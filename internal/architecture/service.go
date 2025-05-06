@@ -8,29 +8,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/subinc/subinc-backend/internal/architecture/types"
 )
-
-type Service interface {
-	GenerateDoc(ctx context.Context, tenantID, projectID, createdBy, format string, graph *types.ArchitectureGraph) (*ArchitectureDoc, error)
-	GetDoc(ctx context.Context, tenantID, projectID, docID string) (*ArchitectureDoc, error)
-	ListDocs(ctx context.Context, tenantID, projectID string, limit, offset int) ([]*ArchitectureDoc, error)
-	GenerateDiagram(ctx context.Context, tenantID, projectID, docID, format string, graph *types.ArchitectureGraph) (*ArchitectureDiagram, error)
-	GetDiagram(ctx context.Context, tenantID, projectID, diagramID string) (*ArchitectureDiagram, error)
-	ListDiagrams(ctx context.Context, tenantID, projectID string, limit, offset int) ([]*ArchitectureDiagram, error)
-	GenerateDocAuto(ctx context.Context, tenantID, projectID, createdBy, format string, inv AWSResourceInventory) (*ArchitectureDoc, error)
-	GetArchitectureGraph(ctx context.Context, doc *ArchitectureDoc) (*types.ArchitectureGraph, error)
-}
-
-type service struct {
-	repo Repository
-}
 
 func NewService(repo Repository) Service {
 	return &service{repo: repo}
 }
 
-func (s *service) GenerateDoc(ctx context.Context, tenantID, projectID, createdBy, format string, graph *types.ArchitectureGraph) (*ArchitectureDoc, error) {
+func (s *service) GenerateDoc(ctx context.Context, tenantID, projectID, createdBy, format string, graph *ArchitectureGraph) (*ArchitectureDoc, error) {
 	if tenantID == "" || projectID == "" || createdBy == "" || format == "" || graph == nil {
 		return nil, fmt.Errorf("missing required fields")
 	}
@@ -78,7 +62,7 @@ func (s *service) ListDocs(ctx context.Context, tenantID, projectID string, limi
 	return s.repo.ListDocs(ctx, tenantID, projectID, limit, offset)
 }
 
-func (s *service) GenerateDiagram(ctx context.Context, tenantID, projectID, docID, format string, graph *types.ArchitectureGraph) (*ArchitectureDiagram, error) {
+func (s *service) GenerateDiagram(ctx context.Context, tenantID, projectID, docID, format string, graph *ArchitectureGraph) (*ArchitectureDiagram, error) {
 	if tenantID == "" || projectID == "" || docID == "" || format == "" || graph == nil {
 		return nil, fmt.Errorf("missing required fields")
 	}
@@ -112,7 +96,7 @@ func (s *service) ListDiagrams(ctx context.Context, tenantID, projectID string, 
 
 // marshalDiagram renders the graph to the requested format (svg, png, json)
 // Only real, supported formats. No placeholders.
-func marshalDiagram(format string, graph *types.ArchitectureGraph) ([]byte, error) {
+func marshalDiagram(format string, graph *ArchitectureGraph) ([]byte, error) {
 	switch format {
 	case "json":
 		return json.Marshal(graph)
@@ -148,19 +132,33 @@ func (s *service) GenerateDocAuto(ctx context.Context, tenantID, projectID, crea
 }
 
 // BuildArchitectureGraph builds an ArchitectureGraph from discovered resources
-func BuildArchitectureGraph(nodes []types.ResourceNode) *types.ArchitectureGraph {
+func BuildArchitectureGraph(nodes []ResourceNode) *ArchitectureGraph {
 	edges := inferServiceConnections(nodes)
-	return &types.ArchitectureGraph{Nodes: nodes, Edges: edges}
+	return &ArchitectureGraph{Nodes: nodes, Edges: edges}
 }
 
-func (s *service) GetArchitectureGraph(ctx context.Context, doc *ArchitectureDoc) (*types.ArchitectureGraph, error) {
+func (s *service) GetArchitectureGraph(ctx context.Context, doc *ArchitectureDoc) (*ArchitectureGraph, error) {
 	if len(doc.GraphData) == 0 {
-		return &types.ArchitectureGraph{Nodes: []types.ResourceNode{}, Edges: []types.ResourceEdge{}}, nil
+		return &ArchitectureGraph{Nodes: []ResourceNode{}, Edges: []ResourceEdge{}}, nil
 	}
-	var graph types.ArchitectureGraph
+	var graph ArchitectureGraph
 	err := json.Unmarshal(doc.GraphData, &graph)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal graph data: %w", err)
 	}
 	return &graph, nil
+}
+
+func (s *service) PingDB(ctx context.Context) error {
+	if s.repo == nil {
+		return fmt.Errorf("repo not initialized")
+	}
+	return s.repo.PingDB(ctx)
+}
+
+func (s *service) PingRedis(ctx context.Context) error {
+	if s.repo == nil {
+		return fmt.Errorf("repo not initialized")
+	}
+	return s.repo.PingRedis(ctx)
 }

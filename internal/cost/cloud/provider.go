@@ -4,8 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/subinc/subinc-backend/internal/architecture/types"
+
 	"github.com/subinc/subinc-backend/internal/cost/domain"
+	"github.com/subinc/subinc-backend/internal/architecture"
 )
 
 // CostDataProvider defines the interface for retrieving cost data from cloud providers
@@ -88,5 +89,5 @@ func (r *CostDataProviderRegistry) GetProviderAsInterface(ctx context.Context, p
 // Real prod interface, no placeholders
 
 type ResourceInventoryProvider interface {
-	ListResources(ctx context.Context, accountID string, credentials map[string]string) ([]types.ResourceNode, error)
+	ListResources(ctx context.Context, accountID string, credentials map[string]string) ([]architecture.ResourceNode, error)
 }

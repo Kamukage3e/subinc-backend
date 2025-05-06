@@ -2,7 +2,9 @@ package logger
 
 import (
 	"context"
+
 	"os"
+	"github.com/spf13/viper"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -151,7 +153,7 @@ func (l *Logger) Flush() error {
 
 // getEnv gets an environment variable or returns a default
 func getEnv(key, defaultValue string) string {
-	if value, exists := os.LookupEnv(key); exists {
+	if value := viper.GetString(key); value != "" {
 		return value
 	}
 	return defaultValue

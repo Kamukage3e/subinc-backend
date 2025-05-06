@@ -18,52 +18,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/subinc/subinc-backend/enterprise/notifications"
-	"github.com/subinc/subinc-backend/pkg/session"
+
 )
 
-// AdminUserStore defines storage for admin users.
-type AdminUserStore interface {
-	GetByUsername(ctx context.Context, username string) (*AdminUser, error)
-	GetByID(ctx context.Context, id string) (*AdminUser, error)
-	Create(ctx context.Context, u *AdminUser) error
-	Update(ctx context.Context, u *AdminUser) error
-	Delete(ctx context.Context, id string) error
-}
 
-// AdminRoleStore defines storage for admin roles.
-type AdminRoleStore interface {
-	GetByName(ctx context.Context, name string) (*AdminRole, error)
-	GetByID(ctx context.Context, id string) (*AdminRole, error)
-	Create(ctx context.Context, r *AdminRole) error
-	Update(ctx context.Context, r *AdminRole) error
-	Delete(ctx context.Context, id string) error
-}
 
-// AdminPermissionStore defines storage for admin permissions.
-type AdminPermissionStore interface {
-	GetByName(ctx context.Context, name string) (*AdminPermission, error)
-	GetByID(ctx context.Context, id string) (*AdminPermission, error)
-	Create(ctx context.Context, p *AdminPermission) error
-	Update(ctx context.Context, p *AdminPermission) error
-	Delete(ctx context.Context, id string) error
-}
 
-// Policy defines the structure of a policy.
-type Policy struct {
-	ID        string                 `json:"id" db:"id"`
-	Name      string                 `json:"name" db:"name"`
-	Type      string                 `json:"type" db:"type"`
-	TargetID  string                 `json:"target_id" db:"target_id"`
-	Rules     map[string]interface{} `json:"rules" db:"rules"`
-	CreatedAt string                 `json:"created_at" db:"created_at"`
-	UpdatedAt string                 `json:"updated_at" db:"updated_at"`
-}
-
-// PostgresAdminStore implements AdminStore using PostgreSQL.
-type PostgresAdminStore struct {
-	DB         *pgxpool.Pool
-	SessionMgr *session.SessionManager
-}
 
 func NewPostgresAdminStore(db *pgxpool.Pool) *PostgresAdminStore {
 	return &PostgresAdminStore{DB: db}
@@ -483,31 +443,25 @@ func (s *PostgresAdminStore) SystemConfig() (interface{}, error) {
 	return map[string]interface{}{"config": configs}, nil
 }
 
-func (s *PostgresAdminStore) FeatureFlags() (interface{}, error) {
+func (s *PostgresAdminStore) FeatureFlags() ([]interface{}, error) {
 	const q = `SELECT flag, enabled, updated_at FROM feature_flags`
 	rows, err := s.DB.Query(context.Background(), q)
 	if err != nil {
 		return nil, errors.New("failed to query feature flags")
 	}
 	defer rows.Close()
-	var flags []map[string]interface{}
+	var flags []interface{}
 	for rows.Next() {
-		var flag string
-		var enabled bool
-		var updatedAt string
-		if err := rows.Scan(&flag, &enabled, &updatedAt); err != nil {
+		var f FeatureFlag
+		if err := rows.Scan(&f.Flag, &f.Enabled, &f.UpdatedAt); err != nil {
 			return nil, errors.New("failed to scan feature flag row")
 		}
-		flags = append(flags, map[string]interface{}{
-			"flag":       flag,
-			"enabled":    enabled,
-			"updated_at": updatedAt,
-		})
+		flags = append(flags, f)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, errors.New("error iterating feature flag rows")
 	}
-	return map[string]interface{}{"flags": flags}, nil
+	return flags, nil
 }
 
 func (s *PostgresAdminStore) MaintenanceMode() (interface{}, error) {

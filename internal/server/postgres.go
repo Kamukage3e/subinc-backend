@@ -3,30 +3,30 @@ package server
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/spf13/viper"
 )
 
 // NewPostgresPool returns a production-ready pgx pool. Reads POSTGRES_URL or POSTGRES_HOST/PORT/USER/PASSWORD/DB from env.
 func NewPostgresPool(ctx context.Context) (*pgxpool.Pool, error) {
-	url := os.Getenv("POSTGRES_URL")
+	url := viper.GetString("POSTGRES_URL")
 	if url == "" {
-		host := os.Getenv("POSTGRES_HOST")
+		host := viper.GetString("POSTGRES_HOST")
 		if host == "" {
 			host = "localhost"
 		}
-		port := os.Getenv("POSTGRES_PORT")
+		port := viper.GetString("POSTGRES_PORT")
 		if port == "" {
 			port = "5432"
 		}
-		user := os.Getenv("POSTGRES_USER")
+		user := viper.GetString("POSTGRES_USER")
 		if user == "" {
 			user = "postgres"
 		}
-		pass := os.Getenv("POSTGRES_PASSWORD")
-		db := os.Getenv("POSTGRES_DB")
+		pass := viper.GetString("POSTGRES_PASSWORD")
+		db := viper.GetString("POSTGRES_DB")
 		if db == "" {
 			db = "postgres"
 		}

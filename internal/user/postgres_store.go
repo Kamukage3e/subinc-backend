@@ -8,15 +8,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// PostgresUserStore implements UserStore using PostgreSQL.
-type PostgresUserStore struct {
-	DB *pgxpool.Pool
-}
-
+// NewPostgresUserStore returns a new PostgresUserStore with a connection pool.
 func NewPostgresUserStore(db *pgxpool.Pool) *PostgresUserStore {
 	return &PostgresUserStore{DB: db}
 }
 
+// GetByUsername fetches a user by username. Returns user or error if not found.
 func (s *PostgresUserStore) GetByUsername(ctx context.Context, username string) (*User, error) {
 	const q = `SELECT id, tenant_id, username, email, password_hash, roles, attributes, created_at, updated_at FROM users WHERE username = $1`
 	row := s.DB.QueryRow(ctx, q, username)
@@ -31,6 +28,7 @@ func (s *PostgresUserStore) GetByUsername(ctx context.Context, username string) 
 	return u, nil
 }
 
+// GetByID fetches a user by ID. Returns user or error if not found.
 func (s *PostgresUserStore) GetByID(ctx context.Context, id string) (*User, error) {
 	const q = `SELECT id, tenant_id, username, email, password_hash, roles, attributes, created_at, updated_at FROM users WHERE id = $1`
 	row := s.DB.QueryRow(ctx, q, id)
@@ -45,6 +43,7 @@ func (s *PostgresUserStore) GetByID(ctx context.Context, id string) (*User, erro
 	return u, nil
 }
 
+// Create inserts a new user. Returns error if insert fails.
 func (s *PostgresUserStore) Create(ctx context.Context, u *User) error {
 	const q = `INSERT INTO users (id, tenant_id, username, email, password_hash, roles, attributes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 	now := time.Now().UTC()
@@ -57,6 +56,7 @@ func (s *PostgresUserStore) Create(ctx context.Context, u *User) error {
 	return nil
 }
 
+// Update modifies an existing user. Returns error if update fails.
 func (s *PostgresUserStore) Update(ctx context.Context, u *User) error {
 	const q = `UPDATE users SET tenant_id = $2, username = $3, email = $4, password_hash = $5, roles = $6, attributes = $7, updated_at = $8 WHERE id = $1`
 	now := time.Now().UTC()
@@ -68,6 +68,7 @@ func (s *PostgresUserStore) Update(ctx context.Context, u *User) error {
 	return nil
 }
 
+// Delete removes a user by ID. Returns error if delete fails.
 func (s *PostgresUserStore) Delete(ctx context.Context, id string) error {
 	const q = `DELETE FROM users WHERE id = $1`
 	_, err := s.DB.Exec(ctx, q, id)
@@ -77,6 +78,7 @@ func (s *PostgresUserStore) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// ListByTenantID returns all users for a given tenant. Returns error if query fails.
 func (s *PostgresUserStore) ListByTenantID(ctx context.Context, tenantID string) ([]*User, error) {
 	const q = `SELECT id, tenant_id, username, email, password_hash, roles, attributes, created_at, updated_at FROM users WHERE tenant_id = $1`
 	rows, err := s.DB.Query(ctx, q, tenantID)
@@ -102,13 +104,14 @@ func (s *PostgresUserStore) ListByTenantID(ctx context.Context, tenantID string)
 	return users, nil
 }
 
-// --- Refresh Token Management ---
+// CreateRefreshToken inserts a new refresh token. Returns error if insert fails.
 func (s *PostgresUserStore) CreateRefreshToken(ctx context.Context, t *RefreshToken) error {
 	const q = `INSERT INTO refresh_tokens (token_id, user_id, tenant_id, token, expires_at, created_at, revoked) VALUES ($1, $2, $3, $4, $5, $6, $7)`
 	_, err := s.DB.Exec(ctx, q, t.TokenID, t.UserID, t.TenantID, t.Token, t.ExpiresAt, t.CreatedAt, t.Revoked)
 	return err
 }
 
+// GetRefreshToken fetches a refresh token by token string. Returns token or error if not found.
 func (s *PostgresUserStore) GetRefreshToken(ctx context.Context, token string) (*RefreshToken, error) {
 	const q = `SELECT token_id, user_id, tenant_id, token, expires_at, created_at, revoked FROM refresh_tokens WHERE token = $1`
 	row := s.DB.QueryRow(ctx, q, token)
@@ -119,25 +122,28 @@ func (s *PostgresUserStore) GetRefreshToken(ctx context.Context, token string) (
 	return t, nil
 }
 
+// RevokeRefreshToken sets a refresh token as revoked. Returns error if update fails.
 func (s *PostgresUserStore) RevokeRefreshToken(ctx context.Context, token string) error {
 	const q = `UPDATE refresh_tokens SET revoked = true WHERE token = $1`
 	_, err := s.DB.Exec(ctx, q, token)
 	return err
 }
 
+// RevokeAllRefreshTokensForUser revokes all refresh tokens for a user. Returns error if update fails.
 func (s *PostgresUserStore) RevokeAllRefreshTokensForUser(ctx context.Context, userID string) error {
 	const q = `UPDATE refresh_tokens SET revoked = true WHERE user_id = $1`
 	_, err := s.DB.Exec(ctx, q, userID)
 	return err
 }
 
-// --- Password Reset Token Management ---
+// CreatePasswordResetToken inserts a new password reset token. Returns error if insert fails.
 func (s *PostgresUserStore) CreatePasswordResetToken(ctx context.Context, t *PasswordResetToken) error {
 	const q = `INSERT INTO password_reset_tokens (token, user_id, tenant_id, expires_at, used, created_at) VALUES ($1, $2, $3, $4, $5, $6)`
 	_, err := s.DB.Exec(ctx, q, t.Token, t.UserID, t.TenantID, t.ExpiresAt, t.Used, t.CreatedAt)
 	return err
 }
 
+// GetPasswordResetToken fetches a password reset token by token string. Returns token or error if not found.
 func (s *PostgresUserStore) GetPasswordResetToken(ctx context.Context, token string) (*PasswordResetToken, error) {
 	const q = `SELECT token, user_id, tenant_id, expires_at, used, created_at FROM password_reset_tokens WHERE token = $1`
 	row := s.DB.QueryRow(ctx, q, token)
@@ -148,19 +154,21 @@ func (s *PostgresUserStore) GetPasswordResetToken(ctx context.Context, token str
 	return t, nil
 }
 
+// MarkPasswordResetTokenUsed marks a password reset token as used. Returns error if update fails.
 func (s *PostgresUserStore) MarkPasswordResetTokenUsed(ctx context.Context, token string) error {
 	const q = `UPDATE password_reset_tokens SET used = true WHERE token = $1`
 	_, err := s.DB.Exec(ctx, q, token)
 	return err
 }
 
-// --- Email Verification Token Management ---
+// CreateEmailVerificationToken inserts a new email verification token. Returns error if insert fails.
 func (s *PostgresUserStore) CreateEmailVerificationToken(ctx context.Context, t *EmailVerificationToken) error {
 	const q = `INSERT INTO email_verification_tokens (token, user_id, tenant_id, expires_at, used, created_at) VALUES ($1, $2, $3, $4, $5, $6)`
 	_, err := s.DB.Exec(ctx, q, t.Token, t.UserID, t.TenantID, t.ExpiresAt, t.Used, t.CreatedAt)
 	return err
 }
 
+// GetEmailVerificationToken fetches an email verification token by token string. Returns token or error if not found.
 func (s *PostgresUserStore) GetEmailVerificationToken(ctx context.Context, token string) (*EmailVerificationToken, error) {
 	const q = `SELECT token, user_id, tenant_id, expires_at, used, created_at FROM email_verification_tokens WHERE token = $1`
 	row := s.DB.QueryRow(ctx, q, token)
@@ -171,12 +179,14 @@ func (s *PostgresUserStore) GetEmailVerificationToken(ctx context.Context, token
 	return t, nil
 }
 
+// MarkEmailVerificationTokenUsed marks an email verification token as used. Returns error if update fails.
 func (s *PostgresUserStore) MarkEmailVerificationTokenUsed(ctx context.Context, token string) error {
 	const q = `UPDATE email_verification_tokens SET used = true WHERE token = $1`
 	_, err := s.DB.Exec(ctx, q, token)
 	return err
 }
 
+// GetByEmail fetches a user by email. Returns user or error if not found.
 func (s *PostgresUserStore) GetByEmail(ctx context.Context, email string) (*User, error) {
 	const q = `SELECT id, tenant_id, username, email, password_hash, roles, attributes, created_at, updated_at, email_verified FROM users WHERE email = $1`
 	row := s.DB.QueryRow(ctx, q, email)

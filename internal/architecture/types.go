@@ -2,11 +2,36 @@ package architecture
 
 import (
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-// ArchitectureDoc represents a versioned architecture document for a tenant/project
-// All fields are required for SaaS-grade multi-tenant support
-// No sensitive info, no placeholders
+// ResourceNode represents a cloud resource in the architecture graph
+// Used for graph construction and export
+
+type ResourceNode struct {
+	ID         string            `json:"id"`
+	Type       string            `json:"type"`
+	Provider   string            `json:"provider"`
+	Name       string            `json:"name"`
+	Properties map[string]string `json:"properties"`
+}
+
+// ResourceEdge represents a relationship between resources
+
+type ResourceEdge struct {
+	SourceID string `json:"source_id"`
+	TargetID string `json:"target_id"`
+	Type     string `json:"type"`
+}
+
+// ArchitectureGraph is the in-memory graph for doc/diagram generation
+
+type ArchitectureGraph struct {
+	Nodes []ResourceNode `json:"nodes"`
+	Edges []ResourceEdge `json:"edges"`
+}
 
 type ArchitectureDoc struct {
 	ID           string            `json:"id" gorm:"primaryKey"`
@@ -36,4 +61,27 @@ type ArchitectureDiagram struct {
 	ExportURL string            `json:"export_url"`
 	GraphData []byte            `json:"-" gorm:"type:bytea"` // raw graph data (for SVG/PNG/JSON)
 	Meta      map[string]string `json:"meta" gorm:"-"`
+}
+
+type Handler struct {
+	service Service
+	logger  logger.Logger
+}
+
+var (
+	BuildVersion = "dev"
+	BuildCommit  = "none"
+	BuildTime    = "unknown"
+)
+
+type postgresRepository struct {
+	db *pgxpool.Pool
+}
+
+type service struct {
+	repo Repository
+}
+
+type AWSInventory struct {
+	Logger *logger.Logger
 }

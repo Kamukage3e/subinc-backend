@@ -4,34 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"os"
+
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/subinc/subinc-backend/internal/cost/domain"
-	"github.com/subinc/subinc-backend/internal/cost/middleware"
 	"github.com/subinc/subinc-backend/internal/cost/service"
 	"github.com/subinc/subinc-backend/internal/pkg/idencode"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
+	"github.com/spf13/viper"
 )
 
-type BillingHandler struct {
-	service                  service.BillingService
-	couponService            service.CouponService
-	creditService            service.CreditService
-	refundService            service.RefundService
-	paymentMethodService     service.PaymentMethodService
-	subscriptionService      service.SubscriptionService
-	webhookEventService      service.WebhookEventService
-	invoiceAdjustmentService service.InvoiceAdjustmentService
-}
 
-// CouponInput for RORO pattern
-// Used by API handler for Coupon endpoints
-type CouponInput struct {
-	Coupon *domain.Coupon
-}
 
 func NewBillingHandler(
 	svc service.BillingService,
@@ -56,111 +41,7 @@ func NewBillingHandler(
 	}
 }
 
-// RegisterBillingRoutes registers all billing endpoints on the given Fiber router group
-func (h *BillingHandler) RegisterBillingRoutes(r fiber.Router) {
-	r.Post("/accounts", middleware.RBACMiddleware("admin"), h.CreateAccount)
-	r.Put("/accounts/:id", middleware.RBACMiddleware("admin"), h.UpdateAccount)
-	r.Get("/accounts/:id", middleware.RBACMiddleware("admin", "user"), h.GetAccount)
-	r.Get("/accounts", middleware.RBACMiddleware("admin", "user"), h.ListAccounts)
 
-	r.Post("/plans", middleware.RBACMiddleware("admin"), h.CreatePlan)
-	r.Put("/plans/:id", middleware.RBACMiddleware("admin"), h.UpdatePlan)
-	r.Get("/plans/:id", middleware.RBACMiddleware("admin", "user"), h.GetPlan)
-	r.Get("/plans", middleware.RBACMiddleware("admin", "user"), h.ListPlans)
-
-	r.Post("/usage", middleware.RBACMiddleware("admin", "user"), h.CreateUsage)
-	r.Get("/usage", middleware.RBACMiddleware("admin", "user"), h.ListUsage)
-
-	r.Post("/invoices", middleware.RBACMiddleware("admin"), h.CreateInvoice)
-	r.Put("/invoices/:id", middleware.RBACMiddleware("admin"), h.UpdateInvoice)
-	r.Get("/invoices/:id", middleware.RBACMiddleware("admin", "user"), h.GetInvoice)
-	r.Get("/invoices", middleware.RBACMiddleware("admin", "user"), h.ListInvoices)
-
-	r.Post("/payments", middleware.RBACMiddleware("admin"), h.CreatePayment)
-	r.Put("/payments/:id", middleware.RBACMiddleware("admin"), h.UpdatePayment)
-	r.Get("/payments/:id", middleware.RBACMiddleware("admin", "user"), h.GetPayment)
-	r.Get("/payments", middleware.RBACMiddleware("admin", "user"), h.ListPayments)
-
-	r.Post("/audit-logs", middleware.RBACMiddleware("admin"), h.CreateAuditLog)
-	r.Get("/audit-logs", middleware.RBACMiddleware("admin", "user"), h.ListAuditLogs)
-	r.Get("/audit-logs/search", middleware.RBACMiddleware("admin"), h.SearchAuditLogs)
-
-	r.Post("/discounts", middleware.RBACMiddleware("admin"), h.CreateDiscount)
-	r.Put("/discounts/:id", middleware.RBACMiddleware("admin"), h.UpdateDiscount)
-	r.Delete("/discounts/:id", middleware.RBACMiddleware("admin"), h.DeleteDiscount)
-	r.Get("/discounts/:id", middleware.RBACMiddleware("admin", "user"), h.GetDiscount)
-	r.Get("/discounts/code/:code", middleware.RBACMiddleware("admin", "user"), h.GetDiscountByCode)
-	r.Get("/discounts", middleware.RBACMiddleware("admin", "user"), h.ListDiscounts)
-
-	r.Post("/coupons", middleware.RBACMiddleware("admin"), h.CreateCoupon)
-	r.Put("/coupons/:id", middleware.RBACMiddleware("admin"), h.UpdateCoupon)
-	r.Delete("/coupons/:id", middleware.RBACMiddleware("admin"), h.DeleteCoupon)
-	r.Get("/coupons/:id", middleware.RBACMiddleware("admin", "user"), h.GetCoupon)
-	r.Get("/coupons/code/:code", middleware.RBACMiddleware("admin", "user"), h.GetCouponByCode)
-	r.Get("/coupons", middleware.RBACMiddleware("admin", "user"), h.ListCoupons)
-
-	// Add CRUD handlers for Credit, Refund, PaymentMethod, Subscription, WebhookEvent, InvoiceAdjustment
-	// Register all new handlers in RegisterBillingRoutes
-	r.Post("/credits", middleware.RBACMiddleware("admin"), h.CreateCredit)
-	r.Put("/credits/:id", middleware.RBACMiddleware("admin"), h.UpdateCredit)
-	r.Delete("/credits/:id", middleware.RBACMiddleware("admin"), h.DeleteCredit)
-	r.Get("/credits/:id", middleware.RBACMiddleware("admin", "user"), h.GetCredit)
-	r.Get("/credits", middleware.RBACMiddleware("admin", "user"), h.ListCredits)
-
-	r.Post("/refunds", middleware.RBACMiddleware("admin"), h.CreateRefund)
-	r.Put("/refunds/:id", middleware.RBACMiddleware("admin"), h.UpdateRefund)
-	r.Delete("/refunds/:id", middleware.RBACMiddleware("admin"), h.DeleteRefund)
-	r.Get("/refunds/:id", middleware.RBACMiddleware("admin", "user"), h.GetRefund)
-	r.Get("/refunds", middleware.RBACMiddleware("admin", "user"), h.ListRefunds)
-
-	r.Post("/payment-methods", middleware.RBACMiddleware("admin"), h.CreatePaymentMethod)
-	r.Put("/payment-methods/:id", middleware.RBACMiddleware("admin"), h.UpdatePaymentMethod)
-	r.Delete("/payment-methods/:id", middleware.RBACMiddleware("admin"), h.DeletePaymentMethod)
-	r.Get("/payment-methods/:id", middleware.RBACMiddleware("admin", "user"), h.GetPaymentMethod)
-	r.Get("/payment-methods", middleware.RBACMiddleware("admin", "user"), h.ListPaymentMethods)
-
-	r.Post("/subscriptions", middleware.RBACMiddleware("admin"), h.CreateSubscription)
-	r.Put("/subscriptions/:id", middleware.RBACMiddleware("admin"), h.UpdateSubscription)
-	r.Delete("/subscriptions/:id", middleware.RBACMiddleware("admin"), h.DeleteSubscription)
-	r.Get("/subscriptions/:id", middleware.RBACMiddleware("admin", "user"), h.GetSubscription)
-	r.Get("/subscriptions", middleware.RBACMiddleware("admin", "user"), h.ListSubscriptions)
-
-	r.Post("/webhook-events", middleware.RBACMiddleware("admin"), h.CreateWebhookEvent)
-	r.Put("/webhook-events/:id", middleware.RBACMiddleware("admin"), h.UpdateWebhookEvent)
-	r.Delete("/webhook-events/:id", middleware.RBACMiddleware("admin"), h.DeleteWebhookEvent)
-	r.Get("/webhook-events/:id", middleware.RBACMiddleware("admin", "user"), h.GetWebhookEvent)
-	r.Get("/webhook-events", middleware.RBACMiddleware("admin", "user"), h.ListWebhookEvents)
-
-	r.Post("/invoice-adjustments", middleware.RBACMiddleware("admin"), h.CreateInvoiceAdjustment)
-	r.Put("/invoice-adjustments/:id", middleware.RBACMiddleware("admin"), h.UpdateInvoiceAdjustment)
-	r.Delete("/invoice-adjustments/:id", middleware.RBACMiddleware("admin"), h.DeleteInvoiceAdjustment)
-	r.Get("/invoice-adjustments/:id", middleware.RBACMiddleware("admin", "user"), h.GetInvoiceAdjustment)
-	r.Get("/invoice-adjustments", middleware.RBACMiddleware("admin", "user"), h.ListInvoiceAdjustments)
-
-	r.Patch("/credits/:id", middleware.RBACMiddleware("admin"), h.PatchCredit)
-	r.Patch("/payment-methods/:id", middleware.RBACMiddleware("admin"), h.PatchPaymentMethod)
-	r.Patch("/subscriptions/:id", middleware.RBACMiddleware("admin"), h.PatchSubscription)
-	r.Post("/subscriptions/:id/change-plan", middleware.RBACMiddleware("admin"), h.ChangePlanSubscription)
-	r.Post("/subscriptions/:id/cancel", middleware.RBACMiddleware("admin"), h.CancelSubscriptionNow)
-	r.Post("/subscriptions/:id/resume", middleware.RBACMiddleware("admin"), h.ResumeSubscription)
-
-	r.Post("/webhooks/:provider", h.ReceiveWebhook)
-	r.Get("/accounts/:id/invoice-preview", middleware.RBACMiddleware("admin", "user"), h.GetInvoicePreview)
-
-	r.Post("/coupons/:code/redeem", middleware.RBACMiddleware("admin", "user"), h.RedeemCoupon)
-
-	r.Post("/subscriptions/:id/upgrade-now", middleware.RBACMiddleware("admin"), h.UpgradeNowSubscription)
-
-	r.Post("/invoices/:id/apply-credits", middleware.RBACMiddleware("admin"), h.ApplyCreditsToInvoice)
-
-	r.Get("/billing/config", middleware.RBACMiddleware("admin"), h.GetBillingConfig)
-	r.Post("/billing/config", middleware.RBACMiddleware("admin"), h.SetBillingConfig)
-
-	r.Post("/manual-adjustment", middleware.RBACMiddleware("admin"), h.CreateManualAdjustment)
-	r.Post("/manual-refund", middleware.RBACMiddleware("admin"), h.CreateManualRefund)
-	r.Post("/account-action", middleware.RBACMiddleware("admin"), h.PerformAccountAction)
-
-}
 
 func (h *BillingHandler) CreateAccount(c *fiber.Ctx) error {
 	var input service.CreateAccountInput
@@ -1162,9 +1043,9 @@ func (h *BillingHandler) ApplyCreditsToInvoice(c *fiber.Ctx) error {
 
 func (h *BillingHandler) GetBillingConfig(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
-		"tax_rate":    os.Getenv("BILLING_TAX_RATE"),
-		"fixed_fee":   os.Getenv("BILLING_FIXED_FEE"),
-		"percent_fee": os.Getenv("BILLING_PERCENT_FEE"),
+		"tax_rate":    viper.GetString("BILLING_TAX_RATE"),
+		"fixed_fee":   viper.GetString("BILLING_FIXED_FEE"),
+		"percent_fee": viper.GetString("BILLING_PERCENT_FEE"),
 	})
 }
 
@@ -1178,23 +1059,15 @@ func (h *BillingHandler) SetBillingConfig(c *fiber.Ctx) error {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
 	oldConfig := fiber.Map{
-		"tax_rate":    os.Getenv("BILLING_TAX_RATE"),
-		"fixed_fee":   os.Getenv("BILLING_FIXED_FEE"),
-		"percent_fee": os.Getenv("BILLING_PERCENT_FEE"),
+		"tax_rate":    viper.GetString("BILLING_TAX_RATE"),
+		"fixed_fee":   viper.GetString("BILLING_FIXED_FEE"),
+		"percent_fee": viper.GetString("BILLING_PERCENT_FEE"),
 	}
-	if req.TaxRate != "" {
-		_ = os.Setenv("BILLING_TAX_RATE", req.TaxRate)
-	}
-	if req.FixedFee != "" {
-		_ = os.Setenv("BILLING_FIXED_FEE", req.FixedFee)
-	}
-	if req.PercentFee != "" {
-		_ = os.Setenv("BILLING_PERCENT_FEE", req.PercentFee)
-	}
+
 	newConfig := fiber.Map{
-		"tax_rate":    os.Getenv("BILLING_TAX_RATE"),
-		"fixed_fee":   os.Getenv("BILLING_FIXED_FEE"),
-		"percent_fee": os.Getenv("BILLING_PERCENT_FEE"),
+		"tax_rate":    viper.GetString("BILLING_TAX_RATE"),
+		"fixed_fee":   viper.GetString("BILLING_FIXED_FEE"),
+		"percent_fee": viper.GetString("BILLING_PERCENT_FEE"),
 	}
 	actorID := "system"
 	if v := c.Locals("actor_id"); v != nil {

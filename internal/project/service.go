@@ -6,18 +6,8 @@ import (
 	"time"
 )
 
-type Service interface {
-	Create(ctx context.Context, input CreateProjectInput) (CreateProjectOutput, error)
-	Get(ctx context.Context, input GetProjectInput) (GetProjectOutput, error)
-	Update(ctx context.Context, input UpdateProjectInput) (UpdateProjectOutput, error)
-	Delete(ctx context.Context, input DeleteProjectInput) (DeleteProjectOutput, error)
-	ListByTenant(ctx context.Context, input ListProjectsByTenantInput) (ListProjectsOutput, error)
-	ListByOrg(ctx context.Context, input ListProjectsByOrgInput) (ListProjectsOutput, error)
-}
 
-type service struct {
-	repo Repository
-}
+
 
 func NewService(repo Repository) Service {
 	return &service{repo: repo}
@@ -112,49 +102,4 @@ func (s *service) ListByOrg(ctx context.Context, input ListProjectsByOrgInput) (
 		return ListProjectsOutput{}, err
 	}
 	return ListProjectsOutput{Projects: projects}, nil
-}
-
-// Input/Output types for RORO pattern
-type CreateProjectInput struct {
-	ID          string
-	TenantID    string
-	OrgID       *string
-	Name        string
-	Description string
-	Status      string
-	Tags        map[string]string
-}
-type CreateProjectOutput struct {
-	Project *Project
-}
-type GetProjectInput struct {
-	ID string
-}
-type GetProjectOutput struct {
-	Project *Project
-}
-type UpdateProjectInput struct {
-	ID          string
-	Name        string
-	Description string
-	Status      string
-	Tags        map[string]string
-}
-type UpdateProjectOutput struct {
-	Project *Project
-}
-type DeleteProjectInput struct {
-	ID string
-}
-type DeleteProjectOutput struct {
-	Success bool
-}
-type ListProjectsByTenantInput struct {
-	TenantID string
-}
-type ListProjectsByOrgInput struct {
-	OrgID string
-}
-type ListProjectsOutput struct {
-	Projects []*Project
 }

@@ -53,8 +53,23 @@ type OptimizationRecommendation struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-// OptimizationEngine defines the interface for all optimization providers
-// (OpenAI, AWS, Azure, GCP, etc.)
-type OptimizationEngine interface {
-	GenerateRecommendations(req *OptimizationRequest) ([]*OptimizationRecommendation, error)
+// PaymentMethod represents a PCI-compliant payment method for an account
+// Only non-sensitive metadata is stored: last4, exp, provider, token, token_provider
+// All sensitive card/bank data is tokenized and never stored in the DB
+// Token is a reference to the vault/tokenization provider (e.g., Stripe, Adyen, AWS KMS)
+type PaymentMethod struct {
+	ID            string    `json:"id"`
+	AccountID     string    `json:"account_id"`
+	Type          string    `json:"type"`
+	Provider      string    `json:"provider"`
+	Last4         string    `json:"last4"`
+	ExpMonth      int       `json:"exp_month"`
+	ExpYear       int       `json:"exp_year"`
+	IsDefault     bool      `json:"is_default"`
+	Status        string    `json:"status"`
+	Token         string    `json:"token"`          // PCI token reference, never raw PAN
+	TokenProvider string    `json:"token_provider"` // e.g., stripe, adyen, aws_kms
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	Metadata      string    `json:"metadata"`
 }

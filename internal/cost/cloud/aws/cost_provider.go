@@ -15,10 +15,8 @@ import (
 	cetypes "github.com/aws/aws-sdk-go-v2/service/costexplorer/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/google/uuid"
-
-	"github.com/subinc/subinc-backend/internal/architecture"
-	"github.com/subinc/subinc-backend/internal/architecture/types"
 	"github.com/subinc/subinc-backend/internal/cost/domain"
+	"github.com/subinc/subinc-backend/internal/architecture"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -596,7 +594,7 @@ func (p *AWSCostProvider) HealthCheck(ctx context.Context) error {
 }
 
 // ListResources implements ResourceInventoryProvider for AWS
-func (p *AWSCostProvider) ListResources(ctx context.Context, accountID string, credentials map[string]string) ([]types.ResourceNode, error) {
+func (p *AWSCostProvider) ListResources(ctx context.Context, accountID string, credentials map[string]string) ([]architecture.ResourceNode, error) {
 	if credentials == nil {
 		return nil, ErrMissingCredentials
 	}
