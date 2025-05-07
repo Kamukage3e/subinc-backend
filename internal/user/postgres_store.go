@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -15,12 +16,12 @@ func NewPostgresUserStore(db *pgxpool.Pool) *PostgresUserStore {
 
 // GetByUsername fetches a user by username. Returns user or error if not found.
 func (s *PostgresUserStore) GetByUsername(ctx context.Context, username string) (*User, error) {
-	const q = `SELECT id, tenant_id, username, email, password_hash, roles, attributes, created_at, updated_at FROM users WHERE username = $1`
+	const q = `SELECT id, tenant_id, username, email, password_hash, roles, attributes, created_at, updated_at, mfa_secret, mfa_enabled, backup_codes FROM users WHERE username = $1`
 	row := s.DB.QueryRow(ctx, q, username)
 	u := &User{}
 	var roles []string
 	var attributes map[string]string
-	if err := row.Scan(&u.ID, &u.TenantID, &u.Username, &u.Email, &u.PasswordHash, &roles, &attributes, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.TenantID, &u.Username, &u.Email, &u.PasswordHash, &roles, &attributes, &u.CreatedAt, &u.UpdatedAt, &u.MFASecret, &u.MFAEnabled, &u.BackupCodes); err != nil {
 		return nil, errors.New("user not found")
 	}
 	u.Roles = roles
@@ -30,12 +31,12 @@ func (s *PostgresUserStore) GetByUsername(ctx context.Context, username string) 
 
 // GetByID fetches a user by ID. Returns user or error if not found.
 func (s *PostgresUserStore) GetByID(ctx context.Context, id string) (*User, error) {
-	const q = `SELECT id, tenant_id, username, email, password_hash, roles, attributes, created_at, updated_at FROM users WHERE id = $1`
+	const q = `SELECT id, tenant_id, username, email, password_hash, roles, attributes, created_at, updated_at, mfa_secret, mfa_enabled, backup_codes FROM users WHERE id = $1`
 	row := s.DB.QueryRow(ctx, q, id)
 	u := &User{}
 	var roles []string
 	var attributes map[string]string
-	if err := row.Scan(&u.ID, &u.TenantID, &u.Username, &u.Email, &u.PasswordHash, &roles, &attributes, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.TenantID, &u.Username, &u.Email, &u.PasswordHash, &roles, &attributes, &u.CreatedAt, &u.UpdatedAt, &u.MFASecret, &u.MFAEnabled, &u.BackupCodes); err != nil {
 		return nil, errors.New("user not found")
 	}
 	u.Roles = roles
@@ -45,9 +46,9 @@ func (s *PostgresUserStore) GetByID(ctx context.Context, id string) (*User, erro
 
 // Create inserts a new user. Returns error if insert fails.
 func (s *PostgresUserStore) Create(ctx context.Context, u *User) error {
-	const q = `INSERT INTO users (id, tenant_id, username, email, password_hash, roles, attributes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	const q = `INSERT INTO users (id, tenant_id, username, email, password_hash, roles, attributes, created_at, updated_at, mfa_secret, mfa_enabled, backup_codes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
 	now := time.Now().UTC()
-	_, err := s.DB.Exec(ctx, q, u.ID, u.TenantID, u.Username, u.Email, u.PasswordHash, u.Roles, u.Attributes, now, now)
+	_, err := s.DB.Exec(ctx, q, u.ID, u.TenantID, u.Username, u.Email, u.PasswordHash, u.Roles, u.Attributes, now, now, u.MFASecret, u.MFAEnabled, u.BackupCodes)
 	if err != nil {
 		return errors.New("failed to create user")
 	}
@@ -58,9 +59,9 @@ func (s *PostgresUserStore) Create(ctx context.Context, u *User) error {
 
 // Update modifies an existing user. Returns error if update fails.
 func (s *PostgresUserStore) Update(ctx context.Context, u *User) error {
-	const q = `UPDATE users SET tenant_id = $2, username = $3, email = $4, password_hash = $5, roles = $6, attributes = $7, updated_at = $8 WHERE id = $1`
+	const q = `UPDATE users SET tenant_id = $2, username = $3, email = $4, password_hash = $5, roles = $6, attributes = $7, updated_at = $8, mfa_secret = $9, mfa_enabled = $10, backup_codes = $11 WHERE id = $1`
 	now := time.Now().UTC()
-	_, err := s.DB.Exec(ctx, q, u.ID, u.TenantID, u.Username, u.Email, u.PasswordHash, u.Roles, u.Attributes, now)
+	_, err := s.DB.Exec(ctx, q, u.ID, u.TenantID, u.Username, u.Email, u.PasswordHash, u.Roles, u.Attributes, now, u.MFASecret, u.MFAEnabled, u.BackupCodes)
 	if err != nil {
 		return errors.New("failed to update user")
 	}
@@ -80,7 +81,7 @@ func (s *PostgresUserStore) Delete(ctx context.Context, id string) error {
 
 // ListByTenantID returns all users for a given tenant. Returns error if query fails.
 func (s *PostgresUserStore) ListByTenantID(ctx context.Context, tenantID string) ([]*User, error) {
-	const q = `SELECT id, tenant_id, username, email, password_hash, roles, attributes, created_at, updated_at FROM users WHERE tenant_id = $1`
+	const q = `SELECT id, tenant_id, username, email, password_hash, roles, attributes, created_at, updated_at, mfa_secret, mfa_enabled, backup_codes FROM users WHERE tenant_id = $1`
 	rows, err := s.DB.Query(ctx, q, tenantID)
 	if err != nil {
 		return nil, errors.New("failed to query users by tenant")
@@ -91,7 +92,7 @@ func (s *PostgresUserStore) ListByTenantID(ctx context.Context, tenantID string)
 		u := &User{}
 		var roles []string
 		var attributes map[string]string
-		if err := rows.Scan(&u.ID, &u.TenantID, &u.Username, &u.Email, &u.PasswordHash, &roles, &attributes, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.TenantID, &u.Username, &u.Email, &u.PasswordHash, &roles, &attributes, &u.CreatedAt, &u.UpdatedAt, &u.MFASecret, &u.MFAEnabled, &u.BackupCodes); err != nil {
 			return nil, errors.New("failed to scan user row")
 		}
 		u.Roles = roles
@@ -188,15 +189,253 @@ func (s *PostgresUserStore) MarkEmailVerificationTokenUsed(ctx context.Context, 
 
 // GetByEmail fetches a user by email. Returns user or error if not found.
 func (s *PostgresUserStore) GetByEmail(ctx context.Context, email string) (*User, error) {
-	const q = `SELECT id, tenant_id, username, email, password_hash, roles, attributes, created_at, updated_at, email_verified FROM users WHERE email = $1`
+	const q = `SELECT id, tenant_id, username, email, password_hash, roles, attributes, created_at, updated_at, email_verified, mfa_secret, mfa_enabled, backup_codes FROM users WHERE email = $1`
 	row := s.DB.QueryRow(ctx, q, email)
 	var u User
 	var roles []string
 	var attributes map[string]string
-	if err := row.Scan(&u.ID, &u.TenantID, &u.Username, &u.Email, &u.PasswordHash, &roles, &attributes, &u.CreatedAt, &u.UpdatedAt, &u.EmailVerified); err != nil {
+	if err := row.Scan(&u.ID, &u.TenantID, &u.Username, &u.Email, &u.PasswordHash, &roles, &attributes, &u.CreatedAt, &u.UpdatedAt, &u.EmailVerified, &u.MFASecret, &u.MFAEnabled, &u.BackupCodes); err != nil {
 		return nil, err
 	}
 	u.Roles = roles
 	u.Attributes = attributes
 	return &u, nil
+}
+
+// UserDeviceStore implementation (Postgres)
+func (s *PostgresUserStore) CreateDevice(ctx context.Context, d *UserDevice) error {
+	const q = `INSERT INTO user_devices (device_id, user_id, refresh_token_id, user_agent, ip, created_at, last_seen, revoked, name) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	_, err := s.DB.Exec(ctx, q, d.DeviceID, d.UserID, d.RefreshTokenID, d.UserAgent, d.IP, d.CreatedAt, d.LastSeen, d.Revoked, d.Name)
+	return err
+}
+
+func (s *PostgresUserStore) UpdateDevice(ctx context.Context, d *UserDevice) error {
+	const q = `UPDATE user_devices SET refresh_token_id = $2, user_agent = $3, ip = $4, last_seen = $5, revoked = $6, name = $7 WHERE device_id = $1`
+	_, err := s.DB.Exec(ctx, q, d.DeviceID, d.RefreshTokenID, d.UserAgent, d.IP, d.LastSeen, d.Revoked, d.Name)
+	return err
+}
+
+func (s *PostgresUserStore) GetDeviceByID(ctx context.Context, deviceID string) (*UserDevice, error) {
+	const q = `SELECT device_id, user_id, refresh_token_id, user_agent, ip, created_at, last_seen, revoked, name FROM user_devices WHERE device_id = $1`
+	row := s.DB.QueryRow(ctx, q, deviceID)
+	d := &UserDevice{}
+	if err := row.Scan(&d.DeviceID, &d.UserID, &d.RefreshTokenID, &d.UserAgent, &d.IP, &d.CreatedAt, &d.LastSeen, &d.Revoked, &d.Name); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+func (s *PostgresUserStore) ListDevicesByUserID(ctx context.Context, userID string) ([]*UserDevice, error) {
+	const q = `SELECT device_id, user_id, refresh_token_id, user_agent, ip, created_at, last_seen, revoked, name FROM user_devices WHERE user_id = $1 ORDER BY last_seen DESC`
+	rows, err := s.DB.Query(ctx, q, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*UserDevice
+	for rows.Next() {
+		d := &UserDevice{}
+		if err := rows.Scan(&d.DeviceID, &d.UserID, &d.RefreshTokenID, &d.UserAgent, &d.IP, &d.CreatedAt, &d.LastSeen, &d.Revoked, &d.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
+
+func (s *PostgresUserStore) RevokeDevice(ctx context.Context, deviceID string) error {
+	const q = `UPDATE user_devices SET revoked = true WHERE device_id = $1`
+	_, err := s.DB.Exec(ctx, q, deviceID)
+	return err
+}
+
+func (s *PostgresUserStore) RevokeAllDevicesForUser(ctx context.Context, userID string) error {
+	const q = `UPDATE user_devices SET revoked = true WHERE user_id = $1`
+	_, err := s.DB.Exec(ctx, q, userID)
+	return err
+}
+
+// --- UserOrgProjectRoleStore implementation (Postgres) ---
+
+func (s *PostgresUserStore) CreateRole(ctx context.Context, r *UserOrgProjectRole) error {
+	const q = `INSERT INTO user_org_project_roles (id, user_id, org_id, project_id, role, permissions, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`
+	_, err := s.DB.Exec(ctx, q, r.ID, r.UserID, r.OrgID, r.ProjectID, r.Role, r.Permissions, r.CreatedAt, r.UpdatedAt)
+	return err
+}
+
+func (s *PostgresUserStore) UpdateRole(ctx context.Context, r *UserOrgProjectRole) error {
+	const q = `UPDATE user_org_project_roles SET user_id=$2, org_id=$3, project_id=$4, role=$5, permissions=$6, updated_at=$7 WHERE id=$1`
+	_, err := s.DB.Exec(ctx, q, r.ID, r.UserID, r.OrgID, r.ProjectID, r.Role, r.Permissions, r.UpdatedAt)
+	return err
+}
+
+func (s *PostgresUserStore) DeleteRole(ctx context.Context, id string) error {
+	const q = `DELETE FROM user_org_project_roles WHERE id=$1`
+	_, err := s.DB.Exec(ctx, q, id)
+	return err
+}
+
+func (s *PostgresUserStore) GetRoleByID(ctx context.Context, id string) (*UserOrgProjectRole, error) {
+	const q = `SELECT id, user_id, org_id, project_id, role, permissions, created_at, updated_at FROM user_org_project_roles WHERE id=$1`
+	row := s.DB.QueryRow(ctx, q, id)
+	r := &UserOrgProjectRole{}
+	var orgID, projectID *string
+	if err := row.Scan(&r.ID, &r.UserID, &orgID, &projectID, &r.Role, &r.Permissions, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		return nil, err
+	}
+	r.OrgID = orgID
+	r.ProjectID = projectID
+	return r, nil
+}
+
+func (s *PostgresUserStore) ListRolesByUser(ctx context.Context, userID string) ([]*UserOrgProjectRole, error) {
+	const q = `SELECT id, user_id, org_id, project_id, role, permissions, created_at, updated_at FROM user_org_project_roles WHERE user_id=$1`
+	rows, err := s.DB.Query(ctx, q, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*UserOrgProjectRole
+	for rows.Next() {
+		r := &UserOrgProjectRole{}
+		var orgID, projectID *string
+		if err := rows.Scan(&r.ID, &r.UserID, &orgID, &projectID, &r.Role, &r.Permissions, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		r.OrgID = orgID
+		r.ProjectID = projectID
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+func (s *PostgresUserStore) ListRolesByOrg(ctx context.Context, orgID string) ([]*UserOrgProjectRole, error) {
+	const q = `SELECT id, user_id, org_id, project_id, role, permissions, created_at, updated_at FROM user_org_project_roles WHERE org_id=$1`
+	rows, err := s.DB.Query(ctx, q, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*UserOrgProjectRole
+	for rows.Next() {
+		r := &UserOrgProjectRole{}
+		var orgIDPtr, projectID *string
+		if err := rows.Scan(&r.ID, &r.UserID, &orgIDPtr, &projectID, &r.Role, &r.Permissions, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		r.OrgID = orgIDPtr
+		r.ProjectID = projectID
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+func (s *PostgresUserStore) ListRolesByProject(ctx context.Context, projectID string) ([]*UserOrgProjectRole, error) {
+	const q = `SELECT id, user_id, org_id, project_id, role, permissions, created_at, updated_at FROM user_org_project_roles WHERE project_id=$1`
+	rows, err := s.DB.Query(ctx, q, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*UserOrgProjectRole
+	for rows.Next() {
+		r := &UserOrgProjectRole{}
+		var orgID, projectIDPtr *string
+		if err := rows.Scan(&r.ID, &r.UserID, &orgID, &projectIDPtr, &r.Role, &r.Permissions, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		r.OrgID = orgID
+		r.ProjectID = projectIDPtr
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+func (s *PostgresUserStore) FindRole(ctx context.Context, userID, orgID, projectID, role string) (*UserOrgProjectRole, error) {
+	const q = `SELECT id, user_id, org_id, project_id, role, permissions, created_at, updated_at FROM user_org_project_roles WHERE user_id=$1 AND org_id IS NOT DISTINCT FROM $2 AND project_id IS NOT DISTINCT FROM $3 AND role=$4`
+	row := s.DB.QueryRow(ctx, q, userID, orgID, projectID, role)
+	r := &UserOrgProjectRole{}
+	var orgIDPtr, projectIDPtr *string
+	if err := row.Scan(&r.ID, &r.UserID, &orgIDPtr, &projectIDPtr, &r.Role, &r.Permissions, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		return nil, err
+	}
+	r.OrgID = orgIDPtr
+	r.ProjectID = projectIDPtr
+	return r, nil
+}
+
+// CreateRolesTx creates multiple roles in a single transaction. Returns error if any insert fails.
+func (s *PostgresUserStore) CreateRolesTx(ctx context.Context, tx pgx.Tx, roles []*UserOrgProjectRole) error {
+	const q = `INSERT INTO user_org_project_roles (id, user_id, org_id, project_id, role, permissions, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`
+	for _, r := range roles {
+		_, err := tx.Exec(ctx, q, r.ID, r.UserID, r.OrgID, r.ProjectID, r.Role, r.Permissions, r.CreatedAt, r.UpdatedAt)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DeleteRolesTx deletes multiple roles in a single transaction. Returns error if any delete fails.
+func (s *PostgresUserStore) DeleteRolesTx(ctx context.Context, tx pgx.Tx, roleIDs []string) error {
+	const q = `DELETE FROM user_org_project_roles WHERE id=$1`
+	for _, id := range roleIDs {
+		_, err := tx.Exec(ctx, q, id)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// UpdateRolesTx updates multiple roles in a single transaction. Returns error if any update fails.
+func (s *PostgresUserStore) UpdateRolesTx(ctx context.Context, tx pgx.Tx, roles []*UserOrgProjectRole) error {
+	const q = `UPDATE user_org_project_roles SET user_id=$2, org_id=$3, project_id=$4, role=$5, permissions=$6, updated_at=$7 WHERE id=$1`
+	for _, r := range roles {
+		_, err := tx.Exec(ctx, q, r.ID, r.UserID, r.OrgID, r.ProjectID, r.Role, r.Permissions, r.UpdatedAt)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ListAllUserRolesPermissions returns all users with all their roles/permissions (org/project/global)
+func (s *PostgresUserStore) ListAllUserRolesPermissions(ctx context.Context) ([]*UserRolesPermissions, error) {
+	const userQ = `SELECT id, username, email FROM users`
+	const roleQ = `SELECT user_id, id, org_id, project_id, role, permissions, created_at, updated_at FROM user_org_project_roles`
+	rows, err := s.DB.Query(ctx, userQ)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	users := make(map[string]*UserRolesPermissions)
+	for rows.Next() {
+		var u UserRolesPermissions
+		if err := rows.Scan(&u.UserID, &u.Username, &u.Email); err != nil {
+			return nil, err
+		}
+		u.Roles = []UserOrgProjectRole{}
+		users[u.UserID] = &u
+	}
+	roleRows, err := s.DB.Query(ctx, roleQ)
+	if err != nil {
+		return nil, err
+	}
+	defer roleRows.Close()
+	for roleRows.Next() {
+		var r UserOrgProjectRole
+		var userID string
+		if err := roleRows.Scan(&userID, &r.ID, &r.OrgID, &r.ProjectID, &r.Role, &r.Permissions, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if u, ok := users[userID]; ok {
+			u.Roles = append(u.Roles, r)
+		}
+	}
+	result := make([]*UserRolesPermissions, 0, len(users))
+	for _, u := range users {
+		result = append(result, u)
+	}
+	return result, nil
 }

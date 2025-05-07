@@ -17,15 +17,9 @@ CREATE TABLE
                 'refunded'
             )
         ),
-        created_at TIMESTAMPTZ NOT NULL,
-        updated_at TIMESTAMPTZ NOT NULL,
-        paid_at TIMESTAMPTZ,
-        line_items JSONB NOT NULL DEFAULT '[]',
-        tax_amount DOUBLE PRECISION NOT NULL DEFAULT 0,
-        tax_rate DOUBLE PRECISION NOT NULL DEFAULT 0,
-        fees JSONB NOT NULL DEFAULT '[]'
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now (),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now (),
+        metadata JSONB NOT NULL DEFAULT '{}'
     );
 
 CREATE INDEX idx_invoices_account_id ON invoices (account_id);
-
-CREATE INDEX idx_invoices_status ON invoices (status);

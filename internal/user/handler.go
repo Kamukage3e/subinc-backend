@@ -1,14 +1,24 @@
 package user
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base32"
 	"encoding/base64"
+	"encoding/hex"
+	"image/png"
 	"net/mail"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/pquerna/otp/totp"
+
+	"github.com/subinc/subinc-backend/internal/cost/domain"
+	"github.com/subinc/subinc-backend/internal/cost/repository"
 	"github.com/subinc/subinc-backend/internal/pkg/idencode"
 	"github.com/subinc/subinc-backend/internal/pkg/secrets"
 )
@@ -17,11 +27,15 @@ import (
 // Modular, SaaS-grade, handler-based routing
 // All endpoints must be production-ready and secure
 
+// Helper to compute audit log hash
+func computeAuditLogHash(id, actorID, action, targetID string, timestamp time.Time, details string) string {
+	data := id + actorID + action + targetID + timestamp.UTC().Format(time.RFC3339Nano) + details
+	sum := sha256.Sum256([]byte(data))
+	return hex.EncodeToString(sum[:])
+}
 
-
-
-func NewHandler(store UserStore, secrets secrets.SecretsManager, jwtSecretName string, emailSender EmailSender) *UserHandler {
-	return &UserHandler{store: store, secrets: secrets, jwtSecretName: jwtSecretName, emailSender: emailSender}
+func NewHandler(store UserStore, secrets secrets.SecretsManager, jwtSecretName string, emailSender EmailSender, billingRepo repository.BillingRepository) *UserHandler {
+	return &UserHandler{store: store, secrets: secrets, jwtSecretName: jwtSecretName, emailSender: emailSender, billingRepo: billingRepo}
 }
 
 func decodeIDParam(c *fiber.Ctx) (string, error) {
@@ -104,19 +118,98 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 		Password string `json:"password"`
 	}
 	if err := c.BodyParser(&creds); err != nil {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "invalid request body"
+		hash := computeAuditLogHash(id, actorID, "system_event", "", timestamp, details)
+		if err := h.billingRepo.CreateAuditLog(c.Context(), &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "system_event",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		}); err != nil {
+			// log or handle error
+		}
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
 	ctx := context.Background()
-	u, err := h.store.GetByUsername(ctx, creds.Username)
-	if err != nil {
+	var u *User
+	var err error
+	if creds.Username == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid credentials"})
+	}
+	if strings.Contains(creds.Username, "@") {
+		u, err = h.getUserByEmail(ctx, creds.Username)
+		if err != nil {
+			u, err = h.store.GetByUsername(ctx, creds.Username)
+		}
+	} else {
+		u, err = h.store.GetByUsername(ctx, creds.Username)
+		if err != nil {
+			u, err = h.getUserByEmail(ctx, creds.Username)
+		}
+	}
+	if err != nil || u == nil {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "user not found or invalid credentials"
+		hash := computeAuditLogHash(id, actorID, "system_event", "", timestamp, details)
+		if err := h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "system_event",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		}); err != nil {
+			// log or handle error
+		}
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid credentials"})
 	}
 	ok, err := VerifyPassword(creds.Password, u.PasswordHash)
 	if err != nil || !ok {
+		id := GenerateUUID()
+		actorID := u.ID
+		timestamp := time.Now().UTC()
+		details := "invalid password"
+		hash := computeAuditLogHash(id, actorID, "login_failed", actorID, timestamp, details)
+		if err := h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "login_failed",
+			TargetID:  actorID,
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		}); err != nil {
+			// log or handle error
+		}
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid credentials"})
 	}
 	jwtSecret, err := h.secrets.GetSecret(context.Background(), h.jwtSecretName)
 	if err != nil || jwtSecret == "" {
+		id := GenerateUUID()
+		actorID := u.ID
+		timestamp := time.Now().UTC()
+		details := "server misconfiguration"
+		hash := computeAuditLogHash(id, actorID, "system_event", actorID, timestamp, details)
+		if err := h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "system_event",
+			TargetID:  actorID,
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		}); err != nil {
+			// log or handle error
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "server misconfiguration"})
 	}
 	claims := jwt.MapClaims{
@@ -125,13 +218,59 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 		"tenant_id":  u.TenantID,
 		"roles":      u.Roles,
 		"attributes": u.Attributes,
+		"type":       "user",
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString([]byte(jwtSecret))
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to sign token"})
 	}
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{"token": tokenString})
+	// Device/session tracking
+	deviceStore, ok := h.store.(UserDeviceStore)
+	if ok {
+		userAgent := c.Get("User-Agent")
+		ip := c.IP()
+		devices, _ := deviceStore.ListDevicesByUserID(ctx, u.ID)
+		isNew := true
+		for _, d := range devices {
+			if d.UserAgent == userAgent && d.IP == ip && !d.Revoked {
+				isNew = false
+				break
+			}
+		}
+		if isNew {
+			dev := &UserDevice{
+				DeviceID:       GenerateUUID(),
+				UserID:         u.ID,
+				RefreshTokenID: "", // set after refresh token is created
+				UserAgent:      userAgent,
+				IP:             ip,
+				CreatedAt:      time.Now().UTC(),
+				LastSeen:       time.Now().UTC(),
+				Revoked:        false,
+				Name:           userAgent,
+			}
+			_ = deviceStore.CreateDevice(ctx, dev)
+			_ = h.emailSender.SendDeviceLoginNotification(u.Email, dev.Name, dev.IP, dev.UserAgent)
+		}
+	}
+	id := GenerateUUID()
+	actorID := u.ID
+	timestamp := time.Now().UTC()
+	details := "login successful"
+	hash := computeAuditLogHash(id, actorID, "login_success", actorID, timestamp, details)
+	if err := h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+		ID:        id,
+		ActorID:   actorID,
+		Action:    "login_success",
+		TargetID:  actorID,
+		Timestamp: timestamp,
+		Details:   details,
+		Hash:      hash,
+	}); err != nil {
+		// log or handle error
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"token": tokenString, "type": "user"})
 }
 
 func (h *UserHandler) Register(c *fiber.Ctx) error {
@@ -356,6 +495,7 @@ func (h *UserHandler) Refresh(c *fiber.Ctx) error {
 		"tenant_id":  user.TenantID,
 		"roles":      user.Roles,
 		"attributes": user.Attributes,
+		"type":       "user",
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString([]byte(jwtSecret))
@@ -387,7 +527,7 @@ func (h *UserHandler) Refresh(c *fiber.Ctx) error {
 		SameSite: "Strict",
 		Expires:  rtok.ExpiresAt,
 	})
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{"token": tokenString})
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"token": tokenString, "type": "user"})
 }
 
 // getUserByEmail is a real DB lookup via UserStore
@@ -409,22 +549,85 @@ func (h *UserHandler) ForgotPassword(c *fiber.Ctx) error {
 		Email string `json:"email"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.Email == "" {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "invalid email"
+		hash := computeAuditLogHash(id, actorID, "forgot_password_failed", "", timestamp, details)
+		if err := h.billingRepo.CreateAuditLog(c.Context(), &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "forgot_password_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		}); err != nil {
+			// log or handle error
+		}
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid email"})
 	}
 	if _, err := mail.ParseAddress(req.Email); err != nil {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "invalid email format"
+		hash := computeAuditLogHash(id, actorID, "forgot_password_failed", "", timestamp, details)
+		if err := h.billingRepo.CreateAuditLog(c.Context(), &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "forgot_password_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		}); err != nil {
+			// log or handle error
+		}
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid email format"})
 	}
 	ctx := c.Context()
 	user, err := h.store.GetByUsername(ctx, req.Email)
 	if err != nil {
-		// Try by email if username lookup fails
 		user, err = h.getUserByEmail(ctx, req.Email)
 		if err != nil {
+			id := GenerateUUID()
+			actorID := "system"
+			timestamp := time.Now().UTC()
+			details := "user not found"
+			hash := computeAuditLogHash(id, actorID, "forgot_password_failed", "", timestamp, details)
+			if err := h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+				ID:        id,
+				ActorID:   actorID,
+				Action:    "forgot_password_failed",
+				TargetID:  "",
+				Timestamp: timestamp,
+				Details:   details,
+				Hash:      hash,
+			}); err != nil {
+				// log or handle error
+			}
 			return c.SendStatus(fiber.StatusNoContent)
 		}
 	}
 	token, err := generateSecureToken(32)
 	if err != nil {
+		id := GenerateUUID()
+		actorID := user.ID
+		timestamp := time.Now().UTC()
+		details := "failed to generate token"
+		hash := computeAuditLogHash(id, actorID, "forgot_password_failed", actorID, timestamp, details)
+		if err := h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "forgot_password_failed",
+			TargetID:  actorID,
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		}); err != nil {
+			// log or handle error
+		}
 		return c.SendStatus(fiber.StatusNoContent)
 	}
 	reset := &PasswordResetToken{
@@ -437,6 +640,22 @@ func (h *UserHandler) ForgotPassword(c *fiber.Ctx) error {
 	}
 	h.store.CreatePasswordResetToken(ctx, reset)
 	h.sendResetEmail(user.Email, token)
+	id := GenerateUUID()
+	actorID := user.ID
+	timestamp := time.Now().UTC()
+	details := "password reset requested"
+	hash := computeAuditLogHash(id, actorID, "forgot_password_requested", actorID, timestamp, details)
+	if err := h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+		ID:        id,
+		ActorID:   actorID,
+		Action:    "forgot_password_requested",
+		TargetID:  actorID,
+		Timestamp: timestamp,
+		Details:   details,
+		Hash:      hash,
+	}); err != nil {
+		// log or handle error
+	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -446,23 +665,93 @@ func (h *UserHandler) ResetPassword(c *fiber.Ctx) error {
 		Password string `json:"password"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.Token == "" || req.Password == "" {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "invalid request"
+		hash := computeAuditLogHash(id, actorID, "reset_password_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(c.Context(), &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "reset_password_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request"})
 	}
 	tok, err := h.store.GetPasswordResetToken(c.Context(), req.Token)
 	if err != nil || tok.Used || tok.ExpiresAt.Before(time.Now()) {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "invalid or expired token"
+		hash := computeAuditLogHash(id, actorID, "reset_password_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(c.Context(), &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "reset_password_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid or expired token"})
 	}
 	user, err := h.store.GetByID(c.Context(), tok.UserID)
 	if err != nil {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "user not found"
+		hash := computeAuditLogHash(id, actorID, "reset_password_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(c.Context(), &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "reset_password_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user not found"})
 	}
 	hash, err := HashPassword(req.Password)
 	if err != nil {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "failed to hash password"
+		hash := computeAuditLogHash(id, actorID, "reset_password_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(c.Context(), &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "reset_password_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to hash password"})
 	}
 	user.PasswordHash = hash
 	h.store.Update(c.Context(), user)
 	h.store.MarkPasswordResetTokenUsed(c.Context(), req.Token)
+	id := GenerateUUID()
+	actorID := "system"
+	timestamp := time.Now().UTC()
+	details := "password reset successful"
+	hash = computeAuditLogHash(id, actorID, "reset_password_success", "", timestamp, details)
+	h.billingRepo.CreateAuditLog(c.Context(), &domain.AuditLog{
+		ID:        id,
+		ActorID:   actorID,
+		Action:    "reset_password_success",
+		TargetID:  "",
+		Timestamp: timestamp,
+		Details:   details,
+		Hash:      hash,
+	})
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -471,19 +760,75 @@ func (h *UserHandler) VerifyEmail(c *fiber.Ctx) error {
 		Token string `json:"token"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.Token == "" {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "invalid token"
+		hash := computeAuditLogHash(id, actorID, "verify_email_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(c.Context(), &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "verify_email_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid token"})
 	}
 	tok, err := h.store.GetEmailVerificationToken(c.Context(), req.Token)
 	if err != nil || tok.Used || tok.ExpiresAt.Before(time.Now()) {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "invalid or expired token"
+		hash := computeAuditLogHash(id, actorID, "verify_email_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(c.Context(), &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "verify_email_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid or expired token"})
 	}
 	user, err := h.store.GetByID(c.Context(), tok.UserID)
 	if err != nil {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "user not found"
+		hash := computeAuditLogHash(id, actorID, "verify_email_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(c.Context(), &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "verify_email_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user not found"})
 	}
 	user.Attributes["email_verified"] = "true"
 	h.store.Update(c.Context(), user)
 	h.store.MarkEmailVerificationTokenUsed(c.Context(), req.Token)
+	id := GenerateUUID()
+	actorID := "system"
+	timestamp := time.Now().UTC()
+	details := "email verified"
+	hash := computeAuditLogHash(id, actorID, "verify_email_success", "", timestamp, details)
+	h.billingRepo.CreateAuditLog(c.Context(), &domain.AuditLog{
+		ID:        id,
+		ActorID:   actorID,
+		Action:    "verify_email_success",
+		TargetID:  "",
+		Timestamp: timestamp,
+		Details:   details,
+		Hash:      hash,
+	})
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -523,4 +868,474 @@ func (h *UserHandler) ResendVerification(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// RegisterRoutes registers all user endpoints at the given router group
+// MFA endpoints for SaaS TOTP (Google Authenticator-style)
+func (h *UserHandler) EnrollMFA(c *fiber.Ctx) error {
+	claims, ok := c.Locals("claims").(map[string]interface{})
+	if !ok || claims["sub"] == nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+	username := claims["sub"].(string)
+	ctx := c.Context()
+	u, err := h.store.GetByUsername(ctx, username)
+	if err != nil {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "user not found"
+		hash := computeAuditLogHash(id, actorID, "mfa_enroll_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "mfa_enroll_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "user not found"})
+	}
+	if u.IsMFAEnabled() {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "MFA already enabled"})
+	}
+	secret := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString([]byte(GenerateUUID()))
+	issuer := "Subinc"
+	otpKey, err := totp.Generate(totp.GenerateOpts{
+		Issuer:      issuer,
+		AccountName: u.Email,
+		Secret:      []byte(secret),
+	})
+	if err != nil {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "failed to generate TOTP secret"
+		hash := computeAuditLogHash(id, actorID, "mfa_enroll_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "mfa_enroll_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to generate TOTP secret"})
+	}
+	qr, err := otpKey.Image(200, 200)
+	if err != nil {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "failed to generate QR code"
+		hash := computeAuditLogHash(id, actorID, "mfa_enroll_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "mfa_enroll_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to generate QR code"})
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, qr); err != nil {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "failed to encode QR code"
+		hash := computeAuditLogHash(id, actorID, "mfa_enroll_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "mfa_enroll_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to encode QR code"})
+	}
+	qrBase64 := base64.StdEncoding.EncodeToString(buf.Bytes())
+	id := GenerateUUID()
+	actorID := "system"
+	timestamp := time.Now().UTC()
+	details := "MFA enrollment initiated"
+	hash := computeAuditLogHash(id, actorID, "mfa_enroll_initiated", "", timestamp, details)
+	h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+		ID:        id,
+		ActorID:   actorID,
+		Action:    "mfa_enroll_initiated",
+		TargetID:  "",
+		Timestamp: timestamp,
+		Details:   details,
+		Hash:      hash,
+	})
+	return c.Status(200).JSON(fiber.Map{
+		"secret":         secret,
+		"otpauth_url":    otpKey.URL(),
+		"qr_code_base64": qrBase64,
+	})
+}
+
+func (h *UserHandler) EnableMFA(c *fiber.Ctx) error {
+	claims, ok := c.Locals("claims").(map[string]interface{})
+	if !ok || claims["sub"] == nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+	username := claims["sub"].(string)
+	ctx := c.Context()
+	u, err := h.store.GetByUsername(ctx, username)
+	if err != nil {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "user not found"
+		hash := computeAuditLogHash(id, actorID, "mfa_enable_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "mfa_enable_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "user not found"})
+	}
+	if u.IsMFAEnabled() {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "MFA already enabled"})
+	}
+	var req struct {
+		Secret string `json:"secret"`
+		Code   string `json:"code"`
+	}
+	if err := c.BodyParser(&req); err != nil || req.Secret == "" || req.Code == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request"})
+	}
+	valid := totp.Validate(req.Code, req.Secret)
+	if !valid {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "invalid TOTP code"
+		hash := computeAuditLogHash(id, actorID, "mfa_enable_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "mfa_enable_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid TOTP code"})
+	}
+	u.SetMFASecret(req.Secret)
+	codes := make([]string, 10)
+	for i := range codes {
+		code, _ := generateSecureToken(8)
+		codes[i] = code
+	}
+	u.SetBackupCodes(codes)
+	if err := h.store.Update(ctx, u); err != nil {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "failed to persist MFA state"
+		hash := computeAuditLogHash(id, actorID, "mfa_enable_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "mfa_enable_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to enable MFA"})
+	}
+	id := GenerateUUID()
+	actorID := "system"
+	timestamp := time.Now().UTC()
+	details := "MFA enabled"
+	hash := computeAuditLogHash(id, actorID, "mfa_enabled", "", timestamp, details)
+	h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+		ID:        id,
+		ActorID:   actorID,
+		Action:    "mfa_enabled",
+		TargetID:  "",
+		Timestamp: timestamp,
+		Details:   details,
+		Hash:      hash,
+	})
+	return c.Status(200).JSON(fiber.Map{"mfa_enabled": true, "backup_codes": codes})
+}
+
+func (h *UserHandler) DisableMFA(c *fiber.Ctx) error {
+	claims, ok := c.Locals("claims").(map[string]interface{})
+	if !ok || claims["sub"] == nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+	username := claims["sub"].(string)
+	ctx := c.Context()
+	u, err := h.store.GetByUsername(ctx, username)
+	if err != nil {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "user not found"
+		hash := computeAuditLogHash(id, actorID, "mfa_disable_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "mfa_disable_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "user not found"})
+	}
+	if !u.IsMFAEnabled() {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "MFA not enabled"})
+	}
+	u.DisableMFA()
+	if err := h.store.Update(ctx, u); err != nil {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "failed to persist MFA disable"
+		hash := computeAuditLogHash(id, actorID, "mfa_disable_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "mfa_disable_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to disable MFA"})
+	}
+	id := GenerateUUID()
+	actorID := "system"
+	timestamp := time.Now().UTC()
+	details := "MFA disabled"
+	hash := computeAuditLogHash(id, actorID, "mfa_disabled", "", timestamp, details)
+	h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+		ID:        id,
+		ActorID:   actorID,
+		Action:    "mfa_disabled",
+		TargetID:  "",
+		Timestamp: timestamp,
+		Details:   details,
+		Hash:      hash,
+	})
+	return c.Status(200).JSON(fiber.Map{"mfa_enabled": false})
+}
+
+func (h *UserHandler) RegenerateBackupCodes(c *fiber.Ctx) error {
+	claims, ok := c.Locals("claims").(map[string]interface{})
+	if !ok || claims["sub"] == nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+	username := claims["sub"].(string)
+	ctx := c.Context()
+	u, err := h.store.GetByUsername(ctx, username)
+	if err != nil {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "user not found"
+		hash := computeAuditLogHash(id, actorID, "backup_codes_regenerate_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "backup_codes_regenerate_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "user not found"})
+	}
+	if !u.IsMFAEnabled() {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "MFA not enabled"})
+	}
+	codes := make([]string, 10)
+	for i := range codes {
+		code, _ := generateSecureToken(8)
+		codes[i] = code
+	}
+	u.SetBackupCodes(codes)
+	if err := h.store.Update(ctx, u); err != nil {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "failed to persist backup codes"
+		hash := computeAuditLogHash(id, actorID, "backup_codes_regenerate_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "backup_codes_regenerate_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to regenerate backup codes"})
+	}
+	id := GenerateUUID()
+	actorID := u.ID
+	timestamp := time.Now().UTC()
+	details := "backup codes regenerated"
+	hash := computeAuditLogHash(id, actorID, "backup_codes_regenerated", "", timestamp, details)
+	h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+		ID:        id,
+		ActorID:   actorID,
+		Action:    "backup_codes_regenerated",
+		TargetID:  "",
+		Timestamp: timestamp,
+		Details:   details,
+		Hash:      hash,
+	})
+	return c.Status(200).JSON(fiber.Map{"backup_codes": codes})
+}
+
+func (h *UserHandler) VerifyMFA(c *fiber.Ctx) error {
+	claims, ok := c.Locals("claims").(map[string]interface{})
+	if !ok || claims["sub"] == nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+	username := claims["sub"].(string)
+	ctx := c.Context()
+	u, err := h.store.GetByUsername(ctx, username)
+	if err != nil {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "user not found"
+		hash := computeAuditLogHash(id, actorID, "mfa_verify_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "mfa_verify_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "user not found"})
+	}
+	if !u.IsMFAEnabled() {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "MFA not enabled"})
+	}
+	var req struct {
+		Code string `json:"code"`
+	}
+	if err := c.BodyParser(&req); err != nil || req.Code == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request"})
+	}
+	valid := false
+	if totp.Validate(req.Code, u.MFASecret) {
+		valid = true
+	} else if u.UseBackupCode(req.Code) {
+		valid = true
+		h.store.Update(ctx, u) // persist backup code usage
+	}
+	id := GenerateUUID()
+	actorID := u.ID
+	timestamp := time.Now().UTC()
+	if !valid {
+		details := "invalid MFA code"
+		hash := computeAuditLogHash(id, actorID, "mfa_verify_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "mfa_verify_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid MFA code"})
+	}
+	details := "MFA verified"
+	hash := computeAuditLogHash(id, actorID, "mfa_verified", "", timestamp, details)
+	h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+		ID:        id,
+		ActorID:   actorID,
+		Action:    "mfa_verified",
+		TargetID:  "",
+		Timestamp: timestamp,
+		Details:   details,
+		Hash:      hash,
+	})
+	return c.Status(200).JSON(fiber.Map{"mfa_verified": true})
+}
+
+func (h *UserHandler) ListBackupCodes(c *fiber.Ctx) error {
+	claims, ok := c.Locals("claims").(map[string]interface{})
+	if !ok || claims["sub"] == nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+	username := claims["sub"].(string)
+	ctx := c.Context()
+	u, err := h.store.GetByUsername(ctx, username)
+	if err != nil {
+		id := GenerateUUID()
+		actorID := "system"
+		timestamp := time.Now().UTC()
+		details := "user not found"
+		hash := computeAuditLogHash(id, actorID, "backup_codes_list_failed", "", timestamp, details)
+		h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+			ID:        id,
+			ActorID:   actorID,
+			Action:    "backup_codes_list_failed",
+			TargetID:  "",
+			Timestamp: timestamp,
+			Details:   details,
+			Hash:      hash,
+		})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "user not found"})
+	}
+	if !u.IsMFAEnabled() {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "MFA not enabled"})
+	}
+	id := GenerateUUID()
+	actorID := u.ID
+	timestamp := time.Now().UTC()
+	details := "backup codes listed"
+	hash := computeAuditLogHash(id, actorID, "backup_codes_listed", "", timestamp, details)
+	h.billingRepo.CreateAuditLog(ctx, &domain.AuditLog{
+		ID:        id,
+		ActorID:   actorID,
+		Action:    "backup_codes_listed",
+		TargetID:  "",
+		Timestamp: timestamp,
+		Details:   details,
+		Hash:      hash,
+	})
+	return c.Status(200).JSON(fiber.Map{"backup_codes": u.BackupCodes})
+}
+
+func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
+	user, ok := c.Locals("user").(*User)
+	if !ok || user == nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"id":             user.ID,
+		"username":       user.Username,
+		"email":          user.Email,
+		"roles":          user.Roles,
+		"attributes":     user.Attributes,
+		"created_at":     user.CreatedAt,
+		"updated_at":     user.UpdatedAt,
+		"email_verified": user.EmailVerified,
+		"mfa_enabled":    user.MFAEnabled,
+		"type":           "user",
+	})
+}

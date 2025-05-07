@@ -1,7 +1,10 @@
 package domain
 
 import (
+	"fmt"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // BillingAccount represents a customer billing account
@@ -122,11 +125,35 @@ type AuditLog struct {
 	TargetID  string    `json:"target_id"`
 	Timestamp time.Time `json:"timestamp"`
 	Details   string    `json:"details"`
+	Hash      string    `json:"hash"`
 }
 
 func (a *AuditLog) Validate() error {
-	if a.ActorID == "" || a.Action == "" || a.TargetID == "" {
+	if a.Action == "system_event" && (a.ActorID == "system" || a.ActorID == "") {
+		if a.Hash == "" {
+			return ErrInvalidAuditLog
+		}
+		return nil
+	}
+	if a.ActorID == "" {
+		return ErrInvalidAuditLog // must have actor_id for user events
+	}
+	if !isValidUUID(a.ActorID) {
+		return fmt.Errorf("invalid actor_id: must be UUID, got %q", a.ActorID)
+	}
+	if a.TargetID != "" && !isValidUUID(a.TargetID) {
+		return fmt.Errorf("invalid target_id: must be UUID, got %q", a.TargetID)
+	}
+	if a.Action == "" {
+		return ErrInvalidAuditLog
+	}
+	if a.Hash == "" {
 		return ErrInvalidAuditLog
 	}
 	return nil
+}
+
+func isValidUUID(s string) bool {
+	_, err := uuid.Parse(s)
+	return err == nil
 }

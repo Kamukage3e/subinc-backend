@@ -159,4 +159,13 @@ Set `PAYMENTS_DISABLED=true` in your environment to disable all payment provider
 - Leave `PAYMENTS_DISABLED` unset or set to `false` to enable real payment processing.
 - All required provider env vars must be set for production.
 
-This feature is for local/dev/test only. Never use dummy mode in production. 
+This feature is for local/dev/test only. Never use dummy mode in production.
+
+## Middleware
+
+- **CORS**: Applied globally for all routes.
+- **Security Headers**: Strict HTTP security headers (helmet) enforced globally for all routes.
+- **Request Logging**: Structured, audit-grade logging for all requests, including admin API audit logs.
+- **Distributed Rate Limiting**: Redis-backed, production-grade rate limiting applied globally to protect against abuse and DoS.
+
+All middleware is enforced for every route and is production-grade, with no exceptions or bypasses. 

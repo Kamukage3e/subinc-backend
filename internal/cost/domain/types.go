@@ -73,3 +73,34 @@ type PaymentMethod struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 	Metadata      string    `json:"metadata"`
 }
+
+func (p *PaymentMethod) Validate() error {
+	if p.AccountID == "" {
+		return NewValidationError("account_id", "must not be empty")
+	}
+	if p.Type != "card" && p.Type != "bank" && p.Type != "other" {
+		return NewValidationError("type", "must be 'card', 'bank', or 'other'")
+	}
+	if p.Provider == "" {
+		return NewValidationError("provider", "must not be empty")
+	}
+	if len(p.Last4) != 4 {
+		return NewValidationError("last4", "must be 4 characters")
+	}
+	if p.ExpMonth < 1 || p.ExpMonth > 12 {
+		return NewValidationError("exp_month", "must be between 1 and 12")
+	}
+	if p.ExpYear < 2000 {
+		return NewValidationError("exp_year", "must be >= 2000")
+	}
+	if p.Status != "active" && p.Status != "inactive" && p.Status != "expired" && p.Status != "failed" {
+		return NewValidationError("status", "must be 'active', 'inactive', 'expired', or 'failed'")
+	}
+	if p.Token == "" {
+		return NewValidationError("token", "must not be empty (PCI token required)")
+	}
+	if p.TokenProvider == "" {
+		return NewValidationError("token_provider", "must not be empty (PCI token provider required)")
+	}
+	return nil
+}

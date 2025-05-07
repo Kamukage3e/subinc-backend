@@ -5,8 +5,6 @@ import (
 	"time"
 )
 
-
-
 type AdminStore interface {
 	ListUsers() ([]interface{}, error)
 	ListTenants() ([]interface{}, error)
@@ -87,12 +85,42 @@ type AdminStore interface {
 	CreateFeatureFlag(input *FeatureFlagInput) (interface{}, error)
 	UpdateFeatureFlag(input *FeatureFlagInput) (interface{}, error)
 	DeleteFeatureFlag(flag string) error
+	ListOrgTeams(ctx context.Context, filter OrgTeamFilter) ([]*OrgTeam, int, error)
+	CreateOrgTeam(ctx context.Context, team *OrgTeam) error
+	GetOrgTeam(ctx context.Context, orgID, teamID string) (*OrgTeam, error)
+	UpdateOrgTeam(ctx context.Context, team *OrgTeam) error
+	DeleteOrgTeam(ctx context.Context, orgID, teamID string) error
+	ListSSMBlogs(ctx context.Context, filter SSMBlogFilter) ([]*SSMBlog, int, error)
+	CreateSSMBlog(ctx context.Context, blog *SSMBlog) error
+	GetSSMBlog(ctx context.Context, id string) (*SSMBlog, error)
+	UpdateSSMBlog(ctx context.Context, blog *SSMBlog) error
+	DeleteSSMBlog(ctx context.Context, id string) error
+	ListSSMNews(ctx context.Context, filter SSMNewsFilter) ([]*SSMNews, int, error)
+	CreateSSMNews(ctx context.Context, news *SSMNews) error
+	GetSSMNews(ctx context.Context, id string) (*SSMNews, error)
+	UpdateSSMNews(ctx context.Context, news *SSMNews) error
+	DeleteSSMNews(ctx context.Context, id string) error
+	// --- Project/org admin methods for handler ---
+	ProjectAuditLogs(projectID string) ([]interface{}, error)
+	GetProjectSettings(projectID string) (map[string]interface{}, error)
+	UpdateProjectSettings(projectID string, settings map[string]interface{}) (map[string]interface{}, error)
+	InviteProjectUser(projectID, email, role string) (interface{}, error)
+	ListProjectInvitations(projectID string) ([]interface{}, error)
+	CreateProjectAPIKey(projectID, name string) (interface{}, error)
+	ListProjectAPIKeys(projectID string) ([]*APIKey, error)
+	OrgAuditLogs(orgID string) ([]interface{}, error)
+	GetOrgSettings(orgID string) (map[string]interface{}, error)
+	UpdateOrgSettings(orgID string, settings map[string]interface{}) (map[string]interface{}, error)
+	InviteOrgUser(orgID, email, role string) (interface{}, error)
+	ListOrgInvitations(orgID string) ([]interface{}, error)
+	CreateOrgAPIKey(orgID, name string) (interface{}, error)
+	ListOrgAPIKeys(orgID string) ([]*APIKey, error)
 }
-
 
 // AdminUserStore defines storage for admin users.
 type AdminUserStore interface {
 	GetByUsername(ctx context.Context, username string) (*AdminUser, error)
+	GetByEmail(ctx context.Context, email string) (*AdminUser, error)
 	GetByID(ctx context.Context, id string) (*AdminUser, error)
 	Create(ctx context.Context, u *AdminUser) error
 	Update(ctx context.Context, u *AdminUser) error
@@ -115,4 +143,19 @@ type AdminPermissionStore interface {
 	Create(ctx context.Context, p *AdminPermission) error
 	Update(ctx context.Context, p *AdminPermission) error
 	Delete(ctx context.Context, id string) error
+}
+
+type ProjectStore interface {
+	CreateProject(ctx context.Context, p *Project) error
+	GetProject(ctx context.Context, id string) (*Project, error)
+	UpdateProject(ctx context.Context, p *Project) error
+	DeleteProject(ctx context.Context, id string) error
+	ListProjects(ctx context.Context, filter ProjectFilter) ([]*Project, int, error)
+}
+type OrganizationStore interface {
+	CreateOrganization(ctx context.Context, o *Organization) error
+	GetOrganization(ctx context.Context, id string) (*Organization, error)
+	UpdateOrganization(ctx context.Context, o *Organization) error
+	DeleteOrganization(ctx context.Context, id string) error
+	ListOrganizations(ctx context.Context, filter OrganizationFilter) ([]*Organization, int, error)
 }

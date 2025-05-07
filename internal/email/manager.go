@@ -6,6 +6,7 @@ import (
 	"net/smtp"
 	"sync"
 	"text/template"
+	"time"
 
 	. "github.com/subinc/subinc-backend/internal/pkg/logger"
 )
@@ -40,12 +41,51 @@ type EmailTemplate struct {
 	Body    string // Go text/template syntax
 }
 
+// DeliveryStatus represents the delivery status of an email
+// Extend for real DB-backed delivery tracking in SaaS
+// Status: sent, delivered, bounced, failed, etc.
+type DeliveryStatus struct {
+	ID        string // message ID
+	Recipient string
+	Status    string
+	Timestamp int64
+	Error     string
+}
+
+// Conversation represents an email thread/conversation
+// Used for full SaaS-grade email conversations (support, marketing, etc.)
+type Conversation struct {
+	ID           string // unique conversation ID
+	Subject      string
+	Participants []string // emails
+	Messages     []string // message IDs
+	CreatedAt    int64
+}
+
+// Message represents a single email in a conversation
+// Used for full SaaS-grade email conversations
+// Status: sent, delivered, bounced, failed, etc.
+type Message struct {
+	ID             string
+	ConversationID string
+	From           string
+	To             []string
+	Body           string
+	Timestamp      int64
+	Status         string
+	Error          string
+}
+
 type EmailManager struct {
 	log             *Logger
 	mu              sync.RWMutex
 	providers       map[string]EmailProviderConfig // name -> config
 	defaultProvider string                         // default provider name
 	templates       map[string]EmailTemplate       // name -> template
+	teamAdmins      map[string][]string            // team name -> list of admin emails
+	deliveries      []DeliveryStatus               // in-memory deliveries
+	conversations   map[string]*Conversation       // conversationID -> Conversation
+	messages        map[string]*Message            // messageID -> Message
 }
 
 func NewEmailManager(log *Logger) *EmailManager {
@@ -286,4 +326,242 @@ func renderTemplate(tpl EmailTemplate, data any) (string, string, error) {
 	return subjBuf.String(), bodyBuf.String(), nil
 }
 
+// AddTeamAdmin adds an admin email to a team (e.g., support, marketing, ssm)
+func (m *EmailManager) AddTeamAdmin(team, email string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.teamAdmins == nil {
+		m.teamAdmins = make(map[string][]string)
+	}
+	for _, e := range m.teamAdmins[team] {
+		if e == email {
+			return // already present
+		}
+	}
+	m.teamAdmins[team] = append(m.teamAdmins[team], email)
+	m.log.Info("team admin added", String("team", team), String("email", email))
+}
+
+// RemoveTeamAdmin removes an admin email from a team
+func (m *EmailManager) RemoveTeamAdmin(team, email string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	admins := m.teamAdmins[team]
+	out := admins[:0]
+	for _, e := range admins {
+		if e != email {
+			out = append(out, e)
+		}
+	}
+	if len(out) == 0 {
+		delete(m.teamAdmins, team)
+	} else {
+		m.teamAdmins[team] = out
+	}
+	m.log.Info("team admin removed", String("team", team), String("email", email))
+}
+
+// ListTeamAdmins returns all admin emails for a team
+func (m *EmailManager) ListTeamAdmins(team string) []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return append([]string(nil), m.teamAdmins[team]...)
+}
+
+// SendToTeam sends an email (optionally with template) to all admins of a team
+func (m *EmailManager) SendToTeam(team, templateName, subject, body string, data any) error {
+	admins := m.ListTeamAdmins(team)
+	if len(admins) == 0 {
+		return fmt.Errorf("no admins for team: %s", team)
+	}
+	provider := m.defaultProvider
+	if templateName != "" {
+		tpl, err := m.getTemplate(templateName)
+		if err != nil {
+			return err
+		}
+		subj, b, err := renderTemplate(tpl, data)
+		if err != nil {
+			return err
+		}
+		subject = subj
+		body = b
+	}
+	cfg, err := m.getProvider(provider)
+	if err != nil {
+		return err
+	}
+	if cfg.Type != ProviderSMTP {
+		return fmt.Errorf("unsupported provider type: %s", cfg.Type)
+	}
+	for _, to := range admins {
+		err := m.sendSMTP(cfg, to, subject, body)
+		if err != nil {
+			m.log.Error("failed to send team email", String("team", team), String("to", to), ErrorField(err))
+		}
+	}
+	return nil
+}
+
 // Add methods for dynamic config update, provider switching, etc. as needed
+
+// ListDeliveries returns delivery status for emails (by recipient/status)
+func (m *EmailManager) ListDeliveries(recipient, status string, limit, offset int) ([]DeliveryStatus, error) {
+	// In-memory stub; replace with DB-backed implementation for prod
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var out []DeliveryStatus
+	for _, d := range m.deliveries {
+		if recipient != "" && d.Recipient != recipient {
+			continue
+		}
+		if status != "" && d.Status != status {
+			continue
+		}
+		out = append(out, d)
+	}
+	if offset > len(out) {
+		offset = len(out)
+	}
+	end := offset + limit
+	if end > len(out) {
+		end = len(out)
+	}
+	return out[offset:end], nil
+}
+
+// StartConversation creates a new conversation and first message
+func (m *EmailManager) StartConversation(subject string, from string, to []string, body string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.conversations == nil {
+		m.conversations = make(map[string]*Conversation)
+	}
+	if m.messages == nil {
+		m.messages = make(map[string]*Message)
+	}
+	cid := generateID()
+	mid := generateID()
+	conv := &Conversation{
+		ID:           cid,
+		Subject:      subject,
+		Participants: append([]string{from}, to...),
+		Messages:     []string{mid},
+		CreatedAt:    nowUnix(),
+	}
+	msg := &Message{
+		ID:             mid,
+		ConversationID: cid,
+		From:           from,
+		To:             to,
+		Body:           body,
+		Timestamp:      nowUnix(),
+		Status:         "sent",
+	}
+	m.conversations[cid] = conv
+	m.messages[mid] = msg
+	return cid, nil
+}
+
+// AddMessage adds a message to an existing conversation
+func (m *EmailManager) AddMessage(conversationID, from string, to []string, body string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	conv, ok := m.conversations[conversationID]
+	if !ok {
+		return "", fmt.Errorf("conversation not found")
+	}
+	mid := generateID()
+	msg := &Message{
+		ID:             mid,
+		ConversationID: conversationID,
+		From:           from,
+		To:             to,
+		Body:           body,
+		Timestamp:      nowUnix(),
+		Status:         "sent",
+	}
+	conv.Messages = append(conv.Messages, mid)
+	m.messages[mid] = msg
+	return mid, nil
+}
+
+// ListConversations returns all conversations for a participant
+func (m *EmailManager) ListConversations(participant string) []*Conversation {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var out []*Conversation
+	for _, c := range m.conversations {
+		for _, p := range c.Participants {
+			if p == participant {
+				out = append(out, c)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// ListMessages returns all messages in a conversation
+func (m *EmailManager) ListMessages(conversationID string) []*Message {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	conv, ok := m.conversations[conversationID]
+	if !ok {
+		return nil
+	}
+	var out []*Message
+	for _, mid := range conv.Messages {
+		if msg, ok := m.messages[mid]; ok {
+			out = append(out, msg)
+		}
+	}
+	return out
+}
+
+// generateID returns a pseudo-unique string (replace with UUID in prod)
+func generateID() string {
+	return fmt.Sprintf("id-%d", nowUnixNano())
+}
+
+// nowUnix returns current unix timestamp
+func nowUnix() int64 {
+	return int64(nowUnixNano() / 1e9)
+}
+
+// nowUnixNano returns current unix timestamp in nanoseconds
+func nowUnixNano() int64 {
+	return time.Now().UnixNano()
+}
+
+func (m *EmailManager) SendDeviceLoginNotification(to, deviceName, ip, userAgent string) error {
+	cfg, err := m.getProvider(m.defaultProvider)
+	if err != nil {
+		return err
+	}
+	subject := "New device login detected"
+	body := "A new device has logged into your account.\n\n" +
+		"Device: " + deviceName + "\n" +
+		"IP: " + ip + "\n" +
+		"User Agent: " + userAgent + "\n" +
+		"If this was not you, please revoke the device and reset your password immediately."
+	if cfg.Type == ProviderSMTP {
+		return m.sendSMTP(cfg, to, subject, body)
+	}
+	return fmt.Errorf("unsupported email provider type: %s", cfg.Type)
+}
+
+func (m *EmailManager) SendDeviceChangeNotification(to, deviceName, changeType string) error {
+	cfg, err := m.getProvider(m.defaultProvider)
+	if err != nil {
+		return err
+	}
+	subject := "Device " + changeType + " notification"
+	body := "A device associated with your account was " + changeType + ":\n\n" +
+		"Device: " + deviceName + "\n" +
+		"If this was not you, please review your account security."
+	if cfg.Type == ProviderSMTP {
+		return m.sendSMTP(cfg, to, subject, body)
+	}
+	return fmt.Errorf("unsupported email provider type: %s", cfg.Type)
+}

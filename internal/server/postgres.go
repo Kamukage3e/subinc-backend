@@ -9,30 +9,29 @@ import (
 	"github.com/spf13/viper"
 )
 
-// NewPostgresPool returns a production-ready pgx pool. Reads POSTGRES_URL or POSTGRES_HOST/PORT/USER/PASSWORD/DB from env.
-func NewPostgresPool(ctx context.Context) (*pgxpool.Pool, error) {
-	url := viper.GetString("POSTGRES_URL")
-	if url == "" {
-		host := viper.GetString("POSTGRES_HOST")
-		if host == "" {
-			host = "localhost"
-		}
-		port := viper.GetString("POSTGRES_PORT")
-		if port == "" {
-			port = "5432"
-		}
-		user := viper.GetString("POSTGRES_USER")
-		if user == "" {
-			user = "postgres"
-		}
-		pass := viper.GetString("POSTGRES_PASSWORD")
-		db := viper.GetString("POSTGRES_DB")
-		if db == "" {
-			db = "postgres"
-		}
-		url = fmt.Sprintf("postgres://%s:%s@%s:%s/%s", user, pass, host, port, db)
+// GetUnifiedDatabaseDSN returns the canonical DSN for all DB access (migrations, pool, etc).
+// This is the only place in the codebase that should build or fetch the DB DSN.
+// SaaS prod: guarantees all DB access uses the same config/env logic.
+func GetUnifiedDatabaseDSN() (string, error) {
+	dsn := viper.GetString("database.dsn")
+	if dsn == "" {
+		dsn = viper.GetString("database.url")
 	}
-	cfg, err := pgxpool.ParseConfig(url)
+	if dsn == "" {
+		return "", fmt.Errorf("database DSN not set in config or env (database.dsn or database.url required)")
+	}
+	return dsn, nil
+}
+
+// NewPostgresPool returns a production-ready pgx pool using the unified DSN from config/env.
+// This guarantees the app and migrations always use the same DB and schema.
+// SaaS prod: never use POSTGRES_URL/POSTGRES_DB/etc. Only use database.dsn or database.url for all DB access.
+func NewPostgresPool(ctx context.Context) (*pgxpool.Pool, error) {
+	dsn, err := GetUnifiedDatabaseDSN()
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, fmt.Errorf("invalid postgres config: %w", err)
 	}

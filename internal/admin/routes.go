@@ -16,7 +16,7 @@ func (h *AdminHandler) RegisterRoutes(router fiber.Router) {
 	admin.Get("/security/health", h.SystemHealth)
 	admin.Get("/sessions", h.ListSessions)
 	admin.Post("/impersonate", h.ImpersonateUser)
-	admin.Get("/support/tools", h.SupportTools)
+	admin.Get("/support-tools", requireAdminRole(RoleSupport), requireAdminPermission(PermSupportViewTickets), h.SupportTools)
 	admin.Get("/rbac", h.RBACStatus)
 	admin.Post("/stepup", h.StepUpAuth)
 	admin.Get("/delegated-admin", h.DelegatedAdminStatus)
@@ -76,7 +76,107 @@ func (h *AdminHandler) RegisterRoutes(router fiber.Router) {
 	admin.Post("/notifications", h.SendNotification)
 	admin.Get("/notifications/:id", h.GetNotification)
 	admin.Patch("/notifications/:id", h.MarkNotificationSent)
+	admin.Get("/marketing-tools", requireAdminRole(RoleMarketing), requireAdminPermission(PermMarketingViewReports), h.ListFeatureFlags)
+	admin.Get("/ssm/blogs", requireAdminRole(RoleSSM), requireAdminPermission(PermSSMManageBlogs), h.SSMBlogs)
+	admin.Get("/ssm/news", requireAdminRole(RoleSSM), requireAdminPermission(PermSSMManageNews), h.SSMNews)
+	// Email management endpoints (RBAC: superuser/support/marketing)
+	admin.Get("/email/providers", requireAdminRole(RoleSupport, RoleMarketing), h.ListEmailProviders)
+	admin.Post("/email/providers", requireAdminRole(RoleSupport, RoleMarketing), h.AddEmailProvider)
+	admin.Put("/email/providers", requireAdminRole(RoleSupport, RoleMarketing), h.UpdateEmailProvider)
+	admin.Delete("/email/providers/:name", requireAdminRole(RoleSupport, RoleMarketing), h.RemoveEmailProvider)
+	admin.Patch("/email/providers/:name/default", requireAdminRole(RoleSupport, RoleMarketing), h.SetDefaultEmailProvider)
+	admin.Post("/email/providers/:name/test", requireAdminRole(RoleSupport, RoleMarketing), h.TestSMTPConnection)
+	admin.Get("/email/templates", requireAdminRole(RoleSupport, RoleMarketing), h.ListEmailTemplates)
+	admin.Post("/email/templates", requireAdminRole(RoleSupport, RoleMarketing), h.AddEmailTemplate)
+	admin.Delete("/email/templates/:name", requireAdminRole(RoleSupport, RoleMarketing), h.RemoveEmailTemplate)
+	admin.Get("/email/team/:team/admins", requireAdminRole(RoleSupport, RoleMarketing), h.ListTeamAdmins)
+	admin.Post("/email/team/:team/admins", requireAdminRole(RoleSupport, RoleMarketing), h.AddTeamAdmin)
+	admin.Delete("/email/team/:team/admins/:email", requireAdminRole(RoleSupport, RoleMarketing), h.RemoveTeamAdmin)
+	admin.Post("/email/test", requireAdminRole(RoleSupport, RoleMarketing), h.SendTestEmail)
+	admin.Get("/email/deliveries", requireAdminRole(RoleSupport, RoleMarketing), h.ListEmailDeliveries)
+	admin.Get("/email/conversations", requireAdminRole(RoleSupport, RoleMarketing), h.ListConversations)
+	admin.Get("/email/conversations/:conversationID/messages", requireAdminRole(RoleSupport, RoleMarketing), h.ListMessages)
+	admin.Post("/email/conversations", requireAdminRole(RoleSupport, RoleMarketing), h.StartConversation)
+	admin.Post("/email/conversations/:conversationID/messages", requireAdminRole(RoleSupport, RoleMarketing), h.AddMessage)
+	admin.Get("/users/:id/effective-permissions", h.ListUserEffectivePermissions)
+	// Project user management
+	admin.Get("/projects/:id/users", h.ListProjectUsers)
+	admin.Post("/projects/:id/users", h.AddUserToProject)
+	admin.Delete("/projects/:id/users", h.RemoveUserFromProject)
+	admin.Patch("/projects/:id/transfer-owner", h.TransferProjectOwner)
+	admin.Patch("/projects/transfer-user", h.TransferUserToProject)
+	admin.Post("/projects/:id/users/bulk-add", h.BulkAddUsersToProject)
+	admin.Post("/projects/:id/users/bulk-remove", h.BulkRemoveUsersFromProject)
+	admin.Post("/projects/users/bulk-transfer", h.BulkTransferUsersBetweenProjects)
+	admin.Get("/projects/:id/users/:user_id/effective-permissions", h.ViewUserOrgEffectivePermissions)
+
+	// Org user management
+	admin.Get("/orgs/:id/users", h.ListOrgUsers)
+	admin.Post("/orgs/:id/users", h.AddUserToOrg)
+	admin.Delete("/orgs/:id/users", h.RemoveUserFromOrg)
+	admin.Patch("/orgs/:id/transfer-owner", h.TransferOrgOwner)
+	admin.Patch("/orgs/transfer-user", h.TransferUserToOrg)
+	admin.Post("/orgs/:id/users/bulk-add", h.BulkAddUsersToOrg)
+	admin.Post("/orgs/:id/users/bulk-remove", h.BulkRemoveUsersFromOrg)
+	admin.Post("/orgs/bulk-transfer", h.BulkTransferUsersBetweenOrgs)
+	admin.Patch("/orgs/:id/users/:user_id/role", h.ChangeUserOrgRole)
+	admin.Get("/orgs/:id/users/:user_id/effective-permissions", h.ViewUserOrgEffectivePermissions)
+
+	// Global user/role/permission management
+	admin.Get("/users/:id/effective-permissions", h.ListUserEffectivePermissions)
+	admin.Get("/users/all-roles-permissions", h.ListAllUserRolesPermissions)
+	admin.Get("/profile", h.GetProfile)
 	// Add more admin endpoints as needed
+
+	// --- BEGIN: Project admin endpoints ---
+	admin.Post("/projects", h.CreateProject)
+	admin.Get("/projects", h.ListProjects)
+	admin.Get("/projects/:id", h.GetProject)
+	admin.Put("/projects/:id", h.UpdateProject)
+	admin.Delete("/projects/:id", h.DeleteProject)
+	admin.Get("/projects/:id/audit", h.ProjectAuditLogs)
+	admin.Get("/projects/:id/settings", h.GetProjectSettings)
+	admin.Patch("/projects/:id/settings", h.UpdateProjectSettings)
+	admin.Post("/projects/:id/invitations", h.InviteProjectUser)
+	admin.Get("/projects/:id/invitations", h.ListProjectInvitations)
+	admin.Post("/projects/:id/api-keys", h.CreateProjectAPIKey)
+	admin.Get("/projects/:id/api-keys", h.ListProjectAPIKeys)
+	// --- END: Project admin endpoints ---
+
+	// --- BEGIN: Org admin endpoints ---
+	admin.Post("/orgs", h.CreateOrg)
+	admin.Get("/orgs", h.ListOrgs)
+	admin.Get("/orgs/:id", h.GetOrg)
+	admin.Put("/orgs/:id", h.UpdateOrg)
+	admin.Delete("/orgs/:id", h.DeleteOrg)
+	admin.Get("/orgs/:id/audit", h.OrgAuditLogs)
+	admin.Get("/orgs/:id/settings", h.GetOrgSettings)
+	admin.Patch("/orgs/:id/settings", h.UpdateOrgSettings)
+	admin.Post("/orgs/:id/invitations", h.InviteOrgUser)
+	admin.Get("/orgs/:id/invitations", h.ListOrgInvitations)
+	admin.Post("/orgs/:id/api-keys", h.CreateOrgAPIKey)
+	admin.Get("/orgs/:id/api-keys", h.ListOrgAPIKeys)
+	admin.Get("/orgs/:id/teams", h.ListOrgTeams)
+	admin.Post("/orgs/:id/teams", h.CreateOrgTeam)
+	admin.Get("/orgs/:id/teams/:team_id", h.GetOrgTeam)
+	admin.Put("/orgs/:id/teams/:team_id", h.UpdateOrgTeam)
+	admin.Delete("/orgs/:id/teams/:team_id", h.DeleteOrgTeam)
+	// --- END: Org admin endpoints ---
+
+	// --- BEGIN: Add missing admin endpoints as stubs ---
+	admin.Get("/metrics", func(c *fiber.Ctx) error {
+		return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{
+			"error": "Not implemented",
+			"path":  c.Path(),
+		})
+	})
+	admin.Get("/health", func(c *fiber.Ctx) error {
+		return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{
+			"error": "Not implemented",
+			"path":  c.Path(),
+		})
+	})
+	// --- END: Add missing admin endpoints as stubs ---
 }
 
 func RegisterRoutes(router fiber.Router, handler *AdminHandler) {

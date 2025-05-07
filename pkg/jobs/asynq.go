@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -606,7 +607,11 @@ func (c *BackgroundJobClient) GetQueueStats(ctx context.Context) (map[string]int
 	for _, queueName := range queueNames {
 		queueStats, err := inspector.GetQueueInfo(queueName)
 		if err != nil {
-			c.logger.Error("Failed to get queue stats",
+			if strings.Contains(err.Error(), "NOT_FOUND") && strings.Contains(err.Error(), "does not exist") {
+				// Suppress log for non-existent queues
+				continue
+			}
+			c.logger.Warn("Failed to get queue stats",
 				logger.String("queue", queueName),
 				logger.ErrorField(err),
 			)
@@ -715,6 +720,10 @@ func (s *BackgroundJobServer) monitorQueueSizes() {
 		for _, queueName := range queueNames {
 			queueInfo, err := inspector.GetQueueInfo(queueName)
 			if err != nil {
+				if strings.Contains(err.Error(), "NOT_FOUND") && strings.Contains(err.Error(), "does not exist") {
+					// Suppress log for non-existent queues
+					continue
+				}
 				s.logger.Warn("Failed to get queue info",
 					logger.String("queue", queueName),
 					logger.ErrorField(err),

@@ -19,7 +19,8 @@ database:
   max_open_conns: 50
   max_idle_conns: 10
   conn_max_lifetime: 30m
-  url: "postgres://subinc:postgres@localhost:5432/subinc_dev?sslmode=disable"
+  url: "postgres://postgres:postgres@localhost:5432/subinc?sslmode=disable"
+  dsn: "postgres://postgres:postgres@localhost:5432/subinc?sslmode=disable"
 
 redis:
   host: localhost
@@ -94,5 +95,12 @@ openai:
 webhook:
   events_url: "https://webhooks.subinc.com/events"
 
-hashid_salt: "${HASHID_SALT}"
+hashid_salt: "subinc-default-salt-change-me"
+
+go_env: "development"
+
+admin:
+  email: "admin@subinc.com"
+  username: "admin123"
+  password: "admin123"
 # All keys are real, prod-ready, and match viper usage in code.

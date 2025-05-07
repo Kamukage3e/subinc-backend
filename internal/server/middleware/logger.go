@@ -11,8 +11,6 @@ import (
 	. "github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-
-
 func init() {
 	// Register metrics with Prometheus
 	prometheus.MustRegister(httpRequestsTotal)
@@ -64,27 +62,23 @@ func RequestLogger(log *Logger, adminStore *admin.PostgresAdminStore) fiber.Hand
 			return err
 		}
 
-		// Prepare logging fields
-		fields := []Field{
-			String("request_id", requestID),
-			String("remote_ip", c.IP()),
-			String("method", method),
-			String("path", path),
-			Int("status", statusCode),
-			Float64("latency_ms", float64(time.Since(start).Microseconds())/1000.0),
-			Int("body_size", len(c.Response().Body())),
-			String("user_agent", c.Get("User-Agent")),
-		}
-
-		// Add referer if present
+		// Prepare log message (human-friendly, key=value pairs)
+		latencyMs := float64(time.Since(start).Microseconds()) / 1000.0
+		msg := fmt.Sprintf(
+			"request_id=%s method=%s path=%s status=%d latency=%.2fms user_agent=\"%s\"",
+			requestID,
+			method,
+			path,
+			statusCode,
+			latencyMs,
+			c.Get("User-Agent"),
+		)
 		referer := c.Get("Referer")
 		if referer != "" {
-			fields = append(fields, String("referer", referer))
+			msg += fmt.Sprintf(" referer=\"%s\"", referer)
 		}
-
-		// Add error if present
-		if err != nil {
-			fields = append(fields, ErrorField(err))
+		if err != nil && statusCode >= 400 {
+			msg += fmt.Sprintf(" error=\"%s\"", err.Error())
 		}
 
 		// --- ADMIN API AUDIT LOG ---
@@ -96,7 +90,6 @@ func RequestLogger(log *Logger, adminStore *admin.PostgresAdminStore) fiber.Hand
 					actor = sub
 				}
 			}
-			// Only log if authenticated
 			if actor != "anonymous" {
 				_ = adminStore.LogAuditEvent(
 					"admin_api_audit",
@@ -115,13 +108,13 @@ func RequestLogger(log *Logger, adminStore *admin.PostgresAdminStore) fiber.Hand
 		// Log with appropriate level based on status code
 		switch {
 		case statusCode >= 500:
-			log.Error("server error", fields...)
+			log.Error(msg)
 		case statusCode >= 400:
-			log.Warn("client error", fields...)
+			log.Warn(msg)
 		case statusCode >= 300:
-			log.Info("redirection", fields...)
+			log.Info(msg)
 		default:
-			log.Info("request completed", fields...)
+			log.Info(msg)
 		}
 
 		return err

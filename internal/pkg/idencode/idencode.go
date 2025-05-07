@@ -8,10 +8,17 @@ import (
 
 var hashID *hashids.HashID
 
+// This is the only place hashid salt is loaded. All hashid encoding/decoding must use this package.
 func init() {
-	salt := getSalt()
+	salt := viper.GetString("hashid_salt")
 	if salt == "" {
-		salt = "subinc-default-salt-change-me" // secure default, must override in prod
+		salt = viper.GetString("HASHID_SALT") // fallback for env var compatibility
+	}
+	if salt == "" {
+		if viper.GetString("go_env") == "development" {
+			// Insecure default for dev only
+			salt = "dev-insecure-salt"
+		} 
 	}
 	hd := hashids.NewData()
 	hd.Salt = salt
@@ -21,11 +28,6 @@ func init() {
 	if err != nil {
 		panic("failed to initialize hashids: " + err.Error())
 	}
-}
-
-func getSalt() string {
-	salt := viper.GetString("HASHID_SALT")
-	return salt
 }
 
 func Encode(id string) (string, error) {

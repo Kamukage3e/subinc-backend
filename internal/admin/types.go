@@ -4,6 +4,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/subinc/subinc-backend/internal/email"
+	"github.com/subinc/subinc-backend/internal/user"
+
 	"github.com/subinc/subinc-backend/pkg/session"
 )
 
@@ -64,6 +67,8 @@ type PermissionFilter struct {
 type APIKey struct {
 	ID         string    `json:"id" db:"id"`
 	UserID     string    `json:"user_id" db:"user_id"`
+	ProjectID  string    `json:"project_id,omitempty" db:"project_id"`
+	OrgID      string    `json:"org_id,omitempty" db:"org_id"`
 	Name       string    `json:"name" db:"name"`
 	Key        string    `json:"key,omitempty" db:"key"`
 	Status     string    `json:"status" db:"status"`
@@ -178,7 +183,14 @@ type FeatureFlagInput struct {
 }
 
 type AdminHandler struct {
-	store AdminStore
+	store interface {
+		AdminStore
+		AdminUserStore
+	}
+	userStore      *user.PostgresUserStore // For all user/org/project role/permission logic
+	emailManager   *email.EmailManager
+	SecretsManager interface{}
+	JWTSecretName  string
 }
 
 // Policy defines the structure of a policy.
@@ -227,6 +239,151 @@ type Tenant struct {
 	ID        string    `json:"id" db:"id"`
 	Name      string    `json:"name" db:"name"`
 	Settings  string    `json:"settings" db:"settings"` // JSON blob for org settings/policies
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// Built-in admin roles for RBAC
+const (
+	RoleSupport   = "support"
+	RoleMarketing = "marketing"
+	RoleSSM       = "ssm"
+)
+
+// Built-in admin permissions for RBAC
+const (
+	PermSupportViewTickets   = "support:view_tickets"
+	PermSupportManageUsers   = "support:manage_users"
+	PermMarketingViewReports = "marketing:view_reports"
+	PermMarketingSendEmails  = "marketing:send_emails"
+	PermSSMManageBlogs       = "ssm:manage_blogs"
+	PermSSMManageNews        = "ssm:manage_news"
+)
+
+type Project struct {
+	ID          string    `json:"id" db:"id"`
+	Name        string    `json:"name" db:"name"`
+	Description string    `json:"description" db:"description"`
+	OwnerID     string    `json:"owner_id" db:"owner_id"`
+	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+}
+
+type ProjectFilter struct {
+	Query   string
+	SortBy  string
+	SortDir string
+	Limit   int
+	Offset  int
+}
+
+type Organization struct {
+	ID        string    `json:"id" db:"id"`
+	Name      string    `json:"name" db:"name"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+type OrganizationFilter struct {
+	Query   string
+	SortBy  string
+	SortDir string
+	Limit   int
+	Offset  int
+}
+
+// OrgTeam represents a team within an organization for admin endpoints
+// All fields are required for production SaaS
+// Team membership is managed via user IDs for RBAC
+// Team settings is a JSON blob for extensibility
+// CreatedAt/UpdatedAt are UTC
+type OrgTeam struct {
+	ID          string    `json:"id" db:"id"`
+	OrgID       string    `json:"org_id" db:"org_id"`
+	Name        string    `json:"name" db:"name"`
+	Description string    `json:"description" db:"description"`
+	UserIDs     []string  `json:"user_ids" db:"user_ids"`
+	Settings    string    `json:"settings" db:"settings"`
+	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+}
+
+type OrgTeamFilter struct {
+	OrgID   string
+	Query   string
+	SortBy  string
+	SortDir string
+	Limit   int
+	Offset  int
+}
+
+// SSMBlog represents a blog post for SSM team
+// Used for /admin/ssm/blogs endpoints
+// All fields are required for production SaaS
+type SSMBlog struct {
+	ID        string    `json:"id" db:"id"`
+	Title     string    `json:"title" db:"title"`
+	Body      string    `json:"body" db:"body"`
+	AuthorID  string    `json:"author_id" db:"author_id"`
+	Tags      []string  `json:"tags" db:"tags"`
+	Status    string    `json:"status" db:"status"` // draft, published, archived
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+type SSMBlogFilter struct {
+	Query   string
+	Status  string
+	SortBy  string
+	SortDir string
+	Limit   int
+	Offset  int
+}
+
+// SSMNews represents a news item for SSM team
+// Used for /admin/ssm/news endpoints
+// All fields are required for production SaaS
+type SSMNews struct {
+	ID        string    `json:"id" db:"id"`
+	Title     string    `json:"title" db:"title"`
+	Body      string    `json:"body" db:"body"`
+	AuthorID  string    `json:"author_id" db:"author_id"`
+	Status    string    `json:"status" db:"status"` // draft, published, archived
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+type SSMNewsFilter struct {
+	Query   string
+	Status  string
+	SortBy  string
+	SortDir string
+	Limit   int
+	Offset  int
+}
+
+// ProjectInvitation represents an invitation to a project
+// Used for admin/project invitation flows
+// All fields required for production SaaS
+// CreatedAt/UpdatedAt are UTC
+type ProjectInvitation struct {
+	ID        string    `json:"id" db:"id"`
+	ProjectID string    `json:"project_id" db:"project_id"`
+	Email     string    `json:"email" db:"email"`
+	Role      string    `json:"role" db:"role"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// OrgInvitation represents an invitation to an organization
+// Used for admin/org invitation flows
+// All fields required for production SaaS
+// CreatedAt/UpdatedAt are UTC
+type OrgInvitation struct {
+	ID        string    `json:"id" db:"id"`
+	OrgID     string    `json:"org_id" db:"org_id"`
+	Email     string    `json:"email" db:"email"`
+	Role      string    `json:"role" db:"role"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }

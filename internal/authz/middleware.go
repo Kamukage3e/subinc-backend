@@ -30,12 +30,15 @@ func OPAAuthzMiddleware(opa *OPAClient, log *logger.Logger, policyPath string) f
 		result, err := opa.Query(ctx, policyPath, input)
 		if err != nil {
 			log.Error("OPA query failed", logger.ErrorField(err))
+			logOPAAttempt(user, roles, tenant, action, resource, false, "OPA query error")
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "access denied"})
 		}
 		if !result.Allow {
 			log.Info("OPA denied access", logger.String("user", user), logger.Strings("roles", roles), logger.String("tenant", tenant), logger.String("action", action), logger.String("resource", resource), logger.String("reason", result.Reason))
+			logOPAAttempt(user, roles, tenant, action, resource, false, result.Reason)
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "access denied"})
 		}
+		logOPAAttempt(user, roles, tenant, action, resource, true, "allow")
 		return c.Next()
 	}
 }
@@ -83,4 +86,11 @@ func extractAuthContext(c *fiber.Ctx) (user string, roles []string, tenant strin
 		}
 	}
 	return user, roles, tenant, attributes, nil
+}
+
+// logOPAAttempt logs OPA/ABAC access attempts for auditing
+func logOPAAttempt(user string, roles []string, tenant, action, resource string, allowed bool, reason string) {
+	// Replace with production logger or audit log as needed
+	logMsg := "OPA access: user=%s roles=%v tenant=%s action=%s resource=%s allowed=%v reason=%s"
+	fmt.Printf(logMsg+"\n", user, roles, tenant, action, resource, allowed, reason)
 }

@@ -3,6 +3,7 @@ package provisioning
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/subinc/subinc-backend/internal/provisioning/terraform"
+	provisioningtypes "github.com/subinc/subinc-backend/internal/provisioningtypes"
 )
 
 type Deps struct {
@@ -12,7 +13,7 @@ type Deps struct {
 func RegisterRoutes(router fiber.Router, deps Deps) {
 	provGroup := router.Group("/provisioning")
 	provGroup.Post("/terraform", func(c *fiber.Ctx) error {
-		var req ProvisionRequest
+		var req provisioningtypes.ProvisionRequest
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 		}

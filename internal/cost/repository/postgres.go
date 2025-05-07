@@ -6,6 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/subinc/subinc-backend/internal/cost/domain"
@@ -1551,20 +1555,47 @@ func (r *PostgresBillingRepository) CreateAuditLog(ctx context.Context, logEntry
 		r.logger.Error("invalid audit log", logger.ErrorField(err), logger.String("actor_id", logEntry.ActorID))
 		return err
 	}
-
+	actorID := interface{}(logEntry.ActorID)
+	targetID := interface{}(logEntry.TargetID)
+	if logEntry.Action == "system_event" && logEntry.ActorID == "" {
+		actorID = nil
+	}
+	if logEntry.TargetID == "" {
+		targetID = nil
+	}
+	details := logEntry.Details
+	if details == "" {
+		details = "{}"
+	} else {
+		var js json.RawMessage
+		if json.Unmarshal([]byte(details), &js) != nil {
+			b, err := json.Marshal(details)
+			if err == nil {
+				details = string(b)
+			} else {
+				details = "{}"
+			}
+		}
+	}
+	hash := logEntry.Hash
+	if hash == "" {
+		data := logEntry.ID + logEntry.ActorID + logEntry.Action + logEntry.TargetID + logEntry.Timestamp.UTC().Format(time.RFC3339Nano) + logEntry.Details
+		sum := sha256.Sum256([]byte(data))
+		hash = hex.EncodeToString(sum[:])
+	}
 	const q = `INSERT INTO audit_logs (
-		id, actor_id, action, target_id, timestamp, details
+		id, actor_id, action, target_id, timestamp, details, hash
 	) VALUES (
-		$1, $2, $3, $4, $5, $6
+		$1, $2, $3, $4, $5, $6, $7
 	) ON CONFLICT (id) DO NOTHING`
-
 	_, err := r.db.Exec(ctx, q,
 		logEntry.ID,
-		logEntry.ActorID,
+		actorID,
 		logEntry.Action,
-		logEntry.TargetID,
+		targetID,
 		logEntry.Timestamp,
-		logEntry.Details,
+		details,
+		hash,
 	)
 	if err != nil {
 		r.logger.Error("failed to insert audit log", logger.ErrorField(err), logger.String("audit_log_id", logEntry.ID), logger.String("actor_id", logEntry.ActorID))
@@ -1587,7 +1618,7 @@ func (r *PostgresBillingRepository) ListAuditLogs(ctx context.Context, accountID
 		pageSize = 100
 	}
 	countQ := `SELECT COUNT(*) FROM audit_logs WHERE target_id = $1 AND timestamp >= $2 AND timestamp <= $3`
-	q := `SELECT id, actor_id, action, target_id, timestamp, details FROM audit_logs WHERE target_id = $1 AND timestamp >= $2 AND timestamp <= $3`
+	q := `SELECT id, actor_id, action, target_id, timestamp, details, hash FROM audit_logs WHERE target_id = $1 AND timestamp >= $2 AND timestamp <= $3`
 	args := []interface{}{accountID, startTime, endTime}
 	if action != "" {
 		countQ += " AND action = $4"
@@ -1614,7 +1645,7 @@ func (r *PostgresBillingRepository) ListAuditLogs(ctx context.Context, accountID
 	var logs []*domain.AuditLog
 	for rows.Next() {
 		var l domain.AuditLog
-		if err := rows.Scan(&l.ID, &l.ActorID, &l.Action, &l.TargetID, &l.Timestamp, &l.Details); err != nil {
+		if err := rows.Scan(&l.ID, &l.ActorID, &l.Action, &l.TargetID, &l.Timestamp, &l.Details, &l.Hash); err != nil {
 			r.logger.Error("failed to scan audit log row", logger.ErrorField(err), logger.String("account_id", accountID))
 			return nil, 0, fmt.Errorf("failed to scan audit log row: %w", err)
 		}

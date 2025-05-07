@@ -2,27 +2,49 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
+	"fmt"
+	"io/ioutil"
 	"os"
+
 	"os/signal"
+	"sort"
+	"strings"
 	"syscall"
 	"time"
 
+	"database/sql"
+
+	"path/filepath"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/adaptor"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
+	_ "github.com/lib/pq"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
+	"github.com/subinc/subinc-backend/enterprise/notifications"
 	"github.com/subinc/subinc-backend/internal/admin"
+	"github.com/subinc/subinc-backend/internal/architecture"
+	"github.com/subinc/subinc-backend/internal/cost/api"
 	"github.com/subinc/subinc-backend/internal/cost/cloud"
 	"github.com/subinc/subinc-backend/internal/cost/domain"
+	"github.com/subinc/subinc-backend/internal/cost/repository"
+	"github.com/subinc/subinc-backend/internal/cost/service"
+	"github.com/subinc/subinc-backend/internal/email"
 	. "github.com/subinc/subinc-backend/internal/pkg/logger"
 	"github.com/subinc/subinc-backend/internal/pkg/secrets"
-	"github.com/subinc/subinc-backend/internal/provisioning"
+	"github.com/subinc/subinc-backend/internal/project"
 	"github.com/subinc/subinc-backend/internal/provisioning/terraform"
+	"github.com/subinc/subinc-backend/internal/provisioningtypes"
 	"github.com/subinc/subinc-backend/internal/server"
-	"github.com/subinc/subinc-backend/internal/server/middleware"
+	"github.com/subinc/subinc-backend/internal/tenant"
+	"github.com/subinc/subinc-backend/internal/user"
 	"github.com/subinc/subinc-backend/pkg/jobs"
 	"github.com/subinc/subinc-backend/pkg/session"
 )
@@ -42,6 +64,133 @@ func (a *providerRegistryAdapter) GetProvider(ctx context.Context, provider doma
 	return a.CostDataProviderRegistry.GetProviderAsInterface(ctx, provider, credentials)
 }
 
+// Refactor: Remove all table existence checks from ensureDefaultAdminRBAC
+func ensureDefaultAdminRBAC(adminStore *admin.PostgresAdminStore, log *Logger) error {
+	// 1. Seed permissions
+	builtinPerms := []string{
+		"support:view_tickets",
+		"support:manage_users",
+		"marketing:view_reports",
+		"marketing:send_emails",
+		"ssm:manage_blogs",
+		"ssm:manage_news",
+	}
+	for _, perm := range builtinPerms {
+		id := uuid.NewString()
+		err := adminStore.CreatePermission(&admin.AdminPermission{ID: id, Name: perm})
+		if err != nil && !strings.Contains(err.Error(), "duplicate") {
+			log.Error(fmt.Sprintf("failed to seed admin permission: %s: %v", perm, err))
+			return err
+		}
+	}
+	// 2. Seed roles
+	roles := []struct {
+		Name        string
+		Permissions []string
+	}{
+		{"superuser", builtinPerms},
+		{"support", []string{"support:view_tickets", "support:manage_users"}},
+		{"marketing", []string{"marketing:view_reports", "marketing:send_emails"}},
+		{"ssm", []string{"ssm:manage_blogs", "ssm:manage_news"}},
+	}
+	for _, role := range roles {
+		id := uuid.NewString()
+		err := adminStore.CreateRole(&admin.AdminRole{ID: id, Name: role.Name, Permissions: role.Permissions})
+		if err != nil && !strings.Contains(err.Error(), "duplicate") {
+			log.Error(fmt.Sprintf("failed to seed admin role: %s: %v", role.Name, err))
+			return err
+		}
+	}
+	// 3. Ensure at least one admin user exists
+	ensureDefaultAdmin(adminStore, log)
+	return nil
+}
+
+// runMigrationsGo applies all .up.sql migrations in order, tracking with schema_migrations table.
+// This is prod-grade, idempotent, and logs each migration. No GORM AutoMigrate, no panics.
+func runMigrationsGo(dsn string, log *Logger) {
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		log.Fatal("failed to open DB for migrations", ErrorField(err))
+	}
+	defer db.Close()
+
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (filename TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`)
+	if err != nil {
+		log.Fatal("failed to ensure schema_migrations table", ErrorField(err))
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		log.Fatal("failed to get working directory", ErrorField(err))
+	}
+	migrationPath, err := filepath.Abs(filepath.Join(wd, "migrations"))
+	if err != nil {
+		log.Fatal("failed to resolve migrations path", ErrorField(err))
+	}
+	files, err := ioutil.ReadDir(migrationPath)
+	if err != nil {
+		log.Fatal("failed to read migrations dir", ErrorField(err))
+	}
+
+	var upFiles []string
+	for _, f := range files {
+		if !f.IsDir() && strings.HasSuffix(f.Name(), ".up.sql") {
+			upFiles = append(upFiles, f.Name())
+		}
+	}
+	sort.Strings(upFiles)
+
+	for _, fname := range upFiles {
+		var exists bool
+		err = db.QueryRow(`SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE filename = $1)`, fname).Scan(&exists)
+		if err != nil {
+			log.Fatal("failed to check migration status", ErrorField(err), String("file", fname))
+		}
+		if exists {
+			log.Info("migration already applied", String("file", fname))
+			continue
+		}
+
+		path := filepath.Join(migrationPath, fname)
+		content, err := ioutil.ReadFile(path)
+		if err != nil {
+			log.Fatal("failed to read migration file", ErrorField(err), String("file", fname))
+		}
+
+		tx, err := db.Begin()
+		if err != nil {
+			log.Fatal("failed to begin migration tx", ErrorField(err), String("file", fname))
+		}
+		_, err = tx.Exec(string(content))
+		if err != nil {
+			tx.Rollback()
+			log.Fatal("migration failed", ErrorField(err), String("file", fname))
+		}
+		_, err = tx.Exec(`INSERT INTO schema_migrations (filename) VALUES ($1)`, fname)
+		if err != nil {
+			tx.Rollback()
+			log.Fatal("failed to record migration", ErrorField(err), String("file", fname))
+		}
+		err = tx.Commit()
+		if err != nil {
+			log.Fatal("failed to commit migration", ErrorField(err), String("file", fname))
+		}
+		log.Info("migration applied", String("file", fname))
+	}
+	log.Info("all migrations applied successfully")
+}
+
+// redactDSN removes password from DSN for logging
+func redactDSN(dsn string) string {
+	if i := strings.Index(dsn, "@"); i > 0 {
+		if j := strings.LastIndex(dsn[:i], ":"); j > 0 {
+			return dsn[:j+1] + "***" + dsn[i:]
+		}
+	}
+	return dsn
+}
+
 func main() {
 	// Initialize logger
 	log = NewProduction()
@@ -49,12 +198,21 @@ func main() {
 		_ = log.Flush()
 	}()
 
+	// Load config (Viper, env and file)
+	configureViper(log)
+
+	// Unify DB DSN for all DB access
+	pgDsn, err := server.GetUnifiedDatabaseDSN()
+	if err != nil {
+		log.Fatal("database DSN not set in config or env", ErrorField(err))
+	}
+	log.Info("Using database DSN", String("dsn", redactDSN(pgDsn)))
+	runMigrationsGo(pgDsn, log)
+	viper.Set("database.dsn", pgDsn)
+
 	// Create context with cancellation for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	// Load config (Viper, env and file)
-	configureViper(log)
 
 	// Create Redis client with enhanced features
 	redisClient, err := server.NewRedisClient(log)
@@ -123,50 +281,59 @@ func main() {
 		defer jobServer.Shutdown()
 	}
 
-	// Fiber app with secure defaults
-	app := fiber.New(fiber.Config{
-		AppName:               "Subinc Cost Management Microservice",
-		ServerHeader:          "Fiber",
-		DisableStartupMessage: true,
-		ErrorHandler:          customErrorHandler(log),
-	})
+	// Handler wiring
+	emailManager := email.NewEmailManager(log)
+	userStore := user.NewPostgresUserStore(pgPool)
+	encryptionKey := []byte(viper.GetString("encryption.key"))
+	credentialRepo, _ := repository.NewCredentialRepository(pgPool, encryptionKey, log)
+	costRepo, _ := repository.NewPostgresCostRepository(pgPool, log)
+	providerFactory := cloud.NewProviderFactory(log)
+	costService := service.NewCostService(costRepo, jobClient, nil, log)
+	costHandler := api.NewCostHandler(costService, log)
+	cloudProviderService := service.NewCloudProviderService(credentialRepo, providerFactory, costService, log)
+	cloudHandler := api.NewCloudHandler(cloudProviderService, log)
 
-	// Apply global middleware
-	configureMiddleware(app, redisClient, log, admin.NewPostgresAdminStore(pgPool))
+	billingRepoImpl, _ := repository.NewPostgresBillingRepository(pgPool, log)
+	billingRepoConcrete := billingRepoImpl.(*repository.PostgresBillingRepository)
+	discountService := service.NewDiscountService(billingRepoConcrete, log)
+	billingService := service.NewBillingService(billingRepoConcrete, discountService, pgPool, log)
+	couponService := service.NewCouponService(billingRepoConcrete, log)
+	creditService := service.NewCreditService(billingRepoConcrete, log)
+	refundService := service.NewRefundService(billingRepoConcrete, log)
+	tokenizationRegistry := service.NewTokenizationProviderRegistry(log)
+	paymentMethodService := service.NewPaymentMethodService(billingRepoConcrete, log, tokenizationRegistry)
+	notifStore := notifications.NewPostgresNotificationStore(pgPool, log)
+	subscriptionService := service.NewSubscriptionService(billingRepoConcrete, log, notifStore)
+	webhookEventService := service.NewWebhookEventService(billingRepoConcrete, log)
+	invoiceAdjustmentService := service.NewInvoiceAdjustmentService(billingRepoConcrete, log)
+	billingHandler := api.NewBillingHandler(
+		billingService,
+		couponService,
+		creditService,
+		refundService,
+		paymentMethodService,
+		subscriptionService,
+		webhookEventService,
+		invoiceAdjustmentService,
+		log,
+	)
+	adminStore := admin.NewPostgresAdminStore(pgPool)
+	var _ interface {
+		admin.AdminStore
+		admin.AdminUserStore
+	} = adminStore // compile-time check
+	adminHandler := admin.NewHandler(adminStore, userStore, emailManager, secretsManager, jwtSecretName)
+	terraformProvisioner := terraform.NewTerraformProvisioner(redisClient, log)
+	architectureRepo := architecture.NewPostgresRepository(pgPool)
+	architectureService := architecture.NewService(architectureRepo)
+	architectureHandler := architecture.NewHandler(architectureService, *log)
 
-	// Register Prometheus metrics endpoint
-	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
-
-	// Wire up repositories
-	// costRepo, err := repository.NewPostgresCostRepository(pgPool, log)
-	// if err != nil {
-	// 	log.Fatal("failed to initialize cost repository", ErrorField(err))
-	// }
-	// billingRepo, err := repository.NewPostgresBillingRepository(pgPool, log)
-	// if err != nil {
-	// 	log.Fatal("failed to initialize billing repository", ErrorField(err))
-	// }
-
-	// Provider services
-	// providerFactory := cloud.NewProviderFactory(log)
-	// providerRegistry := &providerRegistryAdapter{cloud.NewCostDataProviderRegistry(providerFactory)}
-	// costJobQueue := jobClient
-
-	// Cloud provider service
-	var encryptionKey []byte
-	if viper.GetBool("cloud.disableSecretManager") {
-		log.Warn("cloud credential encryption key: using dummy key (secret manager disabled via config)")
-		encryptionKey = make([]byte, 32) // 32 zero bytes (not secure, for dev/test only)
-	} else {
-		encryptionKeyStr, err := secretsManager.GetSecret(ctx, "cloud-creds-key")
-		if err != nil {
-			log.Fatal("failed to load cloud credential encryption key from secrets manager", ErrorField(err))
-		}
-		encryptionKey = []byte(encryptionKeyStr)
-		if len(encryptionKey) < 32 {
-			log.Fatal("invalid cloud credential encryption key: insufficient length")
-		}
-	}
+	userHandler := user.NewHandler(userStore, secretsManager, jwtSecretName, emailManager, billingRepoConcrete)
+	tenantStore := tenant.NewPostgresTenantStore(pgPool)
+	tenantHandler := tenant.NewHandler(tenantStore)
+	projectRepo := project.NewPostgresRepository(pgPool)
+	projectService := project.NewService(projectRepo)
+	projectHandler := project.NewHandler(projectService, log)
 
 	// Get API prefix from config
 	apiPrefix := viper.GetString("api.prefix")
@@ -174,8 +341,42 @@ func main() {
 		apiPrefix = "/api/v1"
 	}
 
-	// Setup all routes using the centralized router
-	app = server.SetupRouter(apiPrefix, pgPool, secretsManager, jwtSecretName)
+	// Fiber app with secure defaults and all routes registered
+	app := server.SetupRouter(
+		apiPrefix,
+		pgPool,
+		secretsManager,
+		jwtSecretName,
+		userHandler,
+		tenantHandler,
+		projectHandler,
+		costHandler,
+		cloudHandler,
+		billingHandler,
+		billingRepoConcrete,
+		adminHandler,
+		terraformProvisioner,
+		architectureHandler,
+		notifStore,
+		adminStore,
+		redisClient,
+		log,
+	)
+
+	// Register login route
+	app.Post("/api/v1/login", loginRouterHandler(adminHandler, userHandler))
+
+	// Ensure admin RBAC/seed after all migrations and app setup
+	err = ensureDefaultAdminRBAC(adminStore, log)
+	if err != nil {
+		log.Error("Admin RBAC/seed failed", ErrorField(err))
+		os.Exit(1)
+	} else {
+		log.Info("Admin RBAC/seed completed successfully")
+	}
+
+	// Register Prometheus metrics endpoint
+	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
 
 	// Start server in a goroutine
 	go func() {
@@ -229,28 +430,6 @@ func configureViper(logger *Logger) {
 	viper.SetDefault("rate_limit.enabled", true)
 	viper.SetDefault("rate_limit.max_requests", 100)
 	viper.SetDefault("rate_limit.window", time.Minute)
-}
-
-// configureMiddleware sets up all middleware for the application
-func configureMiddleware(app *fiber.App, redisClient *redis.Client, logger *Logger, adminStore *admin.PostgresAdminStore) {
-	// CORS middleware with secure settings
-	app.Use(middleware.ConfigureCORS())
-
-	// Security headers middleware
-	app.Use(middleware.SecurityHeaders())
-
-	// Request logging middleware
-	app.Use(middleware.RequestLogger(logger, adminStore))
-
-	// Distributed rate limiting if enabled
-	if viper.GetBool("rate_limit.enabled") {
-		app.Use(middleware.IPRateLimiter(
-			redisClient,
-			logger,
-			viper.GetInt("rate_limit.max_requests"),
-			viper.GetDuration("rate_limit.window"),
-		))
-	}
 }
 
 // registerJobHandlers registers all background job handlers
@@ -353,8 +532,8 @@ func registerJobHandlers(
 	// Register Terraform provision job
 	jobServer.RegisterHandler("provision:terraform", func(ctx context.Context, task *asynq.Task) error {
 		var payload struct {
-			ID      string                         `json:"id"`
-			Request *provisioning.ProvisionRequest `json:"request"`
+			ID      string                              `json:"id"`
+			Request *provisioningtypes.ProvisionRequest `json:"request"`
 		}
 		if err := jobs.UnmarshalPayload(task, &payload); err != nil {
 			logger.Error("Failed to unmarshal terraform provision payload", ErrorField(err))
@@ -441,4 +620,117 @@ func shutdownGracefully(app *fiber.App, logger *Logger, cancel context.CancelFun
 	}
 
 	logger.Info("server gracefully stopped")
+}
+
+func ensureDefaultAdmin(adminStore *admin.PostgresAdminStore, log *Logger) {
+	users, err := adminStore.ListUsers()
+	if err != nil {
+		log.Error("failed to check admin users", ErrorField(err))
+		return
+	}
+	if len(users) > 0 {
+		log.Info("admin user(s) already exist, skipping bootstrap")
+		return
+	}
+	adminEmail := viper.GetString("admin.email")
+	if adminEmail == "" {
+		adminEmail = "admin@subinc.com"
+	}
+	adminUsername := viper.GetString("admin.username")
+	if adminUsername == "" {
+		adminUsername = "admin"
+	}
+	adminPassword := viper.GetString("admin.password")
+	if adminPassword == "" {
+		adminPassword = generateSecurePassword(32)
+	}
+	passwordHash, err := user.HashPassword(adminPassword)
+	if err != nil {
+		log.Error("failed to hash default admin password", ErrorField(err))
+		return
+	}
+	adminUser := &admin.AdminUser{
+		ID:           user.GenerateUUID(),
+		Username:     adminUsername,
+		Email:        adminEmail,
+		PasswordHash: passwordHash,
+		Roles:        []string{"superuser", "admin"},
+	}
+	if err := adminStore.CreateUser(adminUser); err != nil {
+		log.Error("failed to create default admin user", ErrorField(err))
+		return
+	}
+	log.Warn("Default admin user created. CHANGE THIS PASSWORD IMMEDIATELY.", String("username", adminUsername), String("email", adminEmail), String("password", adminPassword))
+}
+
+func generateSecurePassword(length int) string {
+	b := make([]byte, length)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "ChangeMeNow!" // fallback, should never happen
+	}
+	return strings.TrimRight(base64.URLEncoding.EncodeToString(b), "=")
+}
+
+func debugDBCredsAndSchema(db *sql.DB, log *Logger) {
+	var dbName, dbUser, searchPath, version string
+	db.QueryRow("SELECT current_database(), current_user, current_setting('search_path'), version()").Scan(&dbName, &dbUser, &searchPath, &version)
+	log.Info("DB Debug: Connected", String("db", dbName), String("user", dbUser), String("search_path", searchPath), String("version", version))
+	rows, err := db.Query("SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema') ORDER BY schemaname, tablename")
+	if err != nil {
+		log.Error("DB Debug: failed to list tables", ErrorField(err))
+		return
+	}
+	defer rows.Close()
+	tables := make([]string, 0)
+	for rows.Next() {
+		var schema, table string
+		_ = rows.Scan(&schema, &table)
+		tables = append(tables, schema+"."+table)
+	}
+	log.Info("DB Debug: visible tables", String("tables", strings.Join(tables, ", ")))
+	// Log current roles for the user
+	roleRows, err := db.Query("SELECT rolname FROM pg_roles WHERE pg_has_role(current_user, oid, 'member')")
+	if err == nil {
+		roles := make([]string, 0)
+		for roleRows.Next() {
+			var role string
+			_ = roleRows.Scan(&role)
+			roles = append(roles, role)
+		}
+		roleRows.Close()
+		log.Info("DB Debug: current roles", String("roles", strings.Join(roles, ", ")))
+	} else {
+		log.Error("DB Debug: failed to list roles", ErrorField(err))
+	}
+}
+
+func loginRouterHandler(adminHandler *admin.AdminHandler, userHandler *user.UserHandler) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		var creds struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		if err := c.BodyParser(&creds); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+		}
+		var respErr error
+		if strings.EqualFold(creds.Username, "admin@subinc.com") {
+			respErr = adminHandler.Login(c)
+		} else {
+			respErr = userHandler.Login(c)
+		}
+		// After handler, check if response is JSON with token/type, else wrap
+		if respErr == nil && c.Response().StatusCode() == fiber.StatusOK {
+			var body map[string]interface{}
+			if err := c.BodyParser(&body); err == nil {
+				token, hasToken := body["token"].(string)
+				typeVal, hasType := body["type"].(string)
+				if hasToken && hasType {
+					return c.Status(fiber.StatusOK).JSON(fiber.Map{"token": token, "type": typeVal})
+				}
+			}
+		}
+		return respErr
+	}
 }

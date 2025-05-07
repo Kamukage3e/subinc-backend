@@ -9,6 +9,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
+	provisioningtypes "github.com/subinc/subinc-backend/internal/provisioningtypes"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -51,8 +52,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
-	"github.com/subinc/subinc-backend/internal/provisioning"
-
 )
 
 const (
@@ -70,12 +69,12 @@ func NewTerraformProvisioner(redis *redis.Client, logger *logger.Logger) *Terraf
 	return &TerraformProvisioner{redis: redis, logger: logger}
 }
 
-func (p *TerraformProvisioner) Provision(ctx context.Context, req *provisioning.ProvisionRequest) (*provisioning.ProvisionStatus, error) {
+func (p *TerraformProvisioner) Provision(ctx context.Context, req *provisioningtypes.ProvisionRequest) (*provisioningtypes.ProvisionStatus, error) {
 	if req == nil || req.TenantID == "" || req.OrgID == "" || req.ProjectID == "" || req.Provider == "" || req.Resource == "" {
 		return nil, fmt.Errorf("invalid provision request: missing required fields")
 	}
 	id := generateProvisionID(req)
-	status := &provisioning.ProvisionStatus{
+	status := &provisioningtypes.ProvisionStatus{
 		ID:        id,
 		Request:   *req,
 		Status:    "pending",
@@ -89,7 +88,7 @@ func (p *TerraformProvisioner) Provision(ctx context.Context, req *provisioning.
 	return status, nil
 }
 
-func (p *TerraformProvisioner) GetStatus(ctx context.Context, id string) (*provisioning.ProvisionStatus, error) {
+func (p *TerraformProvisioner) GetStatus(ctx context.Context, id string) (*provisioningtypes.ProvisionStatus, error) {
 	if id == "" {
 		return nil, fmt.Errorf("missing provision id")
 	}
@@ -100,26 +99,26 @@ func (p *TerraformProvisioner) GetStatus(ctx context.Context, id string) (*provi
 	if err != nil {
 		return nil, fmt.Errorf("failed to get provision status: %w", err)
 	}
-	var status provisioning.ProvisionStatus
+	var status provisioningtypes.ProvisionStatus
 	if err := json.Unmarshal(data, &status); err != nil {
 		return nil, fmt.Errorf("failed to decode provision status: %w", err)
 	}
 	return &status, nil
 }
 
-func (p *TerraformProvisioner) List(ctx context.Context, tenantID, orgID, projectID string) ([]*provisioning.ProvisionStatus, error) {
+func (p *TerraformProvisioner) List(ctx context.Context, tenantID, orgID, projectID string) ([]*provisioningtypes.ProvisionStatus, error) {
 	pattern := fmt.Sprintf("%s%s:%s:%s:*", provisionStatusPrefix, tenantID, orgID, projectID)
 	keys, err := p.redis.Keys(ctx, pattern).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list provision statuses: %w", err)
 	}
-	var statuses []*provisioning.ProvisionStatus
+	var statuses []*provisioningtypes.ProvisionStatus
 	for _, key := range keys {
 		data, err := p.redis.Get(ctx, key).Bytes()
 		if err != nil {
 			continue
 		}
-		var status provisioning.ProvisionStatus
+		var status provisioningtypes.ProvisionStatus
 		if err := json.Unmarshal(data, &status); err == nil {
 			statuses = append(statuses, &status)
 		}
@@ -142,7 +141,7 @@ func (p *TerraformProvisioner) Cancel(ctx context.Context, id string) error {
 	return p.SaveStatus(ctx, status)
 }
 
-func (p *TerraformProvisioner) SaveStatus(ctx context.Context, status *provisioning.ProvisionStatus) error {
+func (p *TerraformProvisioner) SaveStatus(ctx context.Context, status *provisioningtypes.ProvisionStatus) error {
 	if status == nil {
 		return fmt.Errorf("nil status")
 	}
@@ -154,7 +153,7 @@ func (p *TerraformProvisioner) SaveStatus(ctx context.Context, status *provision
 	return p.redis.Set(ctx, key, data, 30*24*time.Hour).Err() // 30d retention
 }
 
-func generateProvisionID(req *provisioning.ProvisionRequest) string {
+func generateProvisionID(req *provisioningtypes.ProvisionRequest) string {
 	return fmt.Sprintf("%s:%s:%s:%s:%d", req.TenantID, req.OrgID, req.ProjectID, req.Resource, time.Now().UnixNano())
 }
 
@@ -164,7 +163,7 @@ func generateProvisionID(req *provisioning.ProvisionRequest) string {
 // --- TERRAFORM EXECUTION LOGIC ---
 
 // Replace all Terraform CLI logic with Go SDK resource creation
-func (p *TerraformProvisioner) runProvisioning(ctx context.Context, id string, req *provisioning.ProvisionRequest) (string, error) {
+func (p *TerraformProvisioner) runProvisioning(ctx context.Context, req *provisioningtypes.ProvisionRequest) (string, error) {
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(req.Config["region"]))
 	if err != nil {
 		return "", fmt.Errorf("failed to load AWS config: %w", err)
@@ -286,7 +285,7 @@ func (p *TerraformProvisioner) runProvisioning(ctx context.Context, id string, r
 			hcl := generateTerraformConfig(req)
 			return hcl, nil
 		case "efs":
-			err = createEFS(ctx, cfg, req)
+			err = createEFS(ctx, cfg)
 			if err != nil {
 				return "", fmt.Errorf("failed to create EFS: %w", err)
 			}
@@ -377,7 +376,7 @@ func (p *TerraformProvisioner) runProvisioning(ctx context.Context, id string, r
 			hcl := generateTerraformConfig(req)
 			return hcl, nil
 		case "eip":
-			err = createEIP(ctx, cfg, req)
+			err = createEIP(ctx, cfg)
 			if err != nil {
 				return "", fmt.Errorf("failed to create EIP: %w", err)
 			}
@@ -477,8 +476,8 @@ func (p *TerraformProvisioner) runProvisioning(ctx context.Context, id string, r
 }
 
 // Update RunTerraformJob to RunProvisionJob
-func (p *TerraformProvisioner) RunProvisionJob(ctx context.Context, id string, req *provisioning.ProvisionRequest) error {
-	hcl, err := p.runProvisioning(ctx, id, req)
+func (p *TerraformProvisioner) RunProvisionJob(ctx context.Context, id string, req *provisioningtypes.ProvisionRequest) error {
+	hcl, err := p.runProvisioning(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -493,7 +492,7 @@ func (p *TerraformProvisioner) RunProvisionJob(ctx context.Context, id string, r
 	return p.SaveStatus(ctx, status)
 }
 
-func generateTerraformConfig(req *provisioning.ProvisionRequest) string {
+func generateTerraformConfig(req *provisioningtypes.ProvisionRequest) string {
 	// Real implementation: use templates, modules, and req.Config for resource
 	// This is a minimal, real-world example for AWS EC2 (expand for other providers/resources)
 	if req.Provider == "aws" && req.Resource == "ec2" {
@@ -514,7 +513,7 @@ resource "aws_instance" "example" {
 }
 
 // Modularize resource creation for maintainability
-func createEC2(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createEC2(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	ec2Client := ec2.NewFromConfig(cfg)
 	input := &ec2.RunInstancesInput{
 		ImageId:      aws.String(req.Config["ami"]),
@@ -557,7 +556,7 @@ func createEC2(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionR
 	return err
 }
 
-func createVPC(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createVPC(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	vpcClient := ec2.NewFromConfig(cfg)
 	input := &ec2.CreateVpcInput{
 		CidrBlock: aws.String(req.Config["cidr_block"]),
@@ -566,7 +565,7 @@ func createVPC(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionR
 	return err
 }
 
-func createSubnet(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createSubnet(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	ec2Client := ec2.NewFromConfig(cfg)
 	input := &ec2.CreateSubnetInput{
 		VpcId:            aws.String(req.Config["vpc_id"]),
@@ -577,7 +576,7 @@ func createSubnet(ctx context.Context, cfg aws.Config, req *provisioning.Provisi
 	return err
 }
 
-func createSecurityGroup(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createSecurityGroup(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	ec2Client := ec2.NewFromConfig(cfg)
 	input := &ec2.CreateSecurityGroupInput{
 		GroupName:   aws.String(req.Config["group_name"]),
@@ -588,7 +587,7 @@ func createSecurityGroup(ctx context.Context, cfg aws.Config, req *provisioning.
 	return err
 }
 
-func createIAMRole(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createIAMRole(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	iamClient := iam.NewFromConfig(cfg)
 	input := &iam.CreateRoleInput{
 		RoleName:                 aws.String(req.Config["role_name"]),
@@ -598,7 +597,7 @@ func createIAMRole(ctx context.Context, cfg aws.Config, req *provisioning.Provis
 	return err
 }
 
-func createSQS(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createSQS(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	sqsClient := sqs.NewFromConfig(cfg)
 	input := &sqs.CreateQueueInput{
 		QueueName: aws.String(req.Config["queue_name"]),
@@ -607,7 +606,7 @@ func createSQS(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionR
 	return err
 }
 
-func createSNS(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createSNS(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	snsClient := sns.NewFromConfig(cfg)
 	input := &sns.CreateTopicInput{
 		Name: aws.String(req.Config["topic_name"]),
@@ -616,14 +615,14 @@ func createSNS(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionR
 	return err
 }
 
-func createEFS(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createEFS(ctx context.Context, cfg aws.Config) error {
 	efsClient := efs.NewFromConfig(cfg)
 	input := &efs.CreateFileSystemInput{}
 	_, err := efsClient.CreateFileSystem(ctx, input)
 	return err
 }
 
-func createEKS(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createEKS(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	eksClient := eks.NewFromConfig(cfg)
 	input := &eks.CreateClusterInput{
 		Name:    aws.String(req.Config["cluster_name"]),
@@ -637,7 +636,7 @@ func createEKS(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionR
 	return err
 }
 
-func createCloudFront(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createCloudFront(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	cfClient := cloudfront.NewFromConfig(cfg)
 	input := &cloudfront.CreateDistributionInput{
 		DistributionConfig: &cloudfronttypes.DistributionConfig{
@@ -656,7 +655,7 @@ func createCloudFront(ctx context.Context, cfg aws.Config, req *provisioning.Pro
 	return err
 }
 
-func createRoute53Zone(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createRoute53Zone(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	r53Client := route53.NewFromConfig(cfg)
 	input := &route53.CreateHostedZoneInput{
 		Name:            aws.String(req.Config["zone_name"]),
@@ -666,7 +665,7 @@ func createRoute53Zone(ctx context.Context, cfg aws.Config, req *provisioning.Pr
 	return err
 }
 
-func createALB(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createALB(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	elbClient := elasticloadbalancingv2.NewFromConfig(cfg)
 	input := &elasticloadbalancingv2.CreateLoadBalancerInput{
 		Name:    aws.String(req.Config["name"]),
@@ -677,7 +676,7 @@ func createALB(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionR
 	return err
 }
 
-func createElasticache(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createElasticache(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	cacheClient := elasticache.NewFromConfig(cfg)
 	input := &elasticache.CreateCacheClusterInput{
 		CacheClusterId:            aws.String(req.Config["cluster_id"]),
@@ -690,7 +689,7 @@ func createElasticache(ctx context.Context, cfg aws.Config, req *provisioning.Pr
 	return err
 }
 
-func createRedshift(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createRedshift(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	redshiftClient := redshift.NewFromConfig(cfg)
 	input := &redshift.CreateClusterInput{
 		ClusterIdentifier:  aws.String(req.Config["cluster_identifier"]),
@@ -704,7 +703,7 @@ func createRedshift(ctx context.Context, cfg aws.Config, req *provisioning.Provi
 	return err
 }
 
-func createKinesis(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createKinesis(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	kinesisClient := kinesis.NewFromConfig(cfg)
 	input := &kinesis.CreateStreamInput{
 		StreamName: aws.String(req.Config["stream_name"]),
@@ -714,7 +713,7 @@ func createKinesis(ctx context.Context, cfg aws.Config, req *provisioning.Provis
 	return err
 }
 
-func createLogGroup(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createLogGroup(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	logsClient := cloudwatchlogs.NewFromConfig(cfg)
 	input := &cloudwatchlogs.CreateLogGroupInput{
 		LogGroupName: aws.String(req.Config["log_group_name"]),
@@ -723,7 +722,7 @@ func createLogGroup(ctx context.Context, cfg aws.Config, req *provisioning.Provi
 	return err
 }
 
-func createSSMParameter(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createSSMParameter(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	ssmClient := ssm.NewFromConfig(cfg)
 	input := &ssm.PutParameterInput{
 		Name:  aws.String(req.Config["name"]),
@@ -734,7 +733,7 @@ func createSSMParameter(ctx context.Context, cfg aws.Config, req *provisioning.P
 	return err
 }
 
-func createSecret(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createSecret(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	secretsClient := secretsmanager.NewFromConfig(cfg)
 	input := &secretsmanager.CreateSecretInput{
 		Name:         aws.String(req.Config["name"]),
@@ -744,7 +743,7 @@ func createSecret(ctx context.Context, cfg aws.Config, req *provisioning.Provisi
 	return err
 }
 
-func createAutoScalingGroup(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createAutoScalingGroup(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	autoScalingClient := autoscaling.NewFromConfig(cfg)
 	input := &autoscaling.CreateAutoScalingGroupInput{
 		AutoScalingGroupName:    aws.String(req.Config["group_name"]),
@@ -757,7 +756,7 @@ func createAutoScalingGroup(ctx context.Context, cfg aws.Config, req *provisioni
 	return err
 }
 
-func createENI(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createENI(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	ec2Client := ec2.NewFromConfig(cfg)
 	input := &ec2.CreateNetworkInterfaceInput{
 		SubnetId: aws.String(req.Config["subnet_id"]),
@@ -766,14 +765,14 @@ func createENI(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionR
 	return err
 }
 
-func createEIP(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createEIP(ctx context.Context, cfg aws.Config) error {
 	ec2Client := ec2.NewFromConfig(cfg)
 	input := &ec2.AllocateAddressInput{}
 	_, err := ec2Client.AllocateAddress(ctx, input)
 	return err
 }
 
-func createEFSMountTarget(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createEFSMountTarget(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	efsClient := efs.NewFromConfig(cfg)
 	input := &efs.CreateMountTargetInput{
 		FileSystemId: aws.String(req.Config["file_system_id"]),
@@ -783,7 +782,7 @@ func createEFSMountTarget(ctx context.Context, cfg aws.Config, req *provisioning
 	return err
 }
 
-func createStepFunction(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createStepFunction(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	sfnClient := sfn.NewFromConfig(cfg)
 	input := &sfn.CreateStateMachineInput{
 		Name:       aws.String(req.Config["name"]),
@@ -794,7 +793,7 @@ func createStepFunction(ctx context.Context, cfg aws.Config, req *provisioning.P
 	return err
 }
 
-func createGlueJob(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createGlueJob(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	glueClient := glue.NewFromConfig(cfg)
 	input := &glue.CreateJobInput{
 		Name: aws.String(req.Config["name"]),
@@ -808,7 +807,7 @@ func createGlueJob(ctx context.Context, cfg aws.Config, req *provisioning.Provis
 	return err
 }
 
-func createAthenaWorkgroup(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createAthenaWorkgroup(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	athenaClient := athena.NewFromConfig(cfg)
 	input := &athena.CreateWorkGroupInput{
 		Name: aws.String(req.Config["name"]),
@@ -817,7 +816,7 @@ func createAthenaWorkgroup(ctx context.Context, cfg aws.Config, req *provisionin
 	return err
 }
 
-func createS3BucketPolicy(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createS3BucketPolicy(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	s3Client := s3.NewFromConfig(cfg)
 	input := &s3.PutBucketPolicyInput{
 		Bucket: aws.String(req.Config["bucket_name"]),
@@ -827,7 +826,7 @@ func createS3BucketPolicy(ctx context.Context, cfg aws.Config, req *provisioning
 	return err
 }
 
-func createCloudTrail(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createCloudTrail(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	cloudtrailClient := cloudtrail.NewFromConfig(cfg)
 	input := &cloudtrail.CreateTrailInput{
 		Name: aws.String(req.Config["name"]),
@@ -836,7 +835,7 @@ func createCloudTrail(ctx context.Context, cfg aws.Config, req *provisioning.Pro
 	return err
 }
 
-func createCloudFormationStack(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createCloudFormationStack(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	cloudformationClient := cloudformation.NewFromConfig(cfg)
 	input := &cloudformation.CreateStackInput{
 		StackName: aws.String(req.Config["name"]),
@@ -845,7 +844,7 @@ func createCloudFormationStack(ctx context.Context, cfg aws.Config, req *provisi
 	return err
 }
 
-func createCodeBuildProject(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createCodeBuildProject(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	codebuildClient := codebuild.NewFromConfig(cfg)
 	input := &codebuild.CreateProjectInput{
 		Name: aws.String(req.Config["name"]),
@@ -854,7 +853,7 @@ func createCodeBuildProject(ctx context.Context, cfg aws.Config, req *provisioni
 	return err
 }
 
-func createCodePipeline(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createCodePipeline(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	codepipelineClient := codepipeline.NewFromConfig(cfg)
 	input := &codepipeline.CreatePipelineInput{
 		Pipeline: &cpTypes.PipelineDeclaration{
@@ -865,7 +864,7 @@ func createCodePipeline(ctx context.Context, cfg aws.Config, req *provisioning.P
 	return err
 }
 
-func createCodeDeploy(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createCodeDeploy(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	codedeployClient := codedeploy.NewFromConfig(cfg)
 	input := &codedeploy.CreateApplicationInput{
 		ApplicationName: aws.String(req.Config["name"]),
@@ -874,7 +873,7 @@ func createCodeDeploy(ctx context.Context, cfg aws.Config, req *provisioning.Pro
 	return err
 }
 
-func createElasticBeanstalk(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createElasticBeanstalk(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	beanstalkClient := elasticbeanstalk.NewFromConfig(cfg)
 	input := &elasticbeanstalk.CreateApplicationInput{
 		ApplicationName: aws.String(req.Config["name"]),
@@ -883,7 +882,7 @@ func createElasticBeanstalk(ctx context.Context, cfg aws.Config, req *provisioni
 	return err
 }
 
-func createAppConfig(ctx context.Context, cfg aws.Config, req *provisioning.ProvisionRequest) error {
+func createAppConfig(ctx context.Context, cfg aws.Config, req *provisioningtypes.ProvisionRequest) error {
 	appconfigClient := appconfig.NewFromConfig(cfg)
 	input := &appconfig.CreateApplicationInput{
 		Name: aws.String(req.Config["name"]),

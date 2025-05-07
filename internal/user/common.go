@@ -1,36 +1,6 @@
 package user
 
-import (
-	"strconv"
-
-	"github.com/google/uuid"
-	"github.com/speps/go-hashids/v2"
-	"github.com/spf13/viper"
-)
-
-// hashID is initialized once per process. Salt must be set via config for SaaS security.
-var hashID *hashids.HashID
-
-func init() {
-	salt := getSalt()
-	if salt == "" {
-		// Architectural decision: Do not allow insecure default salt in production.
-		// If salt is missing, fail fast and log a clear error.
-		panic("HASHID_SALT must be set in configuration for secure operation")
-	}
-	hd := hashids.NewData()
-	hd.Salt = salt
-	hd.MinLength = 12
-	var err error
-	hashID, err = hashids.NewWithData(hd)
-	if err != nil {
-		panic("failed to initialize hashids: " + err.Error())
-	}
-}
-
-func getSalt() string {
-	return viper.GetString("HASHID_SALT")
-}
+import "github.com/google/uuid"
 
 // HasRole returns true if the user has the specified role.
 func (u *User) HasRole(role string) bool {
@@ -84,18 +54,4 @@ func (u *User) RemoveAttribute(key string) {
 // GenerateUUID returns a new random UUID string for use as a user ID.
 func GenerateUUID() string {
 	return uuid.NewString()
-}
-
-// HashID returns a hashid-encoded string for the user's numeric ID.
-// Returns error if ID is not numeric or encoding fails.
-func (u *User) HashID() (string, error) {
-	idInt, err := strconv.ParseInt(u.ID, 10, 64)
-	if err != nil {
-		return "", err
-	}
-	hid, err := hashID.EncodeInt64([]int64{idInt})
-	if err != nil {
-		return "", err
-	}
-	return hid, nil
 }

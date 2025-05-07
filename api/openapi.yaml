@@ -10,6 +10,8 @@ paths:
     get:
       summary: List users
       tags: [Users]
+      security:
+        - bearerAuth: []
       responses:
         "200":
           description: List of users
@@ -39,6 +41,8 @@ paths:
     post:
       summary: User login
       tags: [Users]
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -59,6 +63,8 @@ paths:
     get:
       summary: Get user by ID
       tags: [Users]
+      security:
+        - bearerAuth: []
       parameters:
         - in: path
           name: id
@@ -75,6 +81,8 @@ paths:
     put:
       summary: Update user
       tags: [Users]
+      security:
+        - bearerAuth: []
       parameters:
         - in: path
           name: id
@@ -97,6 +105,8 @@ paths:
     delete:
       summary: Delete user
       tags: [Users]
+      security:
+        - bearerAuth: []
       parameters:
         - in: path
           name: id
@@ -142,6 +152,8 @@ paths:
     delete:
       summary: Remove role from user
       tags: [Users, RBAC]
+      security:
+        - bearerAuth: []
       parameters:
         - in: path
           name: id
@@ -169,6 +181,8 @@ paths:
     post:
       summary: Set user attribute
       tags: [Users, ABAC]
+      security:
+        - bearerAuth: []
       parameters:
         - in: path
           name: id
@@ -203,6 +217,8 @@ paths:
     delete:
       summary: Remove user attribute
       tags: [Users, ABAC]
+      security:
+        - bearerAuth: []
       parameters:
         - in: path
           name: id
@@ -2320,6 +2336,8 @@ paths:
     get:
       summary: List users
       tags: [Admin, Users]
+      security:
+        - bearerAuth: []
       responses:
         "200":
           description: List of users
@@ -2337,6 +2355,8 @@ paths:
     post:
       summary: Create user
       tags: [Admin, Users]
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -2992,6 +3012,8 @@ paths:
     delete:
       summary: Remove permission from role
       tags: [Admin, Roles, Permissions]
+      security:
+        - bearerAuth: []
       parameters:
         - in: path
           name: id
@@ -3521,6 +3543,8 @@ paths:
     post:
       summary: Request password reset email
       tags: [Auth]
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -3563,6 +3587,8 @@ paths:
     post:
       summary: Verify email with token
       tags: [Auth]
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -3583,6 +3609,8 @@ paths:
     post:
       summary: Resend verification email
       tags: [Auth]
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -3756,6 +3784,25 @@ paths:
           description: Template removed
         "400":
           $ref: "#/components/responses/BadRequestError"
+  /admin/projects/{id}/users:
+    get:
+      summary: List users in a project
+      tags: [Admin, Projects, Users]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of users with roles/permissions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserOrgProjectRole"
 
 components:
   schemas:

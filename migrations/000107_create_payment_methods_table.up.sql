@@ -17,11 +17,9 @@ CREATE TABLE
         ),
         token TEXT NOT NULL,
         token_provider TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL,
-        updated_at TIMESTAMPTZ NOT NULL,
-        metadata TEXT
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now (),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now (),
+        metadata JSONB NOT NULL DEFAULT '{}'
     );
 
 CREATE INDEX idx_payment_methods_account_id ON payment_methods (account_id);
-
-CREATE INDEX idx_payment_methods_status ON payment_methods (status);

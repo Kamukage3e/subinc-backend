@@ -35,4 +35,28 @@ type UserStore interface {
 type EmailSender interface {
 	SendResetEmail(to, token string) error
 	SendVerificationEmail(to, token string) error
+	SendDeviceLoginNotification(to, deviceName, ip, userAgent string) error
+	SendDeviceChangeNotification(to, deviceName, changeType string) error
+}
+
+// UserDeviceStore defines the contract for device/session storage in SaaS. All methods are required for production.
+type UserDeviceStore interface {
+	CreateDevice(ctx context.Context, d *UserDevice) error
+	UpdateDevice(ctx context.Context, d *UserDevice) error
+	GetDeviceByID(ctx context.Context, deviceID string) (*UserDevice, error)
+	ListDevicesByUserID(ctx context.Context, userID string) ([]*UserDevice, error)
+	RevokeDevice(ctx context.Context, deviceID string) error
+	RevokeAllDevicesForUser(ctx context.Context, userID string) error
+}
+
+// UserOrgProjectRoleStore defines the contract for cross-org/project role/permission storage in SaaS. All methods are required for production.
+type UserOrgProjectRoleStore interface {
+	CreateRole(ctx context.Context, r *UserOrgProjectRole) error
+	UpdateRole(ctx context.Context, r *UserOrgProjectRole) error
+	DeleteRole(ctx context.Context, id string) error
+	GetRoleByID(ctx context.Context, id string) (*UserOrgProjectRole, error)
+	ListRolesByUser(ctx context.Context, userID string) ([]*UserOrgProjectRole, error)
+	ListRolesByOrg(ctx context.Context, orgID string) ([]*UserOrgProjectRole, error)
+	ListRolesByProject(ctx context.Context, projectID string) ([]*UserOrgProjectRole, error)
+	FindRole(ctx context.Context, userID, orgID, projectID, role string) (*UserOrgProjectRole, error)
 }
