@@ -19,7 +19,7 @@ func (s *service) Create(ctx context.Context, input CreateProjectInput) (CreateP
 	}
 	p := &Project{
 		ID:          input.ID,
-		TenantID:    input.TenantID,
+		TenantID:    &input.TenantID,
 		OrgID:       input.OrgID,
 		Name:        input.Name,
 		Description: input.Description,

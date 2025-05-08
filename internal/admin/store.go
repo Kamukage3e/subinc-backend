@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lib/pq"
 	"github.com/subinc/subinc-backend/enterprise/notifications"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 	"github.com/subinc/subinc-backend/internal/pkg/secrets"
@@ -1438,11 +1439,13 @@ func (s *PostgresAdminStore) listAPIKeysRaw(userID, status string, limit, offset
 	var keys []APIKey
 	for rows.Next() {
 		var k APIKey
+		var userID sql.NullString
 		var lastUsedAt sql.NullTime
-		if err := rows.Scan(&k.ID, &k.UserID, &k.Name, &k.Status, &k.CreatedAt, &k.UpdatedAt, &lastUsedAt); err != nil {
+		if err := rows.Scan(&k.ID, &userID, &k.Name, &k.Status, &k.CreatedAt, &k.UpdatedAt, &lastUsedAt); err != nil {
 			logger.LogError("failed to scan api key row", logger.ErrorField(err))
 			return nil, 0, errors.New("failed to scan api key row: " + err.Error())
 		}
+		k.UserID = userID.String
 		if lastUsedAt.Valid {
 			k.LastUsedAt = lastUsedAt.Time
 		}
@@ -1514,11 +1517,13 @@ func (s *PostgresAdminStore) getAPIKeyRaw(id string) (*APIKey, error) {
 	}
 	const q = `SELECT id, user_id, name, status, created_at, updated_at, last_used_at FROM api_keys WHERE id = $1`
 	var k APIKey
+	var userID sql.NullString
 	var lastUsedAt sql.NullTime
-	if err := s.DB.QueryRow(ctx, q, id).Scan(&k.ID, &k.UserID, &k.Name, &k.Status, &k.CreatedAt, &k.UpdatedAt, &lastUsedAt); err != nil {
+	if err := s.DB.QueryRow(ctx, q, id).Scan(&k.ID, &userID, &k.Name, &k.Status, &k.CreatedAt, &k.UpdatedAt, &lastUsedAt); err != nil {
 		logger.LogError("api key not found", logger.ErrorField(err))
 		return nil, errors.New("api key not found: " + err.Error())
 	}
+	k.UserID = userID.String
 	if lastUsedAt.Valid {
 		k.LastUsedAt = lastUsedAt.Time
 	}
@@ -1541,11 +1546,13 @@ func (s *PostgresAdminStore) updateAPIKeyRaw(id, name string) (*APIKey, error) {
 	}
 	const q = `UPDATE api_keys SET name = $2, updated_at = NOW() WHERE id = $1 RETURNING id, user_id, name, status, created_at, updated_at, last_used_at`
 	var k APIKey
+	var userID sql.NullString
 	var lastUsedAt sql.NullTime
-	if err := s.DB.QueryRow(ctx, q, id, name).Scan(&k.ID, &k.UserID, &k.Name, &k.Status, &k.CreatedAt, &k.UpdatedAt, &lastUsedAt); err != nil {
+	if err := s.DB.QueryRow(ctx, q, id, name).Scan(&k.ID, &userID, &k.Name, &k.Status, &k.CreatedAt, &k.UpdatedAt, &lastUsedAt); err != nil {
 		logger.LogError("failed to update api key", logger.ErrorField(err))
 		return nil, errors.New("failed to update api key: " + err.Error())
 	}
+	k.UserID = userID.String
 	if lastUsedAt.Valid {
 		k.LastUsedAt = lastUsedAt.Time
 	}
@@ -1569,12 +1576,14 @@ func (s *PostgresAdminStore) rotateAPIKeyRaw(id string) (*APIKey, error) {
 	newKey := generateAPIKey()
 	const q = `UPDATE api_keys SET key = $2, updated_at = NOW() WHERE id = $1 RETURNING id, user_id, name, status, created_at, updated_at, last_used_at`
 	var k APIKey
+	var userID sql.NullString
 	var lastUsedAt sql.NullTime
-	if err := s.DB.QueryRow(ctx, q, id, newKey).Scan(&k.ID, &k.UserID, &k.Name, &k.Status, &k.CreatedAt, &k.UpdatedAt, &lastUsedAt); err != nil {
+	if err := s.DB.QueryRow(ctx, q, id, newKey).Scan(&k.ID, &userID, &k.Name, &k.Status, &k.CreatedAt, &k.UpdatedAt, &lastUsedAt); err != nil {
 		logger.LogError("failed to rotate api key", logger.ErrorField(err))
 		return nil, errors.New("failed to rotate api key: " + err.Error())
 	}
 	k.Key = newKey
+	k.UserID = userID.String
 	if lastUsedAt.Valid {
 		k.LastUsedAt = lastUsedAt.Time
 	}
@@ -2197,7 +2206,7 @@ func (s *PostgresAdminStore) CreateOrgTeam(ctx context.Context, team *OrgTeam) e
 		return errors.New("org team required")
 	}
 	if team.ID == "" {
-		team.ID = "team-" + uuid.NewString()
+		team.ID = uuid.NewString()
 	}
 	if team.OrgID == "" || team.Name == "" {
 		logger.LogError("org_id and name required")
@@ -2209,14 +2218,13 @@ func (s *PostgresAdminStore) CreateOrgTeam(ctx context.Context, team *OrgTeam) e
 	if team.UpdatedAt.IsZero() {
 		team.UpdatedAt = team.CreatedAt
 	}
-	userIDs, err := json.Marshal(team.UserIDs)
-	if err != nil {
-		logger.LogError("failed to marshal user_ids", logger.ErrorField(err))
-		return errors.New("failed to marshal user_ids: " + err.Error())
+	if team.UserIDs == nil {
+		team.UserIDs = []string{}
 	}
 	const q = `INSERT INTO org_teams (id, org_id, name, description, user_ids, settings, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-	_, err = s.DB.Exec(ctx, q, team.ID, team.OrgID, team.Name, team.Description, string(userIDs), team.Settings, team.CreatedAt, team.UpdatedAt)
+	_, err := s.DB.Exec(ctx, q, team.ID, team.OrgID, team.Name, team.Description, pq.Array(team.UserIDs), team.Settings, team.CreatedAt, team.UpdatedAt)
 	if err != nil {
+		logger.LogError("failed to create org team", logger.ErrorField(err))
 		return errors.New("failed to create org team")
 	}
 	return nil
@@ -2236,8 +2244,8 @@ func (s *PostgresAdminStore) CreateProject(ctx context.Context, p *Project) erro
 	if p.UpdatedAt.IsZero() {
 		p.UpdatedAt = p.CreatedAt
 	}
-	const q = `INSERT INTO projects (id, name, description, owner_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)`
-	_, err := s.DB.Exec(ctx, q, p.ID, p.Name, p.Description, p.OwnerID, p.CreatedAt, p.UpdatedAt)
+	const q = `INSERT INTO projects (id, tenant_id, name, description, owner_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	_, err := s.DB.Exec(ctx, q, p.ID, p.TenantID, p.Name, p.Description, p.OwnerID, p.CreatedAt, p.UpdatedAt)
 	if err != nil {
 		logger.LogError("failed to create project", logger.ErrorField(err))
 		return errors.New("failed to create project: " + err.Error())
@@ -2391,7 +2399,6 @@ func (s *PostgresAdminStore) DeleteOrg(ctx context.Context, id string) error {
 	return nil
 }
 
-
 func (s *PostgresAdminStore) DeleteOrgTeam(ctx context.Context, orgID, teamID string) error {
 	if orgID == "" || teamID == "" {
 		logger.LogError("org_id and team_id required")
@@ -2451,10 +2458,10 @@ func (s *PostgresAdminStore) GetOrg(ctx context.Context, id string) (*Organizati
 		logger.LogError("org_id required")
 		return nil, errors.New("org_id required")
 	}
-	const q = `SELECT id, name, created_at, updated_at FROM orgs WHERE id = $1`
+	const q = `SELECT id, tenant_id, name, created_at, updated_at FROM orgs WHERE id = $1`
 	row := s.DB.QueryRow(ctx, q, id)
 	var org Organization
-	if err := row.Scan(&org.ID, &org.Name, &org.CreatedAt, &org.UpdatedAt); err != nil {
+	if err := row.Scan(&org.ID, &org.TenantID, &org.Name, &org.CreatedAt, &org.UpdatedAt); err != nil {
 		logger.LogError("org not found", logger.String("id", id))
 		return nil, errors.New("org not found")
 	}
@@ -2499,10 +2506,10 @@ func (s *PostgresAdminStore) GetProject(ctx context.Context, id string) (*Projec
 		logger.LogError("project_id required")
 		return nil, errors.New("project_id required")
 	}
-	const q = `SELECT id, name, description, owner_id, created_at, updated_at FROM projects WHERE id = $1`
+	const q = `SELECT id, tenant_id, name, description, owner_id, created_at, updated_at FROM projects WHERE id = $1`
 	row := s.DB.QueryRow(ctx, q, id)
 	var project Project
-	if err := row.Scan(&project.ID, &project.Name, &project.Description, &project.OwnerID, &project.CreatedAt, &project.UpdatedAt); err != nil {
+	if err := row.Scan(&project.ID, &project.TenantID, &project.Name, &project.Description, &project.OwnerID, &project.CreatedAt, &project.UpdatedAt); err != nil {
 		logger.LogError("project not found", logger.String("id", id))
 		return nil, errors.New("project not found")
 	}
@@ -2580,7 +2587,7 @@ func (s *PostgresAdminStore) InviteProjectUser(projectID, email, role string) (i
 }
 
 func (s *PostgresAdminStore) ListProjects(ctx context.Context, filter ProjectFilter) ([]*Project, int, error) {
-	q := `SELECT id, name, description, owner_id, created_at, updated_at FROM projects`
+	q := `SELECT id, tenant_id, name, description, owner_id, created_at, updated_at FROM projects`
 	where := []string{}
 	args := []interface{}{}
 	arg := 1
@@ -2625,7 +2632,7 @@ func (s *PostgresAdminStore) ListProjects(ctx context.Context, filter ProjectFil
 	var projects []*Project
 	for rows.Next() {
 		var project Project
-		if err := rows.Scan(&project.ID, &project.Name, &project.Description, &project.OwnerID, &project.CreatedAt, &project.UpdatedAt); err != nil {
+		if err := rows.Scan(&project.ID, &project.TenantID, &project.Name, &project.Description, &project.OwnerID, &project.CreatedAt, &project.UpdatedAt); err != nil {
 			logger.LogError("failed to scan project", logger.ErrorField(err))
 			return nil, 0, errors.New("failed to scan project: " + err.Error())
 		}
@@ -2691,10 +2698,12 @@ func (s *PostgresAdminStore) ListProjectAPIKeys(projectID string) ([]*APIKey, er
 	var apiKeys []*APIKey
 	for rows.Next() {
 		var apiKey APIKey
-		if err := rows.Scan(&apiKey.ID, &apiKey.UserID, &apiKey.ProjectID, &apiKey.Name, &apiKey.Key, &apiKey.Status, &apiKey.CreatedAt, &apiKey.UpdatedAt); err != nil {
+		var userID sql.NullString
+		if err := rows.Scan(&apiKey.ID, &userID, &apiKey.ProjectID, &apiKey.Name, &apiKey.Key, &apiKey.Status, &apiKey.CreatedAt, &apiKey.UpdatedAt); err != nil {
 			logger.LogError("failed to scan project api key", logger.ErrorField(err))
 			return nil, errors.New("failed to scan project api key: " + err.Error())
 		}
+		apiKey.UserID = userID.String
 		apiKeys = append(apiKeys, &apiKey)
 	}
 	if err := rows.Err(); err != nil {
@@ -2720,10 +2729,12 @@ func (s *PostgresAdminStore) ListOrgAPIKeys(orgID string) ([]*APIKey, error) {
 	var apiKeys []*APIKey
 	for rows.Next() {
 		var apiKey APIKey
-		if err := rows.Scan(&apiKey.ID, &apiKey.UserID, &apiKey.OrgID, &apiKey.Name, &apiKey.Key, &apiKey.Status, &apiKey.CreatedAt, &apiKey.UpdatedAt); err != nil {
+		var userID sql.NullString
+		if err := rows.Scan(&apiKey.ID, &userID, &apiKey.OrgID, &apiKey.Name, &apiKey.Key, &apiKey.Status, &apiKey.CreatedAt, &apiKey.UpdatedAt); err != nil {
 			logger.LogError("failed to scan org api key", logger.ErrorField(err))
 			return nil, errors.New("failed to scan org api key: " + err.Error())
 		}
+		apiKey.UserID = userID.String
 		apiKeys = append(apiKeys, &apiKey)
 	}
 	if err := rows.Err(); err != nil {
@@ -2817,6 +2828,7 @@ func (s *PostgresAdminStore) ListOrgTeams(ctx context.Context, filter OrgTeamFil
 	}
 	rows, err := s.DB.Query(ctx, q, args...)
 	if err != nil {
+		logger.LogError("failed to list org teams", logger.ErrorField(err))
 		return nil, 0, errors.New("failed to list org teams")
 	}
 	defer rows.Close()
@@ -2832,6 +2844,7 @@ func (s *PostgresAdminStore) ListOrgTeams(ctx context.Context, filter OrgTeamFil
 		teams = append(teams, &team)
 	}
 	if err := rows.Err(); err != nil {
+		logger.LogError("failed to list org teams", logger.ErrorField(err))
 		return nil, 0, errors.New("failed to list org teams")
 	}
 	return teams, total, nil
@@ -3019,7 +3032,7 @@ func (s *PostgresAdminStore) OrgAuditLogs(orgID string) ([]interface{}, error) {
 		return nil, errors.New("org_id required")
 	}
 	ctx := context.Background()
-	const q = `SELECT id, actor_id, action, resource, details, created_at FROM audit_logs WHERE resource = 'org' AND details LIKE $1 ORDER BY created_at DESC LIMIT 1000`
+	const q = `SELECT id, actor_id, action, resource, details, created_at FROM audit_logs WHERE resource = 'org' AND details::text LIKE $1 ORDER BY created_at DESC LIMIT 1000`
 	pattern := "%org_id: '" + orgID + "'%"
 	rows, err := s.DB.Query(ctx, q, pattern)
 	if err != nil {
@@ -3118,16 +3131,11 @@ func (s *PostgresAdminStore) UpdateOrgSettings(orgID string, settings map[string
 
 func (s *PostgresAdminStore) UpdateOrgTeam(ctx context.Context, team *OrgTeam) error {
 	if team == nil || team.ID == "" || team.OrgID == "" {
-		logger.LogError("org team, id, and org_id required")
-		return errors.New("org team, id, and org_id required")
-	}
-	userIDs, err := json.Marshal(team.UserIDs)
-	if err != nil {
-		logger.LogError("failed to marshal user_ids", logger.ErrorField(err))
-		return errors.New("failed to marshal user_ids: " + err.Error())
+		logger.LogError("org team, id, and org_id required", logger.Any("team", team))
+		return errors.New("org team, id, and org_id required: input invalid")
 	}
 	const q = `UPDATE org_teams SET name = $1, description = $2, user_ids = $3, settings = $4, updated_at = NOW() WHERE id = $5 AND org_id = $6`
-	res, err := s.DB.Exec(ctx, q, team.Name, team.Description, string(userIDs), team.Settings, team.ID, team.OrgID)
+	res, err := s.DB.Exec(ctx, q, team.Name, team.Description, pq.Array(team.UserIDs), team.Settings, team.ID, team.OrgID)
 	if err != nil {
 		logger.LogError("failed to update org team", logger.ErrorField(err))
 		return errors.New("failed to update org team: " + err.Error())
@@ -3187,8 +3195,11 @@ func (s *PostgresAdminStore) CreateOrg(ctx context.Context, org *Organization) e
 		logger.LogError("organization and name required")
 		return errors.New("organization and name required")
 	}
-	const q = `INSERT INTO organizations (name, created_at, updated_at) VALUES ($1, NOW(), NOW())`
-	_, err := s.DB.Exec(ctx, q, org.Name)
+	if org.ID == "" {
+		org.ID = uuid.NewString()
+	}
+	const q = `INSERT INTO orgs (id, tenant_id, name, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())`
+	_, err := s.DB.Exec(ctx, q, org.ID, org.TenantID, org.Name)
 	if err != nil {
 		logger.LogError("failed to create organization", logger.ErrorField(err))
 		return errors.New("failed to create organization: " + err.Error())
@@ -3314,4 +3325,36 @@ func (s *PostgresAdminStore) ListOrganizations(ctx context.Context, filter Organ
 		return nil, 0, errors.New("failed to count organizations")
 	}
 	return orgs, total, nil
+}
+
+func (s *PostgresAdminStore) SeedPermissions(perms []AdminPermission) error {
+	if len(perms) == 0 {
+		return nil
+	}
+	ctx := context.Background()
+	const q = `INSERT INTO admin_permissions (id, name, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) ON CONFLICT (name) DO NOTHING`
+	for _, perm := range perms {
+		_, err := s.DB.Exec(ctx, q, perm.ID, perm.Name)
+		if err != nil {
+			logger.LogError("failed to seed permission", logger.ErrorField(err), logger.String("id", perm.ID), logger.String("name", perm.Name))
+			return errors.New("failed to seed permission: " + err.Error())
+		}
+	}
+	return nil
+}
+
+func (s *PostgresAdminStore) SeedRoles(roles []AdminRole) error {
+	if len(roles) == 0 {
+		return nil
+	}
+	ctx := context.Background()
+	const q = `INSERT INTO admin_roles (id, name, permissions, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW()) ON CONFLICT (name) DO NOTHING`
+	for _, role := range roles {
+		_, err := s.DB.Exec(ctx, q, role.ID, role.Name, role.Permissions)
+		if err != nil {
+			logger.LogError("failed to seed role", logger.ErrorField(err), logger.String("id", role.ID), logger.String("name", role.Name))
+			return errors.New("failed to seed role: " + err.Error())
+		}
+	}
+	return nil
 }

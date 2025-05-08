@@ -1,6 +1,6 @@
 -- Subscriptions table for SaaS billing
 CREATE TABLE
-    subscriptions (
+    IF NOT EXISTS subscriptions (
         id UUID PRIMARY KEY,
         account_id UUID NOT NULL REFERENCES billing_accounts (id) ON DELETE CASCADE,
         plan_id UUID NOT NULL,
@@ -27,4 +27,4 @@ CREATE TABLE
         metadata JSONB NOT NULL DEFAULT '{}'
     );
 
-CREATE INDEX idx_subscriptions_account_id ON subscriptions (account_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_account_id ON subscriptions (account_id);

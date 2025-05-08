@@ -16,7 +16,7 @@ func NewPostgresRepository(db *pgxpool.Pool) Repository {
 }
 
 func (r *postgresRepository) Create(ctx context.Context, p *Project) error {
-	if p == nil || p.ID == "" || p.TenantID == "" || p.Name == "" {
+	if p == nil || p.ID == "" || p.TenantID == nil || p.Name == "" {
 		return fmt.Errorf("missing required project fields")
 	}
 	tags, err := json.Marshal(p.Tags)

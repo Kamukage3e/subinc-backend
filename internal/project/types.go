@@ -68,7 +68,7 @@ type ListProjectsOutput struct {
 // Project represents a real SaaS project. All fields are required for prod.
 type Project struct {
 	ID          string            `json:"id" db:"id"`
-	TenantID    string            `json:"tenant_id" db:"tenant_id"`
+	TenantID    *string           `json:"tenant_id,omitempty" db:"tenant_id"`
 	OrgID       *string           `json:"org_id,omitempty" db:"org_id"` // Optional
 	Name        string            `json:"name" db:"name"`
 	Description string            `json:"description" db:"description"`

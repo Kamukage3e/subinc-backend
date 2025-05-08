@@ -1,8 +1,8 @@
 -- Users table for SaaS multi-tenancy
 CREATE TABLE
-    users (
+    IF NOT EXISTS users (
         id UUID PRIMARY KEY,
-        tenant_id UUID NOT NULL REFERENCES tenants (id) ON DELETE CASCADE,
+        tenant_id UUID REFERENCES tenants (id) ON DELETE CASCADE,
         email TEXT NOT NULL,
         username TEXT NOT NULL,
         password_hash TEXT NOT NULL,
@@ -15,6 +15,11 @@ CREATE TABLE
         UNIQUE (tenant_id, username)
     );
 
-CREATE INDEX idx_users_tenant_id ON users (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON users (tenant_id);
 
-CREATE INDEX idx_users_email ON users (email);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
+
+-- Make tenant_id nullable if not already
+ALTER TABLE users
+ALTER COLUMN tenant_id
+DROP NOT NULL;

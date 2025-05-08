@@ -1,8 +1,8 @@
 -- Projects table for SaaS multi-tenancy
 CREATE TABLE
-    projects (
+    IF NOT EXISTS projects (
         id UUID PRIMARY KEY,
-        tenant_id UUID NOT NULL REFERENCES tenants (id) ON DELETE CASCADE,
+        tenant_id UUID REFERENCES tenants (id) ON DELETE CASCADE,
         org_id UUID NOT NULL REFERENCES orgs (id) ON DELETE CASCADE,
         name TEXT NOT NULL,
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -12,6 +12,11 @@ CREATE TABLE
         UNIQUE (org_id, name)
     );
 
-CREATE INDEX idx_projects_tenant_id ON projects (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_projects_tenant_id ON projects (tenant_id);
 
-CREATE INDEX idx_projects_org_id ON projects (org_id);
+CREATE INDEX IF NOT EXISTS idx_projects_org_id ON projects (org_id);
+
+-- Make tenant_id nullable if not already
+ALTER TABLE projects
+ALTER COLUMN tenant_id
+DROP NOT NULL;

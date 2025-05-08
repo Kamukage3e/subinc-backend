@@ -1,6 +1,13 @@
+-- Create schema_migrations table for golang-migrate compatibility
+CREATE TABLE
+    IF NOT EXISTS schema_migrations (
+        version bigint not null primary key,
+        dirty boolean not null
+    );
+
 -- Tenants table for SaaS multi-tenancy
 CREATE TABLE
-    tenants (
+    IF NOT EXISTS tenants (
         id UUID PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,
         email TEXT NOT NULL UNIQUE,
@@ -10,4 +17,4 @@ CREATE TABLE
         metadata JSONB NOT NULL DEFAULT '{}'
     );
 
-CREATE INDEX idx_tenants_email ON tenants (email);
+CREATE INDEX IF NOT EXISTS idx_tenants_email ON tenants (email);

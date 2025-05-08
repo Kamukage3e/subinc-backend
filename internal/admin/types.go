@@ -260,6 +260,7 @@ const (
 
 type Project struct {
 	ID          string    `json:"id" db:"id"`
+	TenantID    *string   `json:"tenant_id,omitempty" db:"tenant_id"`
 	Name        string    `json:"name" db:"name"`
 	Description string    `json:"description" db:"description"`
 	OwnerID     string    `json:"owner_id" db:"owner_id"`
@@ -277,6 +278,7 @@ type ProjectFilter struct {
 
 type Organization struct {
 	ID        string    `json:"id" db:"id"`
+	TenantID  *string   `json:"tenant_id,omitempty" db:"tenant_id"`
 	Name      string    `json:"name" db:"name"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
@@ -387,18 +389,19 @@ type OrgInvitation struct {
 }
 
 type UserOrgProjectRole struct {
-	UserID string `json:"user_id"`
-	Role   string `json:"role"`
-}
-
-type UserRolesPermissions struct {
-	ID        string `json:"id"`
-	UserID    string `json:"user_id"`
-	OrgID     string `json:"org_id"`
-	ProjectID string `json:"project_id"`
-	Role      string `json:"role"`
-	Permissions []string `json:"permissions"`
+	UserID    string    `json:"user_id"`
+	Role      string    `json:"role"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type UserRolesPermissions struct {
+	ID          string    `json:"id"`
+	UserID      string    `json:"user_id"`
+	OrgID       string    `json:"org_id"`
+	ProjectID   string    `json:"project_id"`
+	Role        string    `json:"role"`
+	Permissions []string  `json:"permissions"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}

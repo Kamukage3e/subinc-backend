@@ -6,18 +6,14 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 
 	"os/signal"
-	"sort"
 	"strings"
 	"syscall"
 	"time"
 
 	"database/sql"
-
-	"path/filepath"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/adaptor"
@@ -106,81 +102,6 @@ func ensureDefaultAdminRBAC(adminStore *admin.PostgresAdminStore, log *Logger) e
 	return nil
 }
 
-// runMigrationsGo applies all .up.sql migrations in order, tracking with schema_migrations table.
-// This is prod-grade, idempotent, and logs each migration. No GORM AutoMigrate, no panics.
-func runMigrationsGo(dsn string, log *Logger) {
-	db, err := sql.Open("postgres", dsn)
-	if err != nil {
-		log.Fatal("failed to open DB for migrations", ErrorField(err))
-	}
-	defer db.Close()
-
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (filename TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`)
-	if err != nil {
-		log.Fatal("failed to ensure schema_migrations table", ErrorField(err))
-	}
-
-	wd, err := os.Getwd()
-	if err != nil {
-		log.Fatal("failed to get working directory", ErrorField(err))
-	}
-	migrationPath, err := filepath.Abs(filepath.Join(wd, "migrations"))
-	if err != nil {
-		log.Fatal("failed to resolve migrations path", ErrorField(err))
-	}
-	files, err := ioutil.ReadDir(migrationPath)
-	if err != nil {
-		log.Fatal("failed to read migrations dir", ErrorField(err))
-	}
-
-	var upFiles []string
-	for _, f := range files {
-		if !f.IsDir() && strings.HasSuffix(f.Name(), ".up.sql") {
-			upFiles = append(upFiles, f.Name())
-		}
-	}
-	sort.Strings(upFiles)
-
-	for _, fname := range upFiles {
-		var exists bool
-		err = db.QueryRow(`SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE filename = $1)`, fname).Scan(&exists)
-		if err != nil {
-			log.Fatal("failed to check migration status", ErrorField(err), String("file", fname))
-		}
-		if exists {
-			log.Info("migration already applied", String("file", fname))
-			continue
-		}
-
-		path := filepath.Join(migrationPath, fname)
-		content, err := ioutil.ReadFile(path)
-		if err != nil {
-			log.Fatal("failed to read migration file", ErrorField(err), String("file", fname))
-		}
-
-		tx, err := db.Begin()
-		if err != nil {
-			log.Fatal("failed to begin migration tx", ErrorField(err), String("file", fname))
-		}
-		_, err = tx.Exec(string(content))
-		if err != nil {
-			tx.Rollback()
-			log.Fatal("migration failed", ErrorField(err), String("file", fname))
-		}
-		_, err = tx.Exec(`INSERT INTO schema_migrations (filename) VALUES ($1)`, fname)
-		if err != nil {
-			tx.Rollback()
-			log.Fatal("failed to record migration", ErrorField(err), String("file", fname))
-		}
-		err = tx.Commit()
-		if err != nil {
-			log.Fatal("failed to commit migration", ErrorField(err), String("file", fname))
-		}
-		log.Info("migration applied", String("file", fname))
-	}
-	log.Info("all migrations applied successfully")
-}
-
 // redactDSN removes password from DSN for logging
 func redactDSN(dsn string) string {
 	if i := strings.Index(dsn, "@"); i > 0 {
@@ -207,8 +128,6 @@ func main() {
 		log.Fatal("database DSN not set in config or env", ErrorField(err))
 	}
 	log.Info("Using database DSN", String("dsn", redactDSN(pgDsn)))
-	runMigrationsGo(pgDsn, log)
-	viper.Set("database.dsn", pgDsn)
 
 	// Create context with cancellation for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
