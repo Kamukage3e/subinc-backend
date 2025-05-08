@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
+	"github.com/spf13/viper"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -64,9 +66,27 @@ func (s *awsSecretsManager) GetSecret(ctx context.Context, name string) (string,
 		var rnfe *types.ResourceNotFoundException
 		if ok := errorAs(err, &rnfe); ok {
 			s.log.Warn("secret not found", logger.String("name", name))
+			// Fallback to env or viper
+			if val := os.Getenv(name); val != "" {
+				s.log.Warn("falling back to env var for secret", logger.String("name", name))
+				return val, nil
+			}
+			if val := viper.GetString(name); val != "" {
+				s.log.Warn("falling back to viper config for secret", logger.String("name", name))
+				return val, nil
+			}
 			return "", fmt.Errorf("secret not found: %s", name)
 		}
 		s.log.Error("failed to fetch secret", logger.String("name", name), logger.ErrorField(err))
+		// Fallback to env or viper
+		if val := os.Getenv(name); val != "" {
+			s.log.Warn("falling back to env var for secret", logger.String("name", name))
+			return val, nil
+		}
+		if val := viper.GetString(name); val != "" {
+			s.log.Warn("falling back to viper config for secret", logger.String("name", name))
+			return val, nil
+		}
 		return "", fmt.Errorf("failed to fetch secret: %w", err)
 	}
 	if resp.SecretString == nil {

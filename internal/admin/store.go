@@ -2222,6 +2222,29 @@ func (s *PostgresAdminStore) CreateOrgTeam(ctx context.Context, team *OrgTeam) e
 	return nil
 }
 
+func (s *PostgresAdminStore) CreateProject(ctx context.Context, p *Project) error {
+	if p == nil {
+		logger.LogError("project required")
+		return errors.New("project required")
+	}
+	if p.ID == "" {
+		p.ID = "prj-" + uuid.NewString()
+	}
+	if p.CreatedAt.IsZero() {
+		p.CreatedAt = time.Now().UTC()
+	}
+	if p.UpdatedAt.IsZero() {
+		p.UpdatedAt = p.CreatedAt
+	}
+	const q = `INSERT INTO projects (id, name, description, owner_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)`
+	_, err := s.DB.Exec(ctx, q, p.ID, p.Name, p.Description, p.OwnerID, p.CreatedAt, p.UpdatedAt)
+	if err != nil {
+		logger.LogError("failed to create project", logger.ErrorField(err))
+		return errors.New("failed to create project: " + err.Error())
+	}
+	return nil
+}
+
 func (s *PostgresAdminStore) CreateProjectAPIKey(projectID, name string) (interface{}, error) {
 	if projectID == "" || name == "" {
 		logger.LogError("project_id and name required")
@@ -2301,6 +2324,73 @@ func (s *PostgresAdminStore) CreateSSMNews(ctx context.Context, news *SSMNews) e
 	}
 	return nil
 }
+func (s *PostgresAdminStore) BulkAddUsersToOrg(ctx context.Context, orgID string, users []*UserOrgProjectRole) error {
+	if orgID == "" || users == nil {
+		logger.LogError("org_id and users required")
+		return errors.New("org_id and users required")
+	}
+	const q = `INSERT INTO org_users (org_id, user_id, role, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())`
+	for _, user := range users {
+		_, err := s.DB.Exec(ctx, q, orgID, user.UserID, user.Role)
+		if err != nil {
+			logger.LogError("failed to add user to org", logger.ErrorField(err))
+			return errors.New("failed to add user to org: " + err.Error())
+		}
+	}
+	return nil
+}
+
+func (s *PostgresAdminStore) ListAllUserRolesPermissions(ctx context.Context) ([]*UserRolesPermissions, error) {
+	const q = `SELECT id, user_id, org_id, project_id, role, permissions, created_at, updated_at FROM user_org_project_roles`
+	rows, err := s.DB.Query(ctx, q)
+	if err != nil {
+		logger.LogError("failed to list all user roles/permissions", logger.ErrorField(err))
+		return nil, errors.New("failed to list all user roles/permissions: " + err.Error())
+	}
+	defer rows.Close()
+	var results []*UserRolesPermissions
+	for rows.Next() {
+		var result UserRolesPermissions
+		if err := rows.Scan(&result.ID, &result.UserID, &result.OrgID, &result.ProjectID, &result.Role, &result.Permissions, &result.CreatedAt, &result.UpdatedAt); err != nil {
+			logger.LogError("failed to scan user roles/permissions", logger.ErrorField(err))
+			return nil, errors.New("failed to scan user roles/permissions: " + err.Error())
+		}
+		results = append(results, &result)
+	}
+	if err := rows.Err(); err != nil {
+		logger.LogError("failed to iterate user roles/permissions", logger.ErrorField(err))
+		return nil, errors.New("failed to iterate user roles/permissions: " + err.Error())
+	}
+	return results, nil
+}
+func (s *PostgresAdminStore) Login(ctx context.Context, username, password string) (*AdminUser, error) {
+	const q = `SELECT id, username, email, password_hash FROM admin_users WHERE username = $1 AND password_hash = $2`
+	row := s.DB.QueryRow(ctx, q, username, password)
+	var user AdminUser
+	if err := row.Scan(&user.ID, &user.Username, &user.Email, &user.PasswordHash); err != nil {
+		return nil, errors.New("failed to login: " + err.Error())
+	}
+	return &user, nil
+}
+
+func (s *PostgresAdminStore) DeleteOrg(ctx context.Context, id string) error {
+	if id == "" {
+		logger.LogError("org_id required")
+		return errors.New("org_id required")
+	}
+	const q = `DELETE FROM orgs WHERE id = $1`
+	res, err := s.DB.Exec(ctx, q, id)
+	if err != nil {
+		logger.LogError("failed to delete org", logger.ErrorField(err))
+		return errors.New("failed to delete org: " + err.Error())
+	}
+	if res.RowsAffected() == 0 {
+		logger.LogError("org not found", logger.String("id", id))
+		return errors.New("org not found")
+	}
+	return nil
+}
+
 
 func (s *PostgresAdminStore) DeleteOrgTeam(ctx context.Context, orgID, teamID string) error {
 	if orgID == "" || teamID == "" {
@@ -2356,6 +2446,21 @@ func (s *PostgresAdminStore) DeleteSSMNews(ctx context.Context, id string) error
 	return nil
 }
 
+func (s *PostgresAdminStore) GetOrg(ctx context.Context, id string) (*Organization, error) {
+	if id == "" {
+		logger.LogError("org_id required")
+		return nil, errors.New("org_id required")
+	}
+	const q = `SELECT id, name, created_at, updated_at FROM orgs WHERE id = $1`
+	row := s.DB.QueryRow(ctx, q, id)
+	var org Organization
+	if err := row.Scan(&org.ID, &org.Name, &org.CreatedAt, &org.UpdatedAt); err != nil {
+		logger.LogError("org not found", logger.String("id", id))
+		return nil, errors.New("org not found")
+	}
+	return &org, nil
+}
+
 func (s *PostgresAdminStore) GetOrgTeam(ctx context.Context, orgID, teamID string) (*OrgTeam, error) {
 	if orgID == "" || teamID == "" {
 		logger.LogError("org_id and team_id required")
@@ -2387,6 +2492,21 @@ func (s *PostgresAdminStore) GetOrgSettings(orgID string) (map[string]interface{
 		return nil, errors.New("org settings not found")
 	}
 	return settings, nil
+}
+
+func (s *PostgresAdminStore) GetProject(ctx context.Context, id string) (*Project, error) {
+	if id == "" {
+		logger.LogError("project_id required")
+		return nil, errors.New("project_id required")
+	}
+	const q = `SELECT id, name, description, owner_id, created_at, updated_at FROM projects WHERE id = $1`
+	row := s.DB.QueryRow(ctx, q, id)
+	var project Project
+	if err := row.Scan(&project.ID, &project.Name, &project.Description, &project.OwnerID, &project.CreatedAt, &project.UpdatedAt); err != nil {
+		logger.LogError("project not found", logger.String("id", id))
+		return nil, errors.New("project not found")
+	}
+	return &project, nil
 }
 
 func (s *PostgresAdminStore) GetProjectSettings(projectID string) (map[string]interface{}, error) {
@@ -2457,6 +2577,73 @@ func (s *PostgresAdminStore) InviteProjectUser(projectID, email, role string) (i
 		CreatedAt: now,
 		UpdatedAt: now,
 	}, nil
+}
+
+func (s *PostgresAdminStore) ListProjects(ctx context.Context, filter ProjectFilter) ([]*Project, int, error) {
+	q := `SELECT id, name, description, owner_id, created_at, updated_at FROM projects`
+	where := []string{}
+	args := []interface{}{}
+	arg := 1
+	if filter.Query != "" {
+		where = append(where, "(name ILIKE $"+strconv.Itoa(arg)+" OR description ILIKE $"+strconv.Itoa(arg)+")")
+		args = append(args, "%"+filter.Query+"%")
+		arg++
+	}
+	if len(where) > 0 {
+		q += " WHERE " + strings.Join(where, " AND ")
+	}
+	order := "created_at DESC"
+	if filter.SortBy != "" {
+		col := strings.ToLower(filter.SortBy)
+		if col == "name" || col == "created_at" || col == "updated_at" {
+			dir := "ASC"
+			if filter.SortDir == "DESC" {
+				dir = "DESC"
+			}
+			order = col + " " + dir
+		}
+	}
+	q += " ORDER BY " + order
+	limit := 100
+	if filter.Limit > 0 && filter.Limit <= 1000 {
+		limit = filter.Limit
+	}
+	offset := 0
+	if filter.Offset > 0 {
+		offset = filter.Offset
+	}
+	q += " LIMIT $" + strconv.Itoa(arg)
+	args = append(args, limit)
+	arg++
+	q += " OFFSET $" + strconv.Itoa(arg)
+	args = append(args, offset)
+	rows, err := s.DB.Query(ctx, q, args...)
+	if err != nil {
+		return nil, 0, errors.New("failed to list projects")
+	}
+	defer rows.Close()
+	var projects []*Project
+	for rows.Next() {
+		var project Project
+		if err := rows.Scan(&project.ID, &project.Name, &project.Description, &project.OwnerID, &project.CreatedAt, &project.UpdatedAt); err != nil {
+			logger.LogError("failed to scan project", logger.ErrorField(err))
+			return nil, 0, errors.New("failed to scan project: " + err.Error())
+		}
+		projects = append(projects, &project)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, errors.New("failed to list projects")
+	}
+	countQ := "SELECT COUNT(*) FROM projects"
+	if len(where) > 0 {
+		countQ += " WHERE " + strings.Join(where, " AND ")
+	}
+	row := s.DB.QueryRow(ctx, countQ, args[:arg-2]...)
+	var total int
+	if err := row.Scan(&total); err != nil {
+		return nil, 0, errors.New("failed to count projects")
+	}
+	return projects, total, nil
 }
 
 func (s *PostgresAdminStore) ListProjectInvitations(projectID string) ([]interface{}, error) {
@@ -2952,6 +3139,20 @@ func (s *PostgresAdminStore) UpdateOrgTeam(ctx context.Context, team *OrgTeam) e
 	return nil
 }
 
+func (s *PostgresAdminStore) DeleteProject(ctx context.Context, id string) error {
+	if id == "" {
+		logger.LogError("project_id required")
+		return errors.New("project_id required")
+	}
+	const q = `DELETE FROM projects WHERE id = $1`
+	_, err := s.DB.Exec(ctx, q, id)
+	if err != nil {
+		logger.LogError("failed to delete project", logger.ErrorField(err))
+		return errors.New("failed to delete project: " + err.Error())
+	}
+	return nil
+}
+
 func (s *PostgresAdminStore) UpdateProjectSettings(projectID string, settings map[string]interface{}) (map[string]interface{}, error) {
 	if projectID == "" {
 		logger.LogError("project_id required")
@@ -2979,6 +3180,20 @@ func (s *PostgresAdminStore) UpdateProjectSettings(projectID string, settings ma
 		return nil, errors.New("invalid project settings json: " + err.Error())
 	}
 	return out, nil
+}
+
+func (s *PostgresAdminStore) CreateOrg(ctx context.Context, org *Organization) error {
+	if org == nil || org.Name == "" {
+		logger.LogError("organization and name required")
+		return errors.New("organization and name required")
+	}
+	const q = `INSERT INTO organizations (name, created_at, updated_at) VALUES ($1, NOW(), NOW())`
+	_, err := s.DB.Exec(ctx, q, org.Name)
+	if err != nil {
+		logger.LogError("failed to create organization", logger.ErrorField(err))
+		return errors.New("failed to create organization: " + err.Error())
+	}
+	return nil
 }
 
 func (s *PostgresAdminStore) UpdateSSMBlog(ctx context.Context, blog *SSMBlog) error {
@@ -3040,7 +3255,7 @@ func (s *PostgresAdminStore) ListOrganizations(ctx context.Context, filter Organ
 	if len(where) > 0 {
 		whereSQL = "WHERE " + strings.Join(where, " AND ")
 	}
-	q := "SELECT id, name, created_at, updated_at FROM organizations " + whereSQL + " ORDER BY " + orderBy + " LIMIT $" + strconv.Itoa(argPos) + " OFFSET $" + strconv.Itoa(argPos+1)
+	q := "SELECT id, name, created_at, updated_at FROM orgs " + whereSQL + " ORDER BY " + orderBy + " LIMIT $" + strconv.Itoa(argPos) + " OFFSET $" + strconv.Itoa(argPos+1)
 	args = append(args, limit, offset)
 	rows, err := s.DB.Query(ctx, q, args...)
 	if err != nil {
@@ -3083,7 +3298,7 @@ func (s *PostgresAdminStore) ListOrganizations(ctx context.Context, filter Organ
 		}
 		return nil, 0, errors.New("error iterating organization rows")
 	}
-	countQ := "SELECT COUNT(*) FROM organizations " + whereSQL
+	countQ := "SELECT COUNT(*) FROM orgs " + whereSQL
 	countArgs := args[:argPos-1]
 	countRow := s.DB.QueryRow(ctx, countQ, countArgs...)
 	var total int

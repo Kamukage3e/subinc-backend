@@ -318,10 +318,6 @@ func main() {
 		log,
 	)
 	adminStore := admin.NewPostgresAdminStore(pgPool)
-	var _ interface {
-		admin.AdminStore
-		admin.AdminUserStore
-	} = adminStore // compile-time check
 	adminHandler := admin.NewHandler(adminStore, userStore, emailManager, secretsManager, jwtSecretName)
 	terraformProvisioner := terraform.NewTerraformProvisioner(redisClient, log)
 	architectureRepo := architecture.NewPostgresRepository(pgPool)

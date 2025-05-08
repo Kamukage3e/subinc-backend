@@ -49,6 +49,11 @@ func SetupRouter(
 ) *fiber.App {
 	app := fiber.New()
 
+	// Health check route for liveness/readiness probes
+	app.Get("/health", func(c *fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "ok"})
+	})
+
 	// --- GLOBAL MIDDLEWARE (Order matters for security, logging, and rate limiting) ---
 	// 1. Apply CORS middleware globally before any routes
 	app.Use(middleware.ConfigureCORS())

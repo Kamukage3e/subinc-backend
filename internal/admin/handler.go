@@ -2,7 +2,7 @@ package admin
 
 import (
 	"context"
-	"fmt"
+
 	"strconv"
 	"strings"
 	"time"
@@ -11,17 +11,14 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/spf13/viper"
 	"github.com/subinc/subinc-backend/internal/email"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 	"github.com/subinc/subinc-backend/internal/user"
 )
 
-func NewHandler(store interface {
-	AdminStore
-	AdminUserStore
-}, userStore *user.PostgresUserStore, emailManager *email.EmailManager, secretsManager interface{}, jwtSecretName string) *AdminHandler {
+func NewHandler(store *PostgresAdminStore, userStore *user.PostgresUserStore, emailManager *email.EmailManager, secretsManager interface{}, jwtSecretName string) *AdminHandler {
 	return &AdminHandler{store: store, userStore: userStore, emailManager: emailManager, SecretsManager: secretsManager, JWTSecretName: jwtSecretName}
 }
 
@@ -1375,15 +1372,11 @@ func (h *AdminHandler) SSMBlogs(c *fiber.Ctx) error {
 	if filter.Limit < 1 || filter.Limit > 1000 {
 		filter.Limit = 100
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	blogs, total, err := store.ListSSMBlogs(c.Context(), filter)
+	blogs, err := h.store.GetSSMBlog(c.Context(), filter.Query)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list SSM blogs"})
 	}
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{"total": total, "blogs": blogs})
+	return c.Status(fiber.StatusOK).JSON(blogs)
 }
 
 // SSMNews handles SSM team news management (list, filter, paginate)
@@ -1399,15 +1392,11 @@ func (h *AdminHandler) SSMNews(c *fiber.Ctx) error {
 	if filter.Limit < 1 || filter.Limit > 1000 {
 		filter.Limit = 100
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	news, total, err := store.ListSSMNews(c.Context(), filter)
+	news, err := h.store.GetSSMNews(c.Context(), filter.Query)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list SSM news"})
 	}
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{"total": total, "news": news})
+	return c.Status(fiber.StatusOK).JSON(news)
 }
 
 // Email management endpoints (RBAC: superuser/support/marketing)
@@ -2169,6 +2158,7 @@ func (h *AdminHandler) BulkAddUsersToOrg(c *fiber.Ctx) error {
 	if orgID == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "org id required"})
 	}
+
 	var req struct {
 		Users []struct {
 			UserID string   `json:"user_id"`
@@ -2179,20 +2169,16 @@ func (h *AdminHandler) BulkAddUsersToOrg(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil || len(req.Users) == 0 {
 		return c.Status(400).JSON(fiber.Map{"error": "users required"})
 	}
+
 	if len(req.Users) > 100 {
 		go h.bulkAddUsersToOrgAsync(orgID, req.Users)
 		return c.Status(202).JSON(fiber.Map{"job": "bulk_add_users_to_org", "status": "queued"})
 	}
-	userStore, ok := h.store.(interface {
-		CreateRolesTx(ctx context.Context, tx pgx.Tx, roles []*user.UserOrgProjectRole) error
-		DB() *pgxpool.Pool
-	})
-	if !ok {
-		return c.Status(500).JSON(fiber.Map{"error": "user store does not support batch role creation"})
-	}
+
 	ctx, cancel := context.WithTimeout(c.Context(), 10*time.Second)
 	defer cancel()
-	tx, err := userStore.DB().Begin(ctx)
+
+	tx, err := h.userStore.DB.Begin(ctx)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "failed to begin transaction"})
 	}
@@ -2201,8 +2187,10 @@ func (h *AdminHandler) BulkAddUsersToOrg(c *fiber.Ctx) error {
 			logger.LogError("failed to rollback tx", logger.ErrorField(err))
 		}
 	}()
+
 	var roles []*user.UserOrgProjectRole
 	var failed []string
+
 	for _, u := range req.Users {
 		if u.UserID == "" || u.Role == "" {
 			failed = append(failed, u.UserID)
@@ -2218,13 +2206,15 @@ func (h *AdminHandler) BulkAddUsersToOrg(c *fiber.Ctx) error {
 			UpdatedAt:   time.Now().UTC(),
 		})
 	}
-	err = userStore.CreateRolesTx(ctx, tx, roles)
-	if err != nil {
+
+	if err := h.userStore.CreateRolesTx(ctx, tx, roles); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "failed to add users to org", "details": err.Error(), "failed": failed})
 	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "failed to commit transaction"})
 	}
+
 	h.store.LogAuditEvent("admin", "bulk_add_users_to_org", orgID, map[string]interface{}{"added": len(roles), "failed": failed})
 	return c.Status(200).JSON(fiber.Map{"added": len(roles), "failed": failed})
 }
@@ -2534,20 +2524,14 @@ func (h *AdminHandler) bulkRemoveUsersFromProjectAsync(projectID string, userIDs
 
 // List all users with all their roles and permissions across orgs/projects/global
 func (h *AdminHandler) ListAllUserRolesPermissions(c *fiber.Ctx) error {
-	userStore, ok := h.store.(interface {
-		ListAllUserRolesPermissions(ctx context.Context) ([]*user.UserRolesPermissions, error)
-	})
-	if !ok {
-		return c.Status(500).JSON(fiber.Map{"error": "user store does not support global role/permission listing"})
-	}
-	ctx := c.Context()
-	results, err := userStore.ListAllUserRolesPermissions(ctx)
+	userStore, err := h.store.ListAllUserRolesPermissions(c.Context())
 	if err != nil {
-		h.store.LogAuditEvent("admin", "list_all_user_roles_permissions_failed", "", map[string]interface{}{"error": err.Error()})
+		logger.LogError("failed to list all user roles/permissions", logger.ErrorField(err))
 		return c.Status(500).JSON(fiber.Map{"error": "failed to list all user roles/permissions"})
 	}
 	h.store.LogAuditEvent("admin", "list_all_user_roles_permissions", "", nil)
-	return c.Status(200).JSON(fiber.Map{"users": results})
+
+	return c.Status(200).JSON(fiber.Map{"users": userStore})
 }
 
 func (h *AdminHandler) Login(c *fiber.Ctx) error {
@@ -2559,21 +2543,20 @@ func (h *AdminHandler) Login(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
 	ctx := c.Context()
-	userStore, ok := h.store.(AdminUserStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin user store not supported"})
+	adminUser, err := h.store.Login(ctx, creds.Username, creds.Password)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid credentials"})
 	}
-	var adminUser *AdminUser
-	var err error
+
 	if strings.Contains(creds.Username, "@") {
-		adminUser, err = userStore.GetByEmail(ctx, creds.Username)
+		adminUser, err = h.store.GetByEmail(ctx, creds.Username)
 	} else {
-		adminUser, err = userStore.GetByUsername(ctx, creds.Username)
+		adminUser, err = h.store.GetByUsername(ctx, creds.Username)
 	}
 	if err != nil || adminUser == nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid credentials"})
 	}
-	ok, err = user.VerifyPassword(creds.Password, adminUser.PasswordHash)
+	ok, err := user.VerifyPassword(creds.Password, adminUser.PasswordHash)
 	if err != nil || !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid credentials"})
 	}
@@ -2632,14 +2615,8 @@ func (h *AdminHandler) CreateProject(c *fiber.Ctx) error {
 	if req.Name == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project name required"})
 	}
-	store, ok := h.store.(interface{ ProjectStore })
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "project store not supported"})
-	}
-	req.ID = "prj-" + uuid.NewString()
-	req.CreatedAt = time.Now().UTC()
-	req.UpdatedAt = req.CreatedAt
-	if err := store.CreateProject(c.Context(), &req); err != nil {
+	err := h.store.CreateProject(c.Context(), &req)
+	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create project"})
 	}
 	return c.Status(fiber.StatusCreated).JSON(req)
@@ -2660,20 +2637,13 @@ func (h *AdminHandler) ListProjects(c *fiber.Ctx) error {
 		limit = 1000
 	}
 
-	store, ok := h.store.(interface{ ProjectStore })
-	if !ok {
-		logger.LogError("project store not supported")
-		return errorResponse(c, fiber.StatusInternalServerError, "store_error", "Project store not supported", nil)
-	}
-
-	filter := ProjectFilter{
+	projects, total, err := h.store.ListProjects(c.Context(), ProjectFilter{
 		Query:   query,
 		SortBy:  sortBy,
 		SortDir: sortDir,
 		Limit:   limit,
 		Offset:  offset,
-	}
-	projects, total, err := store.ListProjects(c.Context(), filter)
+	})
 	if err != nil {
 		logger.LogError("failed to list projects",
 			logger.ErrorField(err),
@@ -2685,25 +2655,20 @@ func (h *AdminHandler) ListProjects(c *fiber.Ctx) error {
 		return errorResponse(c, fiber.StatusInternalServerError, "list_failed", "Failed to list projects", err)
 	}
 
-	logger.LogInfo("projects listed successfully",
-		logger.Int("total", total),
-		logger.Int("returned", len(projects)))
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"projects": projects,
 		"total":    total,
 	})
 }
 
+
+
 func (h *AdminHandler) GetProject(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
 	}
-	store, ok := h.store.(interface{ ProjectStore })
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "project store not supported"})
-	}
-	project, err := store.GetProject(c.Context(), id)
+	project, err := h.store.GetProject(c.Context(), id)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "project not found"})
@@ -2718,11 +2683,7 @@ func (h *AdminHandler) ListOrgAPIKeys(c *fiber.Ctx) error {
 	if orgID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "organization id required"})
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	apiKeys, err := store.ListOrgAPIKeys(orgID)
+	apiKeys, err := h.store.ListOrgAPIKeys(orgID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list organization API keys"})
 	}
@@ -2745,11 +2706,7 @@ func (h *AdminHandler) ListOrgTeams(c *fiber.Ctx) error {
 	if filter.Limit < 1 || filter.Limit > 1000 {
 		filter.Limit = 100
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	teams, total, err := store.ListOrgTeams(c.Context(), filter)
+	teams, total, err := h.store.ListOrgTeams(c.Context(), filter)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list org teams"})
 	}
@@ -2772,11 +2729,8 @@ func (h *AdminHandler) CreateOrgTeam(c *fiber.Ctx) error {
 	req.OrgID = orgID
 	req.CreatedAt = time.Now().UTC()
 	req.UpdatedAt = req.CreatedAt
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	if err := store.CreateOrgTeam(c.Context(), &req); err != nil {
+	err := h.store.CreateOrgTeam(c.Context(), &req)
+	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create org team"})
 	}
 	return c.Status(fiber.StatusCreated).JSON(req)
@@ -2788,11 +2742,7 @@ func (h *AdminHandler) GetOrgTeam(c *fiber.Ctx) error {
 	if orgID == "" || teamID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "organization id and team id required"})
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	team, err := store.GetOrgTeam(c.Context(), orgID, teamID)
+	team, err := h.store.GetOrgTeam(c.Context(), orgID, teamID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "org team not found"})
@@ -2812,11 +2762,11 @@ func (h *AdminHandler) UpdateOrgTeam(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
+	err := h.store.UpdateOrgTeam(c.Context(), &req)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update org team"})
 	}
-	team, err := store.GetOrgTeam(c.Context(), orgID, teamID)
+	team, err := h.store.GetOrgTeam(c.Context(), orgID, teamID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "org team not found"})
@@ -2836,7 +2786,7 @@ func (h *AdminHandler) UpdateOrgTeam(c *fiber.Ctx) error {
 		team.Settings = req.Settings
 	}
 	team.UpdatedAt = time.Now().UTC()
-	if err := store.UpdateOrgTeam(c.Context(), team); err != nil {
+	if err := h.store.UpdateOrgTeam(c.Context(), team); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update org team"})
 	}
 	return c.Status(fiber.StatusOK).JSON(team)
@@ -2848,11 +2798,8 @@ func (h *AdminHandler) DeleteOrgTeam(c *fiber.Ctx) error {
 	if orgID == "" || teamID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "organization id and team id required"})
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	if err := store.DeleteOrgTeam(c.Context(), orgID, teamID); err != nil {
+	err := h.store.DeleteOrgTeam(c.Context(), orgID, teamID)
+	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "org team not found"})
 		}
@@ -2870,11 +2817,7 @@ func (h *AdminHandler) UpdateProject(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
-	store, ok := h.store.(interface{ ProjectStore })
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "project store not supported"})
-	}
-	project, err := store.GetProject(c.Context(), id)
+	project, err := h.store.GetProject(c.Context(), id)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "project not found"})
@@ -2891,10 +2834,15 @@ func (h *AdminHandler) UpdateProject(c *fiber.Ctx) error {
 		project.OwnerID = req.OwnerID
 	}
 	project.UpdatedAt = time.Now().UTC()
-	if err := store.UpdateProject(c.Context(), project); err != nil {
+	result, err := h.store.UpdateProjectSettings(project.ID, map[string]interface{}{
+		"name":        project.Name,
+		"description": project.Description,
+		"owner_id":    project.OwnerID,
+	})
+	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update project"})
 	}
-	return c.Status(fiber.StatusOK).JSON(project)
+	return c.Status(fiber.StatusOK).JSON(result)
 }
 
 func (h *AdminHandler) DeleteProject(c *fiber.Ctx) error {
@@ -2902,11 +2850,8 @@ func (h *AdminHandler) DeleteProject(c *fiber.Ctx) error {
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
 	}
-	store, ok := h.store.(interface{ ProjectStore })
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "project store not supported"})
-	}
-	if err := store.DeleteProject(c.Context(), id); err != nil {
+	err := h.store.DeleteProject(c.Context(), id)
+	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "project not found"})
 		}
@@ -2920,11 +2865,7 @@ func (h *AdminHandler) ProjectAuditLogs(c *fiber.Ctx) error {
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	logs, err := store.ProjectAuditLogs(id)
+	logs, err := h.store.ProjectAuditLogs(id)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch project audit logs"})
 	}
@@ -2936,11 +2877,7 @@ func (h *AdminHandler) GetProjectSettings(c *fiber.Ctx) error {
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	settings, err := store.GetProjectSettings(id)
+	settings, err := h.store.GetProjectSettings(id)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch project settings"})
 	}
@@ -2956,11 +2893,7 @@ func (h *AdminHandler) UpdateProjectSettings(c *fiber.Ctx) error {
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid payload"})
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	settings, err := store.UpdateProjectSettings(id, input)
+	settings, err := h.store.UpdateProjectSettings(id, input)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update project settings"})
 	}
@@ -2979,11 +2912,7 @@ func (h *AdminHandler) InviteProjectUser(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil || req.Email == "" || req.Role == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email and role required"})
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	invitation, err := store.InviteProjectUser(id, req.Email, req.Role)
+	invitation, err := h.store.InviteProjectUser(id, req.Email, req.Role)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to invite project user"})
 	}
@@ -2995,11 +2924,7 @@ func (h *AdminHandler) ListProjectInvitations(c *fiber.Ctx) error {
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	invitations, err := store.ListProjectInvitations(id)
+	invitations, err := h.store.ListProjectInvitations(id)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list project invitations"})
 	}
@@ -3017,11 +2942,7 @@ func (h *AdminHandler) CreateProjectAPIKey(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil || req.Name == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "name required"})
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	apiKey, err := store.CreateProjectAPIKey(id, req.Name)
+	apiKey, err := h.store.CreateProjectAPIKey(id, req.Name)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create project API key"})
 	}
@@ -3033,11 +2954,7 @@ func (h *AdminHandler) ListProjectAPIKeys(c *fiber.Ctx) error {
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	apiKeys, err := store.ListProjectAPIKeys(id)
+	apiKeys, err := h.store.ListProjectAPIKeys(id)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list project API keys"})
 	}
@@ -3047,18 +2964,16 @@ func (h *AdminHandler) ListProjectAPIKeys(c *fiber.Ctx) error {
 func (h *AdminHandler) CreateOrg(c *fiber.Ctx) error {
 	var req Organization
 	if err := c.BodyParser(&req); err != nil {
+		logger.LogError("failed to parse request body", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
 	if req.Name == "" {
+		logger.LogError("organization name required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "organization name required"})
 	}
-	store, ok := h.store.(interface{ OrganizationStore })
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "organization store not supported"})
-	}
-	req.ID = "org-" + uuid.NewString()
-	req.CreatedAt = time.Now().UTC()
-	if err := store.CreateOrganization(c.Context(), &req); err != nil {
+	err := h.store.CreateOrg(c.Context(), &req)
+	if err != nil {
+		logger.LogError("failed to create organization", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create organization"})
 	}
 	return c.Status(fiber.StatusCreated).JSON(req)
@@ -3066,20 +2981,15 @@ func (h *AdminHandler) CreateOrg(c *fiber.Ctx) error {
 
 func (h *AdminHandler) ListOrgs(c *fiber.Ctx) error {
 	q, sortBy, sortDir, limit, offset := parseListFilter(c, 100)
-	store, ok := h.store.(interface{ OrganizationStore })
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "organization store not supported"})
-	}
-	filter := OrganizationFilter{
+	orgs, total, err := h.store.ListOrganizations(c.Context(), OrganizationFilter{
 		Query:   q,
 		SortBy:  sortBy,
 		SortDir: sortDir,
 		Limit:   limit,
 		Offset:  offset,
-	}
-	orgs, total, err := store.ListOrganizations(c.Context(), filter)
+	})
 	if err != nil {
-		fmt.Println("ListOrgs error:", err, "filter:", filter, "request_id:", c.Locals("request_id"))
+		logger.LogError("failed to list organizations", logger.ErrorField(err))	
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list organizations"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"total": total, "organizations": orgs})
@@ -3088,17 +2998,16 @@ func (h *AdminHandler) ListOrgs(c *fiber.Ctx) error {
 func (h *AdminHandler) GetOrg(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
+		logger.LogError("organization id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "organization id required"})
 	}
-	store, ok := h.store.(interface{ OrganizationStore })
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "organization store not supported"})
-	}
-	org, err := store.GetOrganization(c.Context(), id)
+	org, err := h.store.GetOrg(c.Context(), id)
 	if err != nil {
 		if err == pgx.ErrNoRows {
+			logger.LogError("organization not found")
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "organization not found"})
 		}
+		logger.LogError("failed to get organization", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get organization"})
 	}
 	return c.Status(fiber.StatusOK).JSON(org)
@@ -3107,46 +3016,50 @@ func (h *AdminHandler) GetOrg(c *fiber.Ctx) error {
 func (h *AdminHandler) UpdateOrg(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
+		logger.LogError("organization id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "organization id required"})
 	}
 	var req Organization
 	if err := c.BodyParser(&req); err != nil {
+		logger.LogError("failed to parse request body", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
-	store, ok := h.store.(interface{ OrganizationStore })
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "organization store not supported"})
-	}
-	org, err := store.GetOrganization(c.Context(), id)
+	org, err := h.store.GetOrg(c.Context(), id)
 	if err != nil {
 		if err == pgx.ErrNoRows {
+			logger.LogError("organization not found")
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "organization not found"})
 		}
+		logger.LogError("failed to get organization", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get organization"})
 	}
 	if req.Name != "" {
 		org.Name = req.Name
 	}
 	org.UpdatedAt = time.Now().UTC()
-	if err := store.UpdateOrganization(c.Context(), org); err != nil {
+	result, err := h.store.UpdateOrgSettings(org.ID, map[string]interface{}{
+		"name": org.Name,
+	})
+	if err != nil {
+		logger.LogError("failed to update organization", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update organization"})
 	}
-	return c.Status(fiber.StatusOK).JSON(org)
+	return c.Status(fiber.StatusOK).JSON(result)
 }
 
 func (h *AdminHandler) DeleteOrg(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
+		logger.LogError("organization id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "organization id required"})
 	}
-	store, ok := h.store.(interface{ OrganizationStore })
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "organization store not supported"})
-	}
-	if err := store.DeleteOrganization(c.Context(), id); err != nil {
+	err := h.store.DeleteOrg(c.Context(), id)
+	if err != nil {
 		if err == pgx.ErrNoRows {
+			logger.LogError("organization not found")
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "organization not found"})
 		}
+		logger.LogError("failed to delete organization", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete organization"})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
@@ -3155,14 +3068,12 @@ func (h *AdminHandler) DeleteOrg(c *fiber.Ctx) error {
 func (h *AdminHandler) OrgAuditLogs(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
+		logger.LogError("organization id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "organization id required"})
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	logs, err := store.OrgAuditLogs(id)
+	logs, err := h.store.OrgAuditLogs(id)
 	if err != nil {
+		logger.LogError("failed to fetch organization audit logs", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch organization audit logs"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"logs": logs})
@@ -3171,14 +3082,12 @@ func (h *AdminHandler) OrgAuditLogs(c *fiber.Ctx) error {
 func (h *AdminHandler) GetOrgSettings(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
+		logger.LogError("organization id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "organization id required"})
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	settings, err := store.GetOrgSettings(id)
+	settings, err := h.store.GetOrgSettings(id)
 	if err != nil {
+		logger.LogError("failed to fetch organization settings", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch organization settings"})
 	}
 	return c.Status(fiber.StatusOK).JSON(settings)
@@ -3187,18 +3096,16 @@ func (h *AdminHandler) GetOrgSettings(c *fiber.Ctx) error {
 func (h *AdminHandler) UpdateOrgSettings(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
+		logger.LogError("organization id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "organization id required"})
 	}
 	var input map[string]interface{}
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid payload"})
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	settings, err := store.UpdateOrgSettings(id, input)
+	settings, err := h.store.UpdateOrgSettings(id, input)
 	if err != nil {
+		logger.LogError("failed to update organization settings", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update organization settings"})
 	}
 	return c.Status(fiber.StatusOK).JSON(settings)
@@ -3207,6 +3114,7 @@ func (h *AdminHandler) UpdateOrgSettings(c *fiber.Ctx) error {
 func (h *AdminHandler) InviteOrgUser(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
+		logger.LogError("organization id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "organization id required"})
 	}
 	var req struct {
@@ -3214,14 +3122,12 @@ func (h *AdminHandler) InviteOrgUser(c *fiber.Ctx) error {
 		Role  string `json:"role"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.Email == "" || req.Role == "" {
+		logger.LogError("invalid request body", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email and role required"})
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	invitation, err := store.InviteOrgUser(id, req.Email, req.Role)
+	invitation, err := h.store.InviteOrgUser(id, req.Email, req.Role)
 	if err != nil {
+		logger.LogError("failed to invite organization user", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to invite organization user"})
 	}
 	return c.Status(fiber.StatusCreated).JSON(invitation)
@@ -3230,14 +3136,12 @@ func (h *AdminHandler) InviteOrgUser(c *fiber.Ctx) error {
 func (h *AdminHandler) ListOrgInvitations(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
+		logger.LogError("organization id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "organization id required"})
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	invitations, err := store.ListOrgInvitations(id)
+	invitations, err := h.store.ListOrgInvitations(id)
 	if err != nil {
+		logger.LogError("failed to list organization invitations", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list organization invitations"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"invitations": invitations})
@@ -3246,20 +3150,19 @@ func (h *AdminHandler) ListOrgInvitations(c *fiber.Ctx) error {
 func (h *AdminHandler) CreateOrgAPIKey(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
+		logger.LogError("organization id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "organization id required"})
 	}
 	var req struct {
 		Name string `json:"name"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.Name == "" {
+		logger.LogError("invalid request body", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "name required"})
 	}
-	store, ok := h.store.(AdminStore)
-	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "admin store not supported"})
-	}
-	apiKey, err := store.CreateOrgAPIKey(id, req.Name)
+	apiKey, err := h.store.CreateOrgAPIKey(id, req.Name)
 	if err != nil {
+		logger.LogError("failed to create organization API key", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create organization API key"})
 	}
 	return c.Status(fiber.StatusCreated).JSON(apiKey)

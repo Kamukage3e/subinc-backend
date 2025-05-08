@@ -183,10 +183,7 @@ type FeatureFlagInput struct {
 }
 
 type AdminHandler struct {
-	store interface {
-		AdminStore
-		AdminUserStore
-	}
+	store          *PostgresAdminStore
 	userStore      *user.PostgresUserStore // For all user/org/project role/permission logic
 	emailManager   *email.EmailManager
 	SecretsManager interface{}
@@ -388,3 +385,20 @@ type OrgInvitation struct {
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
+
+type UserOrgProjectRole struct {
+	UserID string `json:"user_id"`
+	Role   string `json:"role"`
+}
+
+type UserRolesPermissions struct {
+	ID        string `json:"id"`
+	UserID    string `json:"user_id"`
+	OrgID     string `json:"org_id"`
+	ProjectID string `json:"project_id"`
+	Role      string `json:"role"`
+	Permissions []string `json:"permissions"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
