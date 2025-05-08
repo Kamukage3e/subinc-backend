@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"os"
+
 	"github.com/spf13/viper"
 
 	"go.uber.org/zap"
@@ -168,7 +169,7 @@ func NewProduction() *Logger {
 	config.EncodeName = zapcore.FullNameEncoder
 	consoleEncoder := zapcore.NewConsoleEncoder(config)
 	core := zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), zapcore.InfoLevel)
-	zapLogger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+	zapLogger := zap.New(core, zap.AddCaller())
 	return &Logger{zap: zapLogger, level: InfoLevel}
 }
 
@@ -181,7 +182,7 @@ func NewDev() *Logger {
 	config.EncodeName = zapcore.FullNameEncoder
 	consoleEncoder := zapcore.NewConsoleEncoder(config)
 	core := zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), zapcore.DebugLevel)
-	zapLogger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+	zapLogger := zap.New(core, zap.AddCaller())
 	return &Logger{zap: zapLogger, level: DebugLevel}
 }
 

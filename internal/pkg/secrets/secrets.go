@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // SecretsManager abstracts secret retrieval for cloud-native SaaS. Supports AWS Secrets Manager (default) and can be extended for Vault.
@@ -101,4 +102,12 @@ func errorAs(err error, target interface{}) bool {
 	default:
 		return false
 	}
+}
+
+func HashPassword(password string) (string, error) {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hashedPassword), nil
 }

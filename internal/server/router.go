@@ -1,7 +1,10 @@
 package server
 
 import (
+	"encoding/json"
+
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
@@ -98,6 +101,137 @@ func SetupRouter(
 
 	// Architecture routes
 	architectureHandler.RegisterRoutes(apiGroup.Group("/architecture"), secretsManager, jwtSecretName)
+
+	// Centralized error handler: always return JSON with code/message, never leak stack traces
+	app.Use(func(c *fiber.Ctx) error {
+		err := c.Next()
+		if err == nil {
+			return nil
+		}
+
+		status := fiber.StatusInternalServerError
+		code := "internal_error"
+		msg := "An unexpected error occurred. Please try again later."
+
+		// Extract information for logging
+		path := c.Path()
+		method := c.Method()
+		ip := c.IP()
+		reqID := c.Get("X-Request-ID", uuid.NewString())
+
+		response := fiber.Map{
+			"error":      msg,
+			"code":       code,
+			"request_id": reqID,
+		}
+
+		// Check for specific error types
+		if fe, ok := err.(*fiber.Error); ok {
+			status = fe.Code
+			msg = fe.Message
+			code = "fiber_error"
+			response["error"] = msg
+			response["code"] = code
+
+			logger.LogError("Fiber error",
+				logger.String("path", path),
+				logger.String("method", method),
+				logger.String("ip", ip),
+				logger.String("request_id", reqID),
+				logger.Int("status", status),
+				logger.String("code", code),
+				logger.ErrorField(err))
+		} else if ce, ok := err.(interface {
+			Code() string
+			Message() string
+			MarshalJSON() ([]byte, error)
+		}); ok {
+			// Handle error types with custom JSON marshaling (like AdminError)
+			msg = ce.Message()
+			code = ce.Code()
+			response["error"] = msg
+			response["code"] = code
+
+			// Map common error codes to HTTP status codes
+			switch code {
+			case "not_found":
+				status = fiber.StatusNotFound
+			case "invalid_input", "validation_error":
+				status = fiber.StatusBadRequest
+			case "unauthorized", "unauthenticated":
+				status = fiber.StatusUnauthorized
+			case "forbidden":
+				status = fiber.StatusForbidden
+			case "conflict":
+				status = fiber.StatusConflict
+			case "rate_limit_exceeded":
+				status = fiber.StatusTooManyRequests
+			}
+
+			// Use the custom JSON marshaling
+			safeJSON, _ := ce.MarshalJSON()
+			var safeMap map[string]interface{}
+			if json.Unmarshal(safeJSON, &safeMap) == nil {
+				for k, v := range safeMap {
+					response[k] = v
+				}
+			}
+
+			logger.LogError(msg,
+				logger.String("path", path),
+				logger.String("method", method),
+				logger.String("ip", ip),
+				logger.String("request_id", reqID),
+				logger.Int("status", status),
+				logger.String("code", code),
+				logger.ErrorField(err))
+		} else if ce, ok := err.(interface {
+			Code() string
+			Message() string
+		}); ok {
+			// Handle error types that implement Code() and Message() interface
+			msg = ce.Message()
+			code = ce.Code()
+			response["error"] = msg
+			response["code"] = code
+
+			// Map common error codes to HTTP status codes
+			switch code {
+			case "not_found":
+				status = fiber.StatusNotFound
+			case "invalid_input", "validation_error":
+				status = fiber.StatusBadRequest
+			case "unauthorized", "unauthenticated":
+				status = fiber.StatusUnauthorized
+			case "forbidden":
+				status = fiber.StatusForbidden
+			case "conflict":
+				status = fiber.StatusConflict
+			case "rate_limit_exceeded":
+				status = fiber.StatusTooManyRequests
+			}
+
+			logger.LogError(msg,
+				logger.String("path", path),
+				logger.String("method", method),
+				logger.String("ip", ip),
+				logger.String("request_id", reqID),
+				logger.Int("status", status),
+				logger.String("code", code),
+				logger.ErrorField(err))
+		} else {
+			// Handle generic errors - don't expose details to client
+			logger.LogError("Unhandled server error",
+				logger.String("path", path),
+				logger.String("method", method),
+				logger.String("ip", ip),
+				logger.String("request_id", reqID),
+				logger.ErrorField(err))
+		}
+
+		// Return JSON response, never include stack traces
+		return c.Status(status).JSON(response)
+	})
 
 	return app
 }

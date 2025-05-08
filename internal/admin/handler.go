@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -38,26 +39,72 @@ func parseListFilter(c *fiber.Ctx, defaultLimit int) (string, string, string, in
 }
 
 func (h *AdminHandler) ListUsers(c *fiber.Ctx) error {
-	q, sortBy, sortDir, limit, offset := parseListFilter(c, 100)
+	// Parse query parameters for filtering, sorting and pagination
+	query := c.Query("q", "")
+	role := c.Query("role", "")
+	sortBy := c.Query("sort_by", "created_at")
+	sortDir := c.Query("sort_dir", "DESC")
+	limit, _ := strconv.Atoi(c.Query("limit", "100"))
+	offset, _ := strconv.Atoi(c.Query("offset", "0"))
+
+	// Validate and cap limit
+	if limit < 1 {
+		limit = 10
+	} else if limit > 1000 {
+		limit = 1000
+	}
+
+	// Create filter
 	filter := UserFilter{
-		Query:   q,
-		Role:    c.Query("role"),
+		Query:   query,
+		Role:    role,
 		SortBy:  sortBy,
 		SortDir: sortDir,
 		Limit:   limit,
 		Offset:  offset,
 	}
+
 	users, total, err := h.store.SearchUsers(filter)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch users"})
+		logger.LogError("failed to list users",
+			logger.ErrorField(err),
+			logger.String("query", query),
+			logger.String("role", role),
+			logger.String("sort_by", sortBy),
+			logger.String("sort_dir", sortDir),
+			logger.Int("limit", limit),
+			logger.Int("offset", offset))
+		return errorResponse(c, fiber.StatusInternalServerError, "list_failed", "Failed to list users", err)
 	}
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{"total": total, "users": users})
+
+	logger.LogInfo("users listed successfully",
+		logger.Int("total", total),
+		logger.Int("returned", len(users)),
+		logger.String("query", query),
+		logger.String("role", role))
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"users": users,
+		"total": total,
+	})
 }
 
 func (h *AdminHandler) ListTenants(c *fiber.Ctx) error {
-	q, sortBy, sortDir, limit, offset := parseListFilter(c, 100)
+	// Parse query parameters for filtering, sorting and pagination
+	query := c.Query("q", "")
+	sortBy := c.Query("sort_by", "created_at")
+	sortDir := c.Query("sort_dir", "DESC")
+	limit, _ := strconv.Atoi(c.Query("limit", "100"))
+	offset, _ := strconv.Atoi(c.Query("offset", "0"))
+
+	// Validate and cap limit
+	if limit < 1 {
+		limit = 10
+	} else if limit > 1000 {
+		limit = 1000
+	}
+
 	filter := TenantFilter{
-		Query:   q,
+		Query:   query,
 		SortBy:  sortBy,
 		SortDir: sortDir,
 		Limit:   limit,
@@ -65,15 +112,42 @@ func (h *AdminHandler) ListTenants(c *fiber.Ctx) error {
 	}
 	tenants, total, err := h.store.SearchTenants(filter)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch tenants"})
+		logger.LogError("failed to list tenants",
+			logger.ErrorField(err),
+			logger.String("query", query),
+			logger.String("sort_by", sortBy),
+			logger.String("sort_dir", sortDir),
+			logger.Int("limit", limit),
+			logger.Int("offset", offset))
+		return errorResponse(c, fiber.StatusInternalServerError, "list_failed", "Failed to list tenants", err)
 	}
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{"total": total, "tenants": tenants})
+
+	logger.LogInfo("tenants listed successfully",
+		logger.Int("total", total),
+		logger.Int("returned", len(tenants)))
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"tenants": tenants,
+		"total":   total,
+	})
 }
 
 func (h *AdminHandler) ListRoles(c *fiber.Ctx) error {
-	q, sortBy, sortDir, limit, offset := parseListFilter(c, 100)
+	// Parse query parameters for filtering, sorting and pagination
+	query := c.Query("q", "")
+	sortBy := c.Query("sort_by", "name")
+	sortDir := c.Query("sort_dir", "ASC")
+	limit, _ := strconv.Atoi(c.Query("limit", "100"))
+	offset, _ := strconv.Atoi(c.Query("offset", "0"))
+
+	// Validate and cap limit
+	if limit < 1 {
+		limit = 10
+	} else if limit > 1000 {
+		limit = 1000
+	}
+
 	filter := RoleFilter{
-		Query:   q,
+		Query:   query,
 		SortBy:  sortBy,
 		SortDir: sortDir,
 		Limit:   limit,
@@ -81,15 +155,42 @@ func (h *AdminHandler) ListRoles(c *fiber.Ctx) error {
 	}
 	roles, total, err := h.store.SearchRoles(filter)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch roles"})
+		logger.LogError("failed to list roles",
+			logger.ErrorField(err),
+			logger.String("query", query),
+			logger.String("sort_by", sortBy),
+			logger.String("sort_dir", sortDir),
+			logger.Int("limit", limit),
+			logger.Int("offset", offset))
+		return errorResponse(c, fiber.StatusInternalServerError, "list_failed", "Failed to list roles", err)
 	}
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{"total": total, "roles": roles})
+
+	logger.LogInfo("roles listed successfully",
+		logger.Int("total", total),
+		logger.Int("returned", len(roles)))
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"roles": roles,
+		"total": total,
+	})
 }
 
 func (h *AdminHandler) ListPermissions(c *fiber.Ctx) error {
-	q, sortBy, sortDir, limit, offset := parseListFilter(c, 100)
+	// Parse query parameters for filtering, sorting and pagination
+	query := c.Query("q", "")
+	sortBy := c.Query("sort_by", "name")
+	sortDir := c.Query("sort_dir", "ASC")
+	limit, _ := strconv.Atoi(c.Query("limit", "100"))
+	offset, _ := strconv.Atoi(c.Query("offset", "0"))
+
+	// Validate and cap limit
+	if limit < 1 {
+		limit = 10
+	} else if limit > 1000 {
+		limit = 1000
+	}
+
 	filter := PermissionFilter{
-		Query:   q,
+		Query:   query,
 		SortBy:  sortBy,
 		SortDir: sortDir,
 		Limit:   limit,
@@ -97,9 +198,23 @@ func (h *AdminHandler) ListPermissions(c *fiber.Ctx) error {
 	}
 	perms, total, err := h.store.SearchPermissions(filter)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch permissions"})
+		logger.LogError("failed to list permissions",
+			logger.ErrorField(err),
+			logger.String("query", query),
+			logger.String("sort_by", sortBy),
+			logger.String("sort_dir", sortDir),
+			logger.Int("limit", limit),
+			logger.Int("offset", offset))
+		return errorResponse(c, fiber.StatusInternalServerError, "list_failed", "Failed to list permissions", err)
 	}
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{"total": total, "permissions": perms})
+
+	logger.LogInfo("permissions listed successfully",
+		logger.Int("total", total),
+		logger.Int("returned", len(perms)))
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"permissions": perms,
+		"total":       total,
+	})
 }
 
 func (h *AdminHandler) ListAuditLogs(c *fiber.Ctx) error {
@@ -348,14 +463,51 @@ func (h *AdminHandler) RealTimeMonitoring(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(monitoring)
 }
 
+// errorResponse returns a standardized error response with code and message
+func errorResponse(c *fiber.Ctx, status int, code, msg string, err error) error {
+	if err != nil {
+		// Log internal error with context, but never leak details to client
+		logger.LogError(msg,
+			logger.String("code", code),
+			logger.ErrorField(err),
+			logger.String("path", c.Path()),
+			logger.String("ip", c.IP()),
+			logger.String("method", c.Method()))
+	}
+	return c.Status(status).JSON(fiber.Map{"error": msg, "code": code})
+}
+
 func (h *AdminHandler) CreateUser(c *fiber.Ctx) error {
 	var user AdminUser
 	if err := c.BodyParser(&user); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user payload"})
+		logger.LogError("invalid user payload in create user",
+			logger.ErrorField(err),
+			logger.String("ip", c.IP()),
+			logger.String("body", string(c.Body())))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_payload", "Invalid user payload", err)
+	}
+	if user.ID == "" {
+		user.ID = uuid.NewString()
+	}
+	if user.CreatedAt.IsZero() {
+		user.CreatedAt = time.Now().UTC()
+	}
+	if user.UpdatedAt.IsZero() {
+		user.UpdatedAt = user.CreatedAt
 	}
 	if err := h.store.CreateUser(&user); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create user"})
+		logger.LogError("failed to create user",
+			logger.ErrorField(err),
+			logger.String("username", user.Username),
+			logger.String("email", user.Email),
+			logger.String("id", user.ID))
+		return errorResponse(c, fiber.StatusInternalServerError, "create_failed", "Failed to create user", err)
 	}
+
+	logger.LogInfo("user created successfully",
+		logger.String("id", user.ID),
+		logger.String("username", user.Username),
+		logger.String("email", user.Email))
 	return c.Status(fiber.StatusCreated).JSON(user)
 }
 
@@ -363,21 +515,52 @@ func (h *AdminHandler) UpdateUser(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var user AdminUser
 	if err := c.BodyParser(&user); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user payload"})
+		logger.LogError("invalid user payload in update user",
+			logger.ErrorField(err),
+			logger.String("id", id),
+			logger.String("ip", c.IP()),
+			logger.String("body", string(c.Body())))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_payload", "Invalid user payload", err)
 	}
 	user.ID = id
-	if err := h.store.UpdateUser(&user); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update user"})
+	if user.UpdatedAt.IsZero() {
+		user.UpdatedAt = time.Now().UTC()
 	}
+	if err := h.store.UpdateUser(&user); err != nil {
+		logger.LogError("failed to update user",
+			logger.ErrorField(err),
+			logger.String("id", id),
+			logger.String("username", user.Username),
+			logger.String("email", user.Email))
+		return errorResponse(c, fiber.StatusInternalServerError, "update_failed", "Failed to update user", err)
+	}
+
+	logger.LogInfo("user updated successfully",
+		logger.String("id", user.ID),
+		logger.String("username", user.Username),
+		logger.String("email", user.Email))
 	return c.Status(fiber.StatusOK).JSON(user)
 }
 
 func (h *AdminHandler) DeleteUser(c *fiber.Ctx) error {
 	id := c.Params("id")
-	if err := h.store.DeleteUser(id); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete user"})
+	if id == "" {
+		logger.LogError("missing id parameter in delete user",
+			logger.String("path", c.Path()),
+			logger.String("ip", c.IP()))
+		return errorResponse(c, fiber.StatusBadRequest, "missing_id", "Missing user ID", nil)
 	}
-	return c.SendStatus(fiber.StatusNoContent)
+
+	if err := h.store.DeleteUser(id); err != nil {
+		logger.LogError("failed to delete user",
+			logger.ErrorField(err),
+			logger.String("id", id),
+			logger.String("ip", c.IP()))
+		return errorResponse(c, fiber.StatusInternalServerError, "delete_failed", "Failed to delete user", err)
+	}
+
+	logger.LogInfo("user deleted successfully", logger.String("id", id))
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"success": true})
 }
 
 func (h *AdminHandler) CreateTenant(c *fiber.Ctx) error {
@@ -1629,14 +1812,18 @@ func (h *AdminHandler) TransferUserToOrg(c *fiber.Ctx) error {
 	}
 	roles, err := h.userStore.ListRolesByUser(c.Context(), req.UserID)
 	if err != nil {
-		h.store.LogAuditEvent("admin", "transfer_user_to_org_failed", req.FromOrgID, map[string]interface{}{"user_id": req.UserID, "error": err.Error()})
+		if err := h.store.LogAuditEvent("admin", "transfer_user_to_org_failed", req.FromOrgID, map[string]interface{}{"user_id": req.UserID, "error": err.Error()}); err != nil {
+			logger.LogError("failed to log audit event", logger.ErrorField(err))
+		}
 		return c.Status(500).JSON(fiber.Map{"error": "failed to list user roles"})
 	}
 	var transferred bool
 	for _, r := range roles {
 		if r.OrgID != nil && *r.OrgID == req.FromOrgID {
 			if err := h.userStore.DeleteRole(c.Context(), r.ID); err != nil {
-				h.store.LogAuditEvent("admin", "transfer_user_to_org_failed", req.FromOrgID, map[string]interface{}{"user_id": req.UserID, "error": err.Error()})
+				if err := h.store.LogAuditEvent("admin", "transfer_user_to_org_failed", req.FromOrgID, map[string]interface{}{"user_id": req.UserID, "error": err.Error()}); err != nil {
+					logger.LogError("failed to log audit event", logger.ErrorField(err))
+				}
 				return c.Status(500).JSON(fiber.Map{"error": "failed to remove user from old org"})
 			}
 			newRole := &user.UserOrgProjectRole{
@@ -1649,7 +1836,9 @@ func (h *AdminHandler) TransferUserToOrg(c *fiber.Ctx) error {
 				UpdatedAt:   time.Now().UTC(),
 			}
 			if err := h.userStore.CreateRole(c.Context(), newRole); err != nil {
-				h.store.LogAuditEvent("admin", "transfer_user_to_org_failed", req.ToOrgID, map[string]interface{}{"user_id": req.UserID, "error": err.Error()})
+				if err := h.store.LogAuditEvent("admin", "transfer_user_to_org_failed", req.ToOrgID, map[string]interface{}{"user_id": req.UserID, "error": err.Error()}); err != nil {
+					logger.LogError("failed to log audit event", logger.ErrorField(err))
+				}
 				return c.Status(500).JSON(fiber.Map{"error": "failed to assign user to new org"})
 			}
 			transferred = true
@@ -1658,7 +1847,9 @@ func (h *AdminHandler) TransferUserToOrg(c *fiber.Ctx) error {
 	if !transferred {
 		return c.Status(404).JSON(fiber.Map{"error": "user has no roles in fromOrgID"})
 	}
-	h.store.LogAuditEvent("admin", "transfer_user_to_org", req.ToOrgID, map[string]interface{}{"user_id": req.UserID, "from": req.FromOrgID, "to": req.ToOrgID})
+	if err := h.store.LogAuditEvent("admin", "transfer_user_to_org", req.ToOrgID, map[string]interface{}{"user_id": req.UserID, "from": req.FromOrgID, "to": req.ToOrgID}); err != nil {
+		logger.LogError("failed to log audit event", logger.ErrorField(err))
+	}
 	return c.Status(200).JSON(fiber.Map{"success": true})
 }
 
@@ -1699,7 +1890,10 @@ func (h *AdminHandler) ChangeUserOrgRole(c *fiber.Ctx) error {
 	if err := h.userStore.CreateRole(c.Context(), newRole); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "failed to assign new org role"})
 	}
-	h.store.LogAuditEvent("admin", "change_user_org_role", orgID, map[string]interface{}{"user_id": req.UserID, "role": req.Role})
+	err = h.store.LogAuditEvent("admin", "change_user_org_role", orgID, map[string]interface{}{"user_id": req.UserID, "role": req.Role})
+	if err != nil {
+		logger.LogError("failed to log audit event", logger.ErrorField(err))
+	}
 	return c.Status(200).JSON(fiber.Map{"success": true})
 }
 
@@ -1783,7 +1977,10 @@ func (h *AdminHandler) BulkAddUsersToProject(c *fiber.Ctx) error {
 	if err := tx.Commit(c.Context()); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "failed to commit transaction"})
 	}
-	h.store.LogAuditEvent("admin", "bulk_add_users_to_project", projectID, map[string]interface{}{"added": len(roles), "failed": failed})
+	err = h.store.LogAuditEvent("admin", "bulk_add_users_to_project", projectID, map[string]interface{}{"added": len(roles), "failed": failed})
+	if err != nil {
+		logger.LogError("failed to log audit event", logger.ErrorField(err))
+	}
 	return c.Status(200).JSON(fiber.Map{"added": len(roles), "failed": failed})
 }
 
@@ -2449,13 +2646,28 @@ func (h *AdminHandler) CreateProject(c *fiber.Ctx) error {
 }
 
 func (h *AdminHandler) ListProjects(c *fiber.Ctx) error {
-	q, sortBy, sortDir, limit, offset := parseListFilter(c, 100)
+	// Parse query parameters for filtering, sorting and pagination
+	query := c.Query("q", "")
+	sortBy := c.Query("sort_by", "created_at")
+	sortDir := c.Query("sort_dir", "DESC")
+	limit, _ := strconv.Atoi(c.Query("limit", "100"))
+	offset, _ := strconv.Atoi(c.Query("offset", "0"))
+
+	// Validate and cap limit
+	if limit < 1 {
+		limit = 10
+	} else if limit > 1000 {
+		limit = 1000
+	}
+
 	store, ok := h.store.(interface{ ProjectStore })
 	if !ok {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "project store not supported"})
+		logger.LogError("project store not supported")
+		return errorResponse(c, fiber.StatusInternalServerError, "store_error", "Project store not supported", nil)
 	}
+
 	filter := ProjectFilter{
-		Query:   q,
+		Query:   query,
 		SortBy:  sortBy,
 		SortDir: sortDir,
 		Limit:   limit,
@@ -2463,9 +2675,23 @@ func (h *AdminHandler) ListProjects(c *fiber.Ctx) error {
 	}
 	projects, total, err := store.ListProjects(c.Context(), filter)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list projects"})
+		logger.LogError("failed to list projects",
+			logger.ErrorField(err),
+			logger.String("query", query),
+			logger.String("sort_by", sortBy),
+			logger.String("sort_dir", sortDir),
+			logger.Int("limit", limit),
+			logger.Int("offset", offset))
+		return errorResponse(c, fiber.StatusInternalServerError, "list_failed", "Failed to list projects", err)
 	}
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{"total": total, "projects": projects})
+
+	logger.LogInfo("projects listed successfully",
+		logger.Int("total", total),
+		logger.Int("returned", len(projects)))
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"projects": projects,
+		"total":    total,
+	})
 }
 
 func (h *AdminHandler) GetProject(c *fiber.Ctx) error {
@@ -2853,6 +3079,7 @@ func (h *AdminHandler) ListOrgs(c *fiber.Ctx) error {
 	}
 	orgs, total, err := store.ListOrganizations(c.Context(), filter)
 	if err != nil {
+		fmt.Println("ListOrgs error:", err, "filter:", filter, "request_id:", c.Locals("request_id"))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list organizations"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"total": total, "organizations": orgs})
