@@ -4,6 +4,7 @@ CREATE TABLE
         id UUID PRIMARY KEY,
         tenant_id UUID REFERENCES tenants (id) ON DELETE CASCADE,
         org_id UUID NOT NULL REFERENCES orgs (id) ON DELETE CASCADE,
+        description TEXT,
         name TEXT NOT NULL,
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now (),
@@ -15,6 +16,7 @@ CREATE TABLE
 CREATE INDEX IF NOT EXISTS idx_projects_tenant_id ON projects (tenant_id);
 
 CREATE INDEX IF NOT EXISTS idx_projects_org_id ON projects (org_id);
+CREATE INDEX IF NOT EXISTS idx_projects_description ON projects (description);
 
 -- Make tenant_id nullable if not already
 ALTER TABLE projects

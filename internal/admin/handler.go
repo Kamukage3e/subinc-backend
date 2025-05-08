@@ -3413,3 +3413,483 @@ func (h *AdminHandler) TransferOrgOwner(c *fiber.Ctx) error {
 	}
 	return c.Status(200).JSON(fiber.Map{"success": true})
 }
+
+// Project lifecycle
+func (h *AdminHandler) DeactivateProject(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
+	}
+	err := h.store.DeactivateProject(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to deactivate project"})
+	}
+	return c.SendStatus(fiber.StatusOK)
+}
+
+func (h *AdminHandler) ReactivateProject(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
+	}
+	err := h.store.ReactivateProject(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to reactivate project"})
+	}
+	return c.SendStatus(fiber.StatusOK)
+}
+
+func (h *AdminHandler) PurgeProject(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
+	}
+	err := h.store.PurgeProject(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to purge project"})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// Project RBAC/roles
+func (h *AdminHandler) ListProjectRoles(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
+	}
+	roles, err := h.store.ListProjectRoles(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list project roles"})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"roles": roles})
+}
+
+func (h *AdminHandler) CreateProjectRole(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
+	}
+	var role user.UserOrgProjectRole
+	if err := c.BodyParser(&role); err != nil || role.Role == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid role payload"})
+	}
+	role.ProjectID = &id
+	err := h.store.CreateProjectRole(c.Context(), &role)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create project role"})
+	}
+	return c.Status(fiber.StatusCreated).JSON(role)
+}
+
+func (h *AdminHandler) UpdateProjectRole(c *fiber.Ctx) error {
+	id := c.Params("id")
+	roleID := c.Params("role_id")
+	if id == "" || roleID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id and role_id required"})
+	}
+	var role user.UserOrgProjectRole
+	if err := c.BodyParser(&role); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid role payload"})
+	}
+	role.ID = roleID
+	role.ProjectID = &id
+	err := h.store.UpdateProjectRole(c.Context(), &role)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update project role"})
+	}
+	return c.Status(fiber.StatusOK).JSON(role)
+}
+
+func (h *AdminHandler) DeleteProjectRole(c *fiber.Ctx) error {
+	id := c.Params("id")
+	roleID := c.Params("role_id")
+	if id == "" || roleID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id and role_id required"})
+	}
+	err := h.store.DeleteProjectRole(c.Context(), id, roleID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete project role"})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// Project usage/quota
+func (h *AdminHandler) GetProjectUsage(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
+	}
+	usage, err := h.store.GetProjectUsage(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get project usage"})
+	}
+	return c.Status(fiber.StatusOK).JSON(usage)
+}
+
+// Project feature flags
+func (h *AdminHandler) GetProjectFeatureFlags(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
+	}
+	flags, err := h.store.GetProjectFeatureFlags(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get project feature flags"})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"flags": flags})
+}
+
+func (h *AdminHandler) UpdateProjectFeatureFlags(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
+	}
+	var flags map[string]interface{}
+	if err := c.BodyParser(&flags); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid payload"})
+	}
+	updated, err := h.store.UpdateProjectFeatureFlags(c.Context(), id, flags)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update project feature flags"})
+	}
+	return c.Status(fiber.StatusOK).JSON(updated)
+}
+
+// Project webhooks
+func (h *AdminHandler) ListProjectWebhooks(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
+	}
+	webhooks, err := h.store.ListProjectWebhooks(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list project webhooks"})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"webhooks": webhooks})
+}
+
+func (h *AdminHandler) CreateProjectWebhook(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
+	}
+	var webhook Webhook
+	if err := c.BodyParser(&webhook); err != nil || webhook.URL == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid webhook payload"})
+	}
+	webhook.ProjectID = &id
+	err := h.store.CreateProjectWebhook(c.Context(), &webhook)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create project webhook"})
+	}
+	return c.Status(fiber.StatusCreated).JSON(webhook)
+}
+
+func (h *AdminHandler) DeleteProjectWebhook(c *fiber.Ctx) error {
+	id := c.Params("id")
+	webhookID := c.Params("webhook_id")
+	if id == "" || webhookID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id and webhook_id required"})
+	}
+	err := h.store.DeleteProjectWebhook(c.Context(), id, webhookID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete project webhook"})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// Project secrets
+func (h *AdminHandler) ListProjectSecrets(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
+	}
+	secrets, err := h.store.ListProjectSecrets(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list project secrets"})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"secrets": secrets})
+}
+
+func (h *AdminHandler) CreateProjectSecret(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
+	}
+	var secret Secret
+	if err := c.BodyParser(&secret); err != nil || secret.Name == "" || secret.Value == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid secret payload"})
+	}
+	secret.ProjectID = &id
+	err := h.store.CreateProjectSecret(c.Context(), &secret)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create project secret"})
+	}
+	return c.Status(fiber.StatusCreated).JSON(secret)
+}
+
+func (h *AdminHandler) DeleteProjectSecret(c *fiber.Ctx) error {
+	id := c.Params("id")
+	secretID := c.Params("secret_id")
+	if id == "" || secretID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id and secret_id required"})
+	}
+	err := h.store.DeleteProjectSecret(c.Context(), id, secretID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete project secret"})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// Project events
+func (h *AdminHandler) ListProjectEvents(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project id required"})
+	}
+	events, err := h.store.ListProjectEvents(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list project events"})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"events": events})
+}
+
+// Org lifecycle
+func (h *AdminHandler) DeactivateOrg(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org id required"})
+	}
+	err := h.store.DeactivateOrg(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to deactivate org"})
+	}
+	return c.SendStatus(fiber.StatusOK)
+}
+
+func (h *AdminHandler) ReactivateOrg(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org id required"})
+	}
+	err := h.store.ReactivateOrg(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to reactivate org"})
+	}
+	return c.SendStatus(fiber.StatusOK)
+}
+
+func (h *AdminHandler) PurgeOrg(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org id required"})
+	}
+	err := h.store.PurgeOrg(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to purge org"})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// Org RBAC/roles
+func (h *AdminHandler) ListOrgRoles(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org id required"})
+	}
+	roles, err := h.store.ListOrgRoles(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list org roles"})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"roles": roles})
+}
+
+func (h *AdminHandler) CreateOrgRole(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org id required"})
+	}
+	var role user.UserOrgProjectRole
+	if err := c.BodyParser(&role); err != nil || role.Role == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid role payload"})
+	}
+	role.OrgID = &id
+	err := h.store.CreateOrgRole(c.Context(), &role)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create org role"})
+	}
+	return c.Status(fiber.StatusCreated).JSON(role)
+}
+
+func (h *AdminHandler) UpdateOrgRole(c *fiber.Ctx) error {
+	id := c.Params("id")
+	roleID := c.Params("role_id")
+	if id == "" || roleID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org id and role_id required"})
+	}
+	var role user.UserOrgProjectRole
+	if err := c.BodyParser(&role); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid role payload"})
+	}
+	role.ID = roleID
+	role.OrgID = &id
+	err := h.store.UpdateOrgRole(c.Context(), &role)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update org role"})
+	}
+	return c.Status(fiber.StatusOK).JSON(role)
+}
+
+func (h *AdminHandler) DeleteOrgRole(c *fiber.Ctx) error {
+	id := c.Params("id")
+	roleID := c.Params("role_id")
+	if id == "" || roleID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org id and role_id required"})
+	}
+	err := h.store.DeleteOrgRole(c.Context(), id, roleID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete org role"})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// Org usage/quota
+func (h *AdminHandler) GetOrgUsage(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org id required"})
+	}
+	usage, err := h.store.GetOrgUsage(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get org usage"})
+	}
+	return c.Status(fiber.StatusOK).JSON(usage)
+}
+
+// Org feature flags
+func (h *AdminHandler) GetOrgFeatureFlags(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org id required"})
+	}
+	flags, err := h.store.GetOrgFeatureFlags(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get org feature flags"})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"flags": flags})
+}
+
+func (h *AdminHandler) UpdateOrgFeatureFlags(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org id required"})
+	}
+	var flags map[string]interface{}
+	if err := c.BodyParser(&flags); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid payload"})
+	}
+	updated, err := h.store.UpdateOrgFeatureFlags(c.Context(), id, flags)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update org feature flags"})
+	}
+	return c.Status(fiber.StatusOK).JSON(updated)
+}
+
+// Org webhooks
+func (h *AdminHandler) ListOrgWebhooks(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org id required"})
+	}
+	webhooks, err := h.store.ListOrgWebhooks(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list org webhooks"})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"webhooks": webhooks})
+}
+
+func (h *AdminHandler) CreateOrgWebhook(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org id required"})
+	}
+	var webhook Webhook
+	if err := c.BodyParser(&webhook); err != nil || webhook.URL == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid webhook payload"})
+	}
+	webhook.OrgID = &id
+	err := h.store.CreateOrgWebhook(c.Context(), &webhook)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create org webhook"})
+	}
+	return c.Status(fiber.StatusCreated).JSON(webhook)
+}
+
+func (h *AdminHandler) DeleteOrgWebhook(c *fiber.Ctx) error {
+	id := c.Params("id")
+	webhookID := c.Params("webhook_id")
+	if id == "" || webhookID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org id and webhook_id required"})
+	}
+	err := h.store.DeleteOrgWebhook(c.Context(), id, webhookID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete org webhook"})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// Org secrets
+func (h *AdminHandler) ListOrgSecrets(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org id required"})
+	}
+	secrets, err := h.store.ListOrgSecrets(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list org secrets"})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"secrets": secrets})
+}
+
+func (h *AdminHandler) CreateOrgSecret(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org id required"})
+	}
+	var secret Secret
+	if err := c.BodyParser(&secret); err != nil || secret.Name == "" || secret.Value == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid secret payload"})
+	}
+	secret.OrgID = &id
+	err := h.store.CreateOrgSecret(c.Context(), &secret)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create org secret"})
+	}
+	return c.Status(fiber.StatusCreated).JSON(secret)
+}
+
+func (h *AdminHandler) DeleteOrgSecret(c *fiber.Ctx) error {
+	id := c.Params("id")
+	secretID := c.Params("secret_id")
+	if id == "" || secretID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org id and secret_id required"})
+	}
+	err := h.store.DeleteOrgSecret(c.Context(), id, secretID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete org secret"})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// Org events
+func (h *AdminHandler) ListOrgEvents(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org id required"})
+	}
+	events, err := h.store.ListOrgEvents(c.Context(), id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list org events"})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"events": events})
+}

@@ -20,6 +20,7 @@ import (
 	"github.com/subinc/subinc-backend/enterprise/notifications"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 	"github.com/subinc/subinc-backend/internal/pkg/secrets"
+	"github.com/subinc/subinc-backend/internal/user"
 )
 
 func NewPostgresAdminStore(db *pgxpool.Pool) *PostgresAdminStore {
@@ -3357,4 +3358,418 @@ func (s *PostgresAdminStore) SeedRoles(roles []AdminRole) error {
 		}
 	}
 	return nil
+}
+
+// --- Project lifecycle ---
+func (s *PostgresAdminStore) DeactivateProject(ctx context.Context, id string) error {
+	const q = `UPDATE projects SET status='inactive', updated_at=now() WHERE id=$1`
+	_, err := s.DB.Exec(ctx, q, id)
+	if err != nil {
+		logger.LogError("failed to deactivate project", logger.ErrorField(err), logger.String("id", id))
+		return errors.New("failed to deactivate project: " + err.Error())
+	}
+	return nil
+}
+
+func (s *PostgresAdminStore) ReactivateProject(ctx context.Context, id string) error {
+	const q = `UPDATE projects SET status='active', updated_at=now() WHERE id=$1`
+	_, err := s.DB.Exec(ctx, q, id)
+	if err != nil {
+		logger.LogError("failed to reactivate project", logger.ErrorField(err), logger.String("id", id))
+		return errors.New("failed to reactivate project: " + err.Error())
+	}
+	return nil
+}
+
+func (s *PostgresAdminStore) PurgeProject(ctx context.Context, id string) error {
+	const q = `DELETE FROM projects WHERE id=$1`
+	_, err := s.DB.Exec(ctx, q, id)
+	if err != nil {
+		logger.LogError("failed to purge project", logger.ErrorField(err), logger.String("id", id))
+		return errors.New("failed to purge project: " + err.Error())
+	}
+	return nil
+}
+
+// --- Org lifecycle ---
+func (s *PostgresAdminStore) DeactivateOrg(ctx context.Context, id string) error {
+	const q = `UPDATE orgs SET status='inactive', updated_at=now() WHERE id=$1`
+	_, err := s.DB.Exec(ctx, q, id)
+	if err != nil {
+		logger.LogError("failed to deactivate org", logger.ErrorField(err), logger.String("id", id))
+		return errors.New("failed to deactivate org: " + err.Error())
+	}
+	return nil
+}
+
+func (s *PostgresAdminStore) ReactivateOrg(ctx context.Context, id string) error {
+	const q = `UPDATE orgs SET status='active', updated_at=now() WHERE id=$1`
+	_, err := s.DB.Exec(ctx, q, id)
+	if err != nil {
+		logger.LogError("failed to reactivate org", logger.ErrorField(err), logger.String("id", id))
+		return errors.New("failed to reactivate org: " + err.Error())
+	}
+	return nil
+}
+
+func (s *PostgresAdminStore) PurgeOrg(ctx context.Context, id string) error {
+	const q = `DELETE FROM orgs WHERE id=$1`
+	_, err := s.DB.Exec(ctx, q, id)
+	if err != nil {
+		logger.LogError("failed to purge org", logger.ErrorField(err), logger.String("id", id))
+		return errors.New("failed to purge org: " + err.Error())
+	}
+	return nil
+}
+
+// --- Project RBAC/roles ---
+func (s *PostgresAdminStore) ListProjectRoles(ctx context.Context, projectID string) ([]*user.UserOrgProjectRole, error) {
+	const q = `SELECT id, user_id, org_id, project_id, role, permissions, created_at, updated_at FROM user_org_project_roles WHERE project_id=$1`
+	rows, err := s.DB.Query(ctx, q, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var roles []*user.UserOrgProjectRole
+	for rows.Next() {
+		var r user.UserOrgProjectRole
+		var orgID, projectID sql.NullString
+		if err := rows.Scan(&r.ID, &r.UserID, &orgID, &projectID, &r.Role, &r.Permissions, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if orgID.Valid {
+			id := orgID.String
+			r.OrgID = &id
+		}
+		if projectID.Valid {
+			id := projectID.String
+			r.ProjectID = &id
+		}
+		roles = append(roles, &r)
+	}
+	return roles, nil
+}
+
+func (s *PostgresAdminStore) CreateProjectRole(ctx context.Context, role *user.UserOrgProjectRole) error {
+	const q = `INSERT INTO user_org_project_roles (id, user_id, org_id, project_id, role, permissions, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	_, err := s.DB.Exec(ctx, q, role.ID, role.UserID, role.OrgID, role.ProjectID, role.Role, role.Permissions, role.CreatedAt, role.UpdatedAt)
+	return err
+}
+
+func (s *PostgresAdminStore) UpdateProjectRole(ctx context.Context, role *user.UserOrgProjectRole) error {
+	const q = `UPDATE user_org_project_roles SET role=$1, permissions=$2, updated_at=$3 WHERE id=$4 AND project_id=$5`
+	_, err := s.DB.Exec(ctx, q, role.Role, role.Permissions, role.UpdatedAt, role.ID, role.ProjectID)
+	return err
+}
+
+func (s *PostgresAdminStore) DeleteProjectRole(ctx context.Context, projectID, roleID string) error {
+	const q = `DELETE FROM user_org_project_roles WHERE id=$1 AND project_id=$2`
+	_, err := s.DB.Exec(ctx, q, roleID, projectID)
+	return err
+}
+
+// --- Org RBAC/roles ---
+func (s *PostgresAdminStore) ListOrgRoles(ctx context.Context, orgID string) ([]*user.UserOrgProjectRole, error) {
+	const q = `SELECT id, user_id, org_id, project_id, role, permissions, created_at, updated_at FROM user_org_project_roles WHERE org_id=$1`
+	rows, err := s.DB.Query(ctx, q, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var roles []*user.UserOrgProjectRole
+	for rows.Next() {
+		var r user.UserOrgProjectRole
+		var orgID, projectID sql.NullString
+		if err := rows.Scan(&r.ID, &r.UserID, &orgID, &projectID, &r.Role, &r.Permissions, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if orgID.Valid {
+			id := orgID.String
+			r.OrgID = &id
+		}
+		if projectID.Valid {
+			id := projectID.String
+			r.ProjectID = &id
+		}
+		roles = append(roles, &r)
+	}
+	return roles, nil
+}
+
+func (s *PostgresAdminStore) CreateOrgRole(ctx context.Context, role *user.UserOrgProjectRole) error {
+	const q = `INSERT INTO user_org_project_roles (id, user_id, org_id, project_id, role, permissions, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	_, err := s.DB.Exec(ctx, q, role.ID, role.UserID, role.OrgID, role.ProjectID, role.Role, role.Permissions, role.CreatedAt, role.UpdatedAt)
+	return err
+}
+
+func (s *PostgresAdminStore) UpdateOrgRole(ctx context.Context, role *user.UserOrgProjectRole) error {
+	const q = `UPDATE user_org_project_roles SET role=$1, permissions=$2, updated_at=$3 WHERE id=$4 AND org_id=$5`
+	_, err := s.DB.Exec(ctx, q, role.Role, role.Permissions, role.UpdatedAt, role.ID, role.OrgID)
+	return err
+}
+
+func (s *PostgresAdminStore) DeleteOrgRole(ctx context.Context, orgID, roleID string) error {
+	const q = `DELETE FROM user_org_project_roles WHERE id=$1 AND org_id=$2`
+	_, err := s.DB.Exec(ctx, q, roleID, orgID)
+	return err
+}
+
+// --- Project usage/quota ---
+func (s *PostgresAdminStore) GetProjectUsage(ctx context.Context, projectID string) (map[string]interface{}, error) {
+	const q = `SELECT COUNT(*) as user_count FROM user_org_project_roles WHERE project_id=$1`
+	row := s.DB.QueryRow(ctx, q, projectID)
+	var userCount int
+	if err := row.Scan(&userCount); err != nil {
+		logger.LogError("failed to get project usage", logger.ErrorField(err), logger.String("project_id", projectID))
+		return nil, errors.New("failed to get project usage: " + err.Error())
+	}
+	return map[string]interface{}{"user_count": userCount}, nil
+}
+
+// --- Org usage/quota ---
+func (s *PostgresAdminStore) GetOrgUsage(ctx context.Context, orgID string) (map[string]interface{}, error) {
+	const q = `SELECT COUNT(*) as user_count FROM user_org_project_roles WHERE org_id=$1`
+	row := s.DB.QueryRow(ctx, q, orgID)
+	var userCount int
+	if err := row.Scan(&userCount); err != nil {
+		logger.LogError("failed to get org usage", logger.ErrorField(err), logger.String("org_id", orgID))
+		return nil, errors.New("failed to get org usage: " + err.Error())
+	}
+	return map[string]interface{}{"user_count": userCount}, nil
+}
+
+// --- Project feature flags ---
+func (s *PostgresAdminStore) GetProjectFeatureFlags(ctx context.Context, projectID string) (map[string]interface{}, error) {
+	const q = `SELECT feature_flags FROM projects WHERE id=$1`
+	row := s.DB.QueryRow(ctx, q, projectID)
+	var flagsJSON string
+	if err := row.Scan(&flagsJSON); err != nil {
+		logger.LogError("failed to get project feature flags", logger.ErrorField(err), logger.String("project_id", projectID))
+		return nil, errors.New("failed to get project feature flags: " + err.Error())
+	}
+	var flags map[string]interface{}
+	if err := json.Unmarshal([]byte(flagsJSON), &flags); err != nil {
+		logger.LogError("failed to unmarshal project feature flags", logger.ErrorField(err), logger.String("project_id", projectID))
+		return nil, errors.New("failed to unmarshal project feature flags: " + err.Error())
+	}
+	return flags, nil
+}
+
+func (s *PostgresAdminStore) UpdateProjectFeatureFlags(ctx context.Context, projectID string, flags map[string]interface{}) (map[string]interface{}, error) {
+	flagsJSON, err := json.Marshal(flags)
+	if err != nil {
+		logger.LogError("failed to marshal project feature flags", logger.ErrorField(err), logger.String("project_id", projectID))
+		return nil, errors.New("failed to marshal project feature flags: " + err.Error())
+	}
+	const q = `UPDATE projects SET feature_flags=$1, updated_at=now() WHERE id=$2 RETURNING feature_flags`
+	row := s.DB.QueryRow(ctx, q, string(flagsJSON), projectID)
+	var updatedJSON string
+	if err := row.Scan(&updatedJSON); err != nil {
+		logger.LogError("failed to update project feature flags", logger.ErrorField(err), logger.String("project_id", projectID))
+		return nil, errors.New("failed to update project feature flags: " + err.Error())
+	}
+	var updated map[string]interface{}
+	if err := json.Unmarshal([]byte(updatedJSON), &updated); err != nil {
+		logger.LogError("failed to unmarshal updated project feature flags", logger.ErrorField(err), logger.String("project_id", projectID))
+		return nil, errors.New("failed to unmarshal updated project feature flags: " + err.Error())
+	}
+	return updated, nil
+}
+
+// --- Org feature flags ---
+func (s *PostgresAdminStore) GetOrgFeatureFlags(ctx context.Context, orgID string) (map[string]interface{}, error) {
+	const q = `SELECT feature_flags FROM orgs WHERE id=$1`
+	row := s.DB.QueryRow(ctx, q, orgID)
+	var flagsJSON string
+	if err := row.Scan(&flagsJSON); err != nil {
+		logger.LogError("failed to get org feature flags", logger.ErrorField(err), logger.String("org_id", orgID))
+		return nil, errors.New("failed to get org feature flags: " + err.Error())
+	}
+	var flags map[string]interface{}
+	if err := json.Unmarshal([]byte(flagsJSON), &flags); err != nil {
+		logger.LogError("failed to unmarshal org feature flags", logger.ErrorField(err), logger.String("org_id", orgID))
+		return nil, errors.New("failed to unmarshal org feature flags: " + err.Error())
+	}
+	return flags, nil
+}
+
+func (s *PostgresAdminStore) UpdateOrgFeatureFlags(ctx context.Context, orgID string, flags map[string]interface{}) (map[string]interface{}, error) {
+	flagsJSON, err := json.Marshal(flags)
+	if err != nil {
+		logger.LogError("failed to marshal org feature flags", logger.ErrorField(err), logger.String("org_id", orgID))
+		return nil, errors.New("failed to marshal org feature flags: " + err.Error())
+	}
+	const q = `UPDATE orgs SET feature_flags=$1, updated_at=now() WHERE id=$2 RETURNING feature_flags`
+	row := s.DB.QueryRow(ctx, q, string(flagsJSON), orgID)
+	var updatedJSON string
+	if err := row.Scan(&updatedJSON); err != nil {
+		return nil, err
+	}
+	var updated map[string]interface{}
+	if err := json.Unmarshal([]byte(updatedJSON), &updated); err != nil {
+		return nil, err
+	}
+	return updated, nil
+}
+
+// --- Project webhooks ---
+func (s *PostgresAdminStore) ListProjectWebhooks(ctx context.Context, projectID string) ([]*Webhook, error) {
+	const q = `SELECT id, project_id, url, events, created_at, updated_at FROM webhooks WHERE project_id=$1`
+	rows, err := s.DB.Query(ctx, q, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Webhook
+	for rows.Next() {
+		var w Webhook
+		if err := rows.Scan(&w.ID, &w.ProjectID, &w.URL, &w.Events, &w.CreatedAt, &w.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &w)
+	}
+	return out, nil
+}
+
+func (s *PostgresAdminStore) CreateProjectWebhook(ctx context.Context, webhook *Webhook) error {
+	const q = `INSERT INTO webhooks (id, project_id, url, events, created_at, updated_at) VALUES ($1, $2, $3, $4, now(), now())`
+	_, err := s.DB.Exec(ctx, q, webhook.ID, webhook.ProjectID, webhook.URL, webhook.Events)
+	return err
+}
+
+func (s *PostgresAdminStore) DeleteProjectWebhook(ctx context.Context, projectID, webhookID string) error {
+	const q = `DELETE FROM webhooks WHERE id=$1 AND project_id=$2`
+	_, err := s.DB.Exec(ctx, q, webhookID, projectID)
+	return err
+}
+
+// --- Org webhooks ---
+func (s *PostgresAdminStore) ListOrgWebhooks(ctx context.Context, orgID string) ([]*Webhook, error) {
+	const q = `SELECT id, org_id, url, events, created_at, updated_at FROM webhooks WHERE org_id=$1`
+	rows, err := s.DB.Query(ctx, q, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Webhook
+	for rows.Next() {
+		var w Webhook
+		if err := rows.Scan(&w.ID, &w.OrgID, &w.URL, &w.Events, &w.CreatedAt, &w.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &w)
+	}
+	return out, nil
+}
+
+func (s *PostgresAdminStore) CreateOrgWebhook(ctx context.Context, webhook *Webhook) error {
+	const q = `INSERT INTO webhooks (id, org_id, url, events, created_at, updated_at) VALUES ($1, $2, $3, $4, now(), now())`
+	_, err := s.DB.Exec(ctx, q, webhook.ID, webhook.OrgID, webhook.URL, webhook.Events)
+	return err
+}
+
+func (s *PostgresAdminStore) DeleteOrgWebhook(ctx context.Context, orgID, webhookID string) error {
+	const q = `DELETE FROM webhooks WHERE id=$1 AND org_id=$2`
+	_, err := s.DB.Exec(ctx, q, webhookID, orgID)
+	return err
+}
+
+// --- Project secrets ---
+func (s *PostgresAdminStore) ListProjectSecrets(ctx context.Context, projectID string) ([]*Secret, error) {
+	const q = `SELECT id, project_id, name, value, created_at, updated_at FROM secrets WHERE project_id=$1`
+	rows, err := s.DB.Query(ctx, q, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Secret
+	for rows.Next() {
+		var sct Secret
+		if err := rows.Scan(&sct.ID, &sct.ProjectID, &sct.Name, &sct.Value, &sct.CreatedAt, &sct.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &sct)
+	}
+	return out, nil
+}
+
+func (s *PostgresAdminStore) CreateProjectSecret(ctx context.Context, secret *Secret) error {
+	const q = `INSERT INTO secrets (id, project_id, name, value, created_at, updated_at) VALUES ($1, $2, $3, $4, now(), now())`
+	_, err := s.DB.Exec(ctx, q, secret.ID, secret.ProjectID, secret.Name, secret.Value)
+	return err
+}
+
+func (s *PostgresAdminStore) DeleteProjectSecret(ctx context.Context, projectID, secretID string) error {
+	const q = `DELETE FROM secrets WHERE id=$1 AND project_id=$2`
+	_, err := s.DB.Exec(ctx, q, secretID, projectID)
+	return err
+}
+
+// --- Org secrets ---
+func (s *PostgresAdminStore) ListOrgSecrets(ctx context.Context, orgID string) ([]*Secret, error) {
+	const q = `SELECT id, org_id, name, value, created_at, updated_at FROM secrets WHERE org_id=$1`
+	rows, err := s.DB.Query(ctx, q, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Secret
+	for rows.Next() {
+		var sct Secret
+		if err := rows.Scan(&sct.ID, &sct.OrgID, &sct.Name, &sct.Value, &sct.CreatedAt, &sct.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &sct)
+	}
+	return out, nil
+}
+
+func (s *PostgresAdminStore) CreateOrgSecret(ctx context.Context, secret *Secret) error {
+	const q = `INSERT INTO secrets (id, org_id, name, value, created_at, updated_at) VALUES ($1, $2, $3, $4, now(), now())`
+	_, err := s.DB.Exec(ctx, q, secret.ID, secret.OrgID, secret.Name, secret.Value)
+	return err
+}
+
+func (s *PostgresAdminStore) DeleteOrgSecret(ctx context.Context, orgID, secretID string) error {
+	const q = `DELETE FROM secrets WHERE id=$1 AND org_id=$2`
+	_, err := s.DB.Exec(ctx, q, secretID, orgID)
+	return err
+}
+
+// --- Project events ---
+func (s *PostgresAdminStore) ListProjectEvents(ctx context.Context, projectID string) ([]*Event, error) {
+	const q = `SELECT id, project_id, type, payload, created_at FROM events WHERE project_id=$1`
+	rows, err := s.DB.Query(ctx, q, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Event
+	for rows.Next() {
+		var e Event
+		if err := rows.Scan(&e.ID, &e.ProjectID, &e.Type, &e.Payload, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &e)
+	}
+	return out, nil
+}
+
+// --- Org events ---
+func (s *PostgresAdminStore) ListOrgEvents(ctx context.Context, orgID string) ([]*Event, error) {
+	const q = `SELECT id, org_id, type, payload, created_at FROM events WHERE org_id=$1`
+	rows, err := s.DB.Query(ctx, q, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Event
+	for rows.Next() {
+		var e Event
+		if err := rows.Scan(&e.ID, &e.OrgID, &e.Type, &e.Payload, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &e)
+	}
+	return out, nil
 }

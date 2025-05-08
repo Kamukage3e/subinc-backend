@@ -317,6 +317,38 @@ type OrgTeamFilter struct {
 	Offset  int
 }
 
+// Secret represents a secret for org/project (SaaS, prod-ready)
+type Secret struct {
+	ID        string    `json:"id" db:"id"`
+	OrgID     *string   `json:"org_id,omitempty" db:"org_id"`
+	ProjectID *string   `json:"project_id,omitempty" db:"project_id"`
+	Name      string    `json:"name" db:"name"`
+	Value     string    `json:"value" db:"value"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// Webhook represents a webhook for org/project (SaaS, prod-ready)
+type Webhook struct {
+	ID        string    `json:"id" db:"id"`
+	OrgID     *string   `json:"org_id,omitempty" db:"org_id"`
+	ProjectID *string   `json:"project_id,omitempty" db:"project_id"`
+	URL       string    `json:"url" db:"url"`
+	Events    []string  `json:"events" db:"events"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// Event represents an event for org/project (SaaS, prod-ready)
+type Event struct {
+	ID        string    `json:"id" db:"id"`
+	OrgID     *string   `json:"org_id,omitempty" db:"org_id"`
+	ProjectID *string   `json:"project_id,omitempty" db:"project_id"`
+	Type      string    `json:"type" db:"type"`
+	Payload   string    `json:"payload" db:"payload"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+}
+
 // SSMBlog represents a blog post for SSM team
 // Used for /admin/ssm/blogs endpoints
 // All fields are required for production SaaS
@@ -404,4 +436,20 @@ type UserRolesPermissions struct {
 	Permissions []string  `json:"permissions"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type ProjectRole struct {
+	ID        string    `json:"id" db:"id"`
+	ProjectID string    `json:"project_id" db:"project_id"`
+	Role      string    `json:"role" db:"role"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+type OrgRole struct {
+	ID        string    `json:"id" db:"id"`
+	OrgID     string    `json:"org_id" db:"org_id"`
+	Role      string    `json:"role" db:"role"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }

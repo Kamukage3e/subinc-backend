@@ -134,6 +134,15 @@ func (h *AdminHandler) RegisterRoutes(router fiber.Router) {
 	admin.Get("/projects/:id", h.GetProject)
 	admin.Put("/projects/:id", h.UpdateProject)
 	admin.Delete("/projects/:id", h.DeleteProject)
+	admin.Get("/projects/:id/users", h.ListProjectUsers)
+	admin.Post("/projects/:id/users", h.AddUserToProject)
+	admin.Delete("/projects/:id/users", h.RemoveUserFromProject)
+	admin.Patch("/projects/:id/transfer-owner", h.TransferProjectOwner)
+	admin.Patch("/projects/transfer-user", h.TransferUserToProject)
+	admin.Post("/projects/:id/users/bulk-add", h.BulkAddUsersToProject)
+	admin.Post("/projects/:id/users/bulk-remove", h.BulkRemoveUsersFromProject)
+	admin.Post("/projects/users/bulk-transfer", h.BulkTransferUsersBetweenProjects)
+	admin.Get("/projects/:id/users/:user_id/effective-permissions", h.ViewUserOrgEffectivePermissions)
 	admin.Get("/projects/:id/audit", h.ProjectAuditLogs)
 	admin.Get("/projects/:id/settings", h.GetProjectSettings)
 	admin.Patch("/projects/:id/settings", h.UpdateProjectSettings)
@@ -161,6 +170,11 @@ func (h *AdminHandler) RegisterRoutes(router fiber.Router) {
 	admin.Get("/orgs/:id/teams/:team_id", h.GetOrgTeam)
 	admin.Put("/orgs/:id/teams/:team_id", h.UpdateOrgTeam)
 	admin.Delete("/orgs/:id/teams/:team_id", h.DeleteOrgTeam)
+	admin.Patch("/orgs/:id/teams/:team_id/transfer-owner", h.TransferOrgOwner)
+	admin.Delete("/orgs/:id/teams/:team_id/users/:user_id", h.RemoveUserFromOrg)
+	admin.Post("/orgs/:id/teams/:team_id/users/bulk-add", h.BulkAddUsersToOrg)
+	admin.Post("/orgs/:id/teams/:team_id/users/bulk-remove", h.BulkRemoveUsersFromOrg)
+	admin.Post("/orgs/teams/bulk-transfer", h.BulkTransferUsersBetweenOrgs)
 	// --- END: Org admin endpoints ---
 
 	// --- BEGIN: Add missing admin endpoints as stubs ---
