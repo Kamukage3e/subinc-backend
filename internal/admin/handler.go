@@ -243,11 +243,13 @@ func (h *AdminHandler) ListAuditLogs(c *fiber.Ctx) error {
 	export := c.Query("export")
 	logs, total, err := h.store.SearchAuditLogs(filter)
 	if err != nil {
+		logger.LogError("failed to fetch audit logs", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "audit_logs_failed", "Failed to fetch audit logs", err)
 	}
 	if export == "csv" {
 		csvData, err := AuditLogsToCSV(logs)
 		if err != nil {
+			logger.LogError("failed to export audit logs to csv", logger.ErrorField(err))			
 			return errorResponse(c, fiber.StatusInternalServerError, "csv_export_failed", "Failed to export csv", err)
 		}
 		c.Set("Content-Type", "text/csv")
@@ -260,6 +262,7 @@ func (h *AdminHandler) ListAuditLogs(c *fiber.Ctx) error {
 func (h *AdminHandler) BillingSummary(c *fiber.Ctx) error {
 	summary, err := h.store.BillingSummary()
 	if err != nil {
+		logger.LogError("failed to fetch billing summary", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "billing_summary_failed", "Failed to fetch billing summary", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(summary)
@@ -268,7 +271,8 @@ func (h *AdminHandler) BillingSummary(c *fiber.Ctx) error {
 func (h *AdminHandler) SystemHealth(c *fiber.Ctx) error {
 	health, err := h.store.SystemHealth()
 	if err != nil {
-		return errorResponse(c, fiber.StatusInternalServerError, "system_health_failed", "Failed to fetch system health", err)
+		logger.LogError("failed to fetch system health", logger.ErrorField(err))
+			return errorResponse(c, fiber.StatusInternalServerError, "system_health_failed", "Failed to fetch system health", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(health)
 }
@@ -276,6 +280,7 @@ func (h *AdminHandler) SystemHealth(c *fiber.Ctx) error {
 func (h *AdminHandler) ListSessions(c *fiber.Ctx) error {
 	sessions, err := h.store.ListSessions()
 	if err != nil {
+		logger.LogError("failed to list sessions", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "list_sessions_failed", "Failed to fetch sessions", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(sessions)
@@ -290,6 +295,7 @@ func (h *AdminHandler) ImpersonateUser(c *fiber.Ctx) error {
 	}
 	session, err := h.store.ImpersonateUser(req.UserID)
 	if err != nil {
+		logger.LogError("failed to impersonate user", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "impersonate_failed", "Failed to impersonate user", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(session)
@@ -298,6 +304,7 @@ func (h *AdminHandler) ImpersonateUser(c *fiber.Ctx) error {
 func (h *AdminHandler) SupportTools(c *fiber.Ctx) error {
 	tools, err := h.store.SupportTools()
 	if err != nil {
+		logger.LogError("failed to fetch support tools", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "support_tools_failed", "Failed to fetch support tools", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(tools)
@@ -306,6 +313,7 @@ func (h *AdminHandler) SupportTools(c *fiber.Ctx) error {
 func (h *AdminHandler) RBACStatus(c *fiber.Ctx) error {
 	status, err := h.store.RBACStatus()
 	if err != nil {
+		logger.LogError("failed to fetch RBAC status", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "rbac_status_failed", "Failed to fetch RBAC status", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(status)
@@ -320,6 +328,7 @@ func (h *AdminHandler) StepUpAuth(c *fiber.Ctx) error {
 	}
 	result, err := h.store.StepUpAuth(req.UserID)
 	if err != nil {
+		logger.LogError("failed to perform step-up auth", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "step_up_auth_failed", "Failed to perform step-up auth", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(result)
@@ -328,6 +337,7 @@ func (h *AdminHandler) StepUpAuth(c *fiber.Ctx) error {
 func (h *AdminHandler) DelegatedAdminStatus(c *fiber.Ctx) error {
 	status, err := h.store.DelegatedAdminStatus()
 	if err != nil {
+		logger.LogError("failed to fetch delegated admin status", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "delegated_admin_status_failed", "Failed to fetch delegated admin status", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(status)
@@ -336,6 +346,7 @@ func (h *AdminHandler) DelegatedAdminStatus(c *fiber.Ctx) error {
 func (h *AdminHandler) SCIMStatus(c *fiber.Ctx) error {
 	status, err := h.store.SCIMStatus()
 	if err != nil {
+		logger.LogError("failed to fetch SCIM status", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "scim_status_failed", "Failed to fetch SCIM status", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(status)
@@ -344,6 +355,7 @@ func (h *AdminHandler) SCIMStatus(c *fiber.Ctx) error {
 func (h *AdminHandler) AuditAnomalies(c *fiber.Ctx) error {
 	anomalies, err := h.store.AuditAnomalies()
 	if err != nil {
+		logger.LogError("failed to fetch audit anomalies", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "audit_anomalies_failed", "Failed to fetch audit anomalies", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(anomalies)
@@ -352,6 +364,7 @@ func (h *AdminHandler) AuditAnomalies(c *fiber.Ctx) error {
 func (h *AdminHandler) RateLimits(c *fiber.Ctx) error {
 	limits, err := h.store.RateLimits()
 	if err != nil {
+		logger.LogError("failed to fetch rate limits", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "rate_limits_failed", "Failed to fetch rate limits", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(limits)
@@ -360,6 +373,7 @@ func (h *AdminHandler) RateLimits(c *fiber.Ctx) error {
 func (h *AdminHandler) AbuseDetection(c *fiber.Ctx) error {
 	abuse, err := h.store.AbuseDetection()
 	if err != nil {
+		logger.LogError("failed to fetch abuse detection info", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "abuse_detection_failed", "Failed to fetch abuse detection info", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(abuse)
@@ -368,6 +382,7 @@ func (h *AdminHandler) AbuseDetection(c *fiber.Ctx) error {
 func (h *AdminHandler) Alerts(c *fiber.Ctx) error {
 	alerts, err := h.store.Alerts()
 	if err != nil {
+		logger.LogError("failed to fetch alerts", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "alerts_failed", "Failed to fetch alerts", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(alerts)
@@ -376,6 +391,7 @@ func (h *AdminHandler) Alerts(c *fiber.Ctx) error {
 func (h *AdminHandler) SecretsStatus(c *fiber.Ctx) error {
 	status, err := h.store.GetSecretsStatus()
 	if err != nil {
+		logger.LogError("failed to fetch secrets status", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "secrets_status_failed", "Failed to fetch secrets status", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(status)
@@ -384,6 +400,7 @@ func (h *AdminHandler) SecretsStatus(c *fiber.Ctx) error {
 func (h *AdminHandler) SystemConfig(c *fiber.Ctx) error {
 	config, err := h.store.SystemConfig()
 	if err != nil {
+		logger.LogError("failed to fetch system config", logger.ErrorField(err))	
 		return errorResponse(c, fiber.StatusInternalServerError, "system_config_failed", "Failed to fetch system config", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(config)
@@ -392,7 +409,8 @@ func (h *AdminHandler) SystemConfig(c *fiber.Ctx) error {
 func (h *AdminHandler) ListFeatureFlags(c *fiber.Ctx) error {
 	flags, err := h.store.ListFeatureFlags()
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch feature flags"})
+		logger.LogError("failed to list feature flags", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "list_feature_flags_failed", "Failed to fetch feature flags", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"flags": flags})
 }
@@ -400,11 +418,13 @@ func (h *AdminHandler) ListFeatureFlags(c *fiber.Ctx) error {
 func (h *AdminHandler) CreateFeatureFlag(c *fiber.Ctx) error {
 	var input FeatureFlagInput
 	if err := c.BodyParser(&input); err != nil || input.Flag == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid payload"})
+		logger.LogError("invalid feature flag payload in create feature flag", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_payload", "Invalid payload", err)
 	}
 	flag, err := h.store.CreateFeatureFlag(&input)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create feature flag"})
+		logger.LogError("failed to create feature flag", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "create_feature_flag_failed", "Failed to create feature flag", err)
 	}
 	return c.Status(fiber.StatusCreated).JSON(flag)
 }
@@ -412,11 +432,13 @@ func (h *AdminHandler) CreateFeatureFlag(c *fiber.Ctx) error {
 func (h *AdminHandler) UpdateFeatureFlag(c *fiber.Ctx) error {
 	var input FeatureFlagInput
 	if err := c.BodyParser(&input); err != nil || input.Flag == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid payload"})
+		logger.LogError("invalid feature flag payload in update feature flag", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_payload", "Invalid payload", err)
 	}
 	flag, err := h.store.UpdateFeatureFlag(&input)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update feature flag"})
+		logger.LogError("failed to update feature flag", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "update_feature_flag_failed", "Failed to update feature flag", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(flag)
 }
@@ -424,10 +446,12 @@ func (h *AdminHandler) UpdateFeatureFlag(c *fiber.Ctx) error {
 func (h *AdminHandler) DeleteFeatureFlag(c *fiber.Ctx) error {
 	flag := c.Query("flag")
 	if flag == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "flag required"})
+		logger.LogError("missing flag parameter in delete feature flag", logger.String("path", c.Path()), logger.String("ip", c.IP()))
+		return errorResponse(c, fiber.StatusBadRequest, "missing_flag", "Flag required", nil)
 	}
 	if err := h.store.DeleteFeatureFlag(flag); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete feature flag"})
+		logger.LogError("failed to delete feature flag", logger.ErrorField(err), logger.String("flag", flag))
+		return errorResponse(c, fiber.StatusInternalServerError, "delete_feature_flag_failed", "Failed to delete feature flag", err)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -435,7 +459,8 @@ func (h *AdminHandler) DeleteFeatureFlag(c *fiber.Ctx) error {
 func (h *AdminHandler) GetMaintenanceMode(c *fiber.Ctx) error {
 	status, err := h.store.GetMaintenanceMode()
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch maintenance mode status"})
+		logger.LogError("failed to fetch maintenance mode status", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "maintenance_mode_status_failed", "Failed to fetch maintenance mode status", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(status)
 }
@@ -443,11 +468,13 @@ func (h *AdminHandler) GetMaintenanceMode(c *fiber.Ctx) error {
 func (h *AdminHandler) SetMaintenanceMode(c *fiber.Ctx) error {
 	var input MaintenanceModeInput
 	if err := c.BodyParser(&input); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid payload"})
+		logger.LogError("invalid maintenance mode payload", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_payload", "Invalid payload", err)
 	}
 	status, err := h.store.SetMaintenanceMode(input.Maintenance)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update maintenance mode"})
+		logger.LogError("failed to update maintenance mode", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "update_maintenance_mode_failed", "Failed to update maintenance mode", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(status)
 }
@@ -455,7 +482,8 @@ func (h *AdminHandler) SetMaintenanceMode(c *fiber.Ctx) error {
 func (h *AdminHandler) RealTimeMonitoring(c *fiber.Ctx) error {
 	monitoring, err := h.store.RealTimeMonitoring()
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch real-time monitoring info"})
+		logger.LogError("failed to fetch real-time monitoring info", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "real_time_monitoring_failed", "Failed to fetch real-time monitoring info", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(monitoring)
 }
@@ -563,9 +591,11 @@ func (h *AdminHandler) DeleteUser(c *fiber.Ctx) error {
 func (h *AdminHandler) CreateTenant(c *fiber.Ctx) error {
 	var tenant Tenant
 	if err := c.BodyParser(&tenant); err != nil {
+		logger.LogError("invalid tenant payload in create tenant", logger.ErrorField(err), logger.String("ip", c.IP()), logger.String("body", string(c.Body())))
 		return errorResponse(c, fiber.StatusBadRequest, "invalid_tenant_payload", "Invalid tenant payload", err)
 	}
 	if err := h.store.CreateTenant(&tenant); err != nil {
+		logger.LogError("failed to create tenant", logger.ErrorField(err), logger.String("id", tenant.ID))
 		return errorResponse(c, fiber.StatusInternalServerError, "create_tenant_failed", "Failed to create tenant", err)
 	}
 	return c.Status(fiber.StatusCreated).JSON(tenant)
@@ -575,10 +605,12 @@ func (h *AdminHandler) UpdateTenant(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var tenant Tenant
 	if err := c.BodyParser(&tenant); err != nil {
+		logger.LogError("invalid tenant payload in update tenant", logger.ErrorField(err), logger.String("id", id), logger.String("ip", c.IP()), logger.String("body", string(c.Body())))
 		return errorResponse(c, fiber.StatusBadRequest, "invalid_tenant_payload", "Invalid tenant payload", err)
 	}
 	tenant.ID = id
 	if err := h.store.UpdateTenant(&tenant); err != nil {
+		logger.LogError("failed to update tenant", logger.ErrorField(err), logger.String("id", id))
 		return errorResponse(c, fiber.StatusInternalServerError, "update_tenant_failed", "Failed to update tenant", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(tenant)
@@ -587,6 +619,7 @@ func (h *AdminHandler) UpdateTenant(c *fiber.Ctx) error {
 func (h *AdminHandler) DeleteTenant(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if err := h.store.DeleteTenant(id); err != nil {
+		logger.LogError("failed to delete tenant", logger.ErrorField(err), logger.String("id", id))
 		return errorResponse(c, fiber.StatusInternalServerError, "delete_tenant_failed", "Failed to delete tenant", err)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
@@ -595,9 +628,11 @@ func (h *AdminHandler) DeleteTenant(c *fiber.Ctx) error {
 func (h *AdminHandler) CreateRole(c *fiber.Ctx) error {
 	var role AdminRole
 	if err := c.BodyParser(&role); err != nil {
+		logger.LogError("invalid role payload in create role", logger.ErrorField(err), logger.String("ip", c.IP()), logger.String("body", string(c.Body())))
 		return errorResponse(c, fiber.StatusBadRequest, "invalid_role_payload", "Invalid role payload", err)
 	}
 	if err := h.store.CreateRole(&role); err != nil {
+		logger.LogError("failed to create role", logger.ErrorField(err), logger.String("id", role.ID))
 		return errorResponse(c, fiber.StatusInternalServerError, "create_role_failed", "Failed to create role", err)
 	}
 	return c.Status(fiber.StatusCreated).JSON(role)
@@ -607,11 +642,13 @@ func (h *AdminHandler) UpdateRole(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var role AdminRole
 	if err := c.BodyParser(&role); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid role payload"})
+		logger.LogError("invalid role payload in update role", logger.ErrorField(err), logger.String("id", id), logger.String("ip", c.IP()), logger.String("body", string(c.Body())))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_role_payload", "Invalid role payload", err)
 	}
 	role.ID = id
 	if err := h.store.UpdateRole(&role); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update role"})
+		logger.LogError("failed to update role", logger.ErrorField(err), logger.String("id", id))
+		return errorResponse(c, fiber.StatusInternalServerError, "update_role_failed", "Failed to update role", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(role)
 }
@@ -619,7 +656,8 @@ func (h *AdminHandler) UpdateRole(c *fiber.Ctx) error {
 func (h *AdminHandler) DeleteRole(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if err := h.store.DeleteRole(id); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete role"})
+		logger.LogError("failed to delete role", logger.ErrorField(err), logger.String("id", id))
+		return errorResponse(c, fiber.StatusInternalServerError, "delete_role_failed", "Failed to delete role", err)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -627,10 +665,12 @@ func (h *AdminHandler) DeleteRole(c *fiber.Ctx) error {
 func (h *AdminHandler) CreatePermission(c *fiber.Ctx) error {
 	var perm AdminPermission
 	if err := c.BodyParser(&perm); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid permission payload"})
+		logger.LogError("invalid permission payload in create permission", logger.ErrorField(err), logger.String("ip", c.IP()), logger.String("body", string(c.Body())))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_permission_payload", "Invalid permission payload", err)
 	}
 	if err := h.store.CreatePermission(&perm); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create permission"})
+		logger.LogError("failed to create permission", logger.ErrorField(err), logger.String("id", perm.ID))
+		return errorResponse(c, fiber.StatusInternalServerError, "create_permission_failed", "Failed to create permission", err)
 	}
 	return c.Status(fiber.StatusCreated).JSON(perm)
 }
@@ -639,11 +679,13 @@ func (h *AdminHandler) UpdatePermission(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var perm AdminPermission
 	if err := c.BodyParser(&perm); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid permission payload"})
+		logger.LogError("invalid permission payload in update permission", logger.ErrorField(err), logger.String("id", id), logger.String("ip", c.IP()), logger.String("body", string(c.Body())))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_permission_payload", "Invalid permission payload", err)
 	}
 	perm.ID = id
 	if err := h.store.UpdatePermission(&perm); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update permission"})
+		logger.LogError("failed to update permission", logger.ErrorField(err), logger.String("id", id))
+		return errorResponse(c, fiber.StatusInternalServerError, "update_permission_failed", "Failed to update permission", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(perm)
 }
@@ -651,7 +693,8 @@ func (h *AdminHandler) UpdatePermission(c *fiber.Ctx) error {
 func (h *AdminHandler) DeletePermission(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if err := h.store.DeletePermission(id); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete permission"})
+		logger.LogError("failed to delete permission", logger.ErrorField(err), logger.String("id", id))
+		return errorResponse(c, fiber.StatusInternalServerError, "delete_permission_failed", "Failed to delete permission", err)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -665,6 +708,7 @@ func (h *AdminHandler) RevokeUserSessions(c *fiber.Ctx) error {
 	}
 	count, err := h.store.RevokeUserSessions(req.UserID)
 	if err != nil {
+		logger.LogError("failed to revoke user sessions", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "revoke_user_sessions_failed", "Failed to revoke user sessions", err)
 	}
 	if err := h.store.LogAuditEvent("admin", "revoke_user_sessions", req.UserID, map[string]interface{}{"count": count}); err != nil {
@@ -682,6 +726,7 @@ func (h *AdminHandler) RevokeTenantSessions(c *fiber.Ctx) error {
 	}
 	count, err := h.store.RevokeTenantSessions(req.TenantID)
 	if err != nil {
+		logger.LogError("failed to revoke tenant sessions", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "revoke_tenant_sessions_failed", "Failed to revoke tenant sessions", err)
 	}
 	if err := h.store.LogAuditEvent("admin", "revoke_tenant_sessions", req.TenantID, map[string]interface{}{"count": count}); err != nil {
@@ -695,9 +740,11 @@ func (h *AdminHandler) EnableMFA(c *fiber.Ctx) error {
 		UserID string `json:"user_id"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.UserID == "" {
+		logger.LogError("invalid user id in enable mfa", logger.ErrorField(err), logger.String("ip", c.IP()), logger.String("body", string(c.Body())))
 		return errorResponse(c, fiber.StatusBadRequest, "invalid_user_id", "Invalid user_id", err)
 	}
 	if err := h.store.EnableMFA(req.UserID); err != nil {
+		logger.LogError("failed to enable mfa", logger.ErrorField(err), logger.String("user_id", req.UserID))
 		return errorResponse(c, fiber.StatusInternalServerError, "enable_mfa_failed", "Failed to enable MFA", err)
 	}
 	if err := h.store.LogAuditEvent("admin", "enable_mfa", req.UserID, nil); err != nil {
@@ -711,9 +758,11 @@ func (h *AdminHandler) DisableMFA(c *fiber.Ctx) error {
 		UserID string `json:"user_id"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.UserID == "" {
+		logger.LogError("invalid user id in disable mfa", logger.ErrorField(err), logger.String("ip", c.IP()), logger.String("body", string(c.Body())))
 		return errorResponse(c, fiber.StatusBadRequest, "invalid_user_id", "Invalid user_id", err)
 	}
 	if err := h.store.DisableMFA(req.UserID); err != nil {
+		logger.LogError("failed to disable mfa", logger.ErrorField(err), logger.String("user_id", req.UserID))
 		return errorResponse(c, fiber.StatusInternalServerError, "disable_mfa_failed", "Failed to disable MFA", err)
 	}
 	if err := h.store.LogAuditEvent("admin", "disable_mfa", req.UserID, nil); err != nil {
@@ -727,9 +776,11 @@ func (h *AdminHandler) ResetMFA(c *fiber.Ctx) error {
 		UserID string `json:"user_id"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.UserID == "" {
+		logger.LogError("invalid user id in reset mfa", logger.ErrorField(err), logger.String("ip", c.IP()), logger.String("body", string(c.Body())))
 		return errorResponse(c, fiber.StatusBadRequest, "invalid_user_id", "Invalid user_id", err)
 	}
 	if err := h.store.ResetMFA(req.UserID); err != nil {
+		logger.LogError("failed to reset mfa", logger.ErrorField(err), logger.String("user_id", req.UserID))
 		return errorResponse(c, fiber.StatusInternalServerError, "reset_mfa_failed", "Failed to reset MFA", err)
 	}
 	if err := h.store.LogAuditEvent("admin", "reset_mfa", req.UserID, nil); err != nil {
@@ -741,13 +792,12 @@ func (h *AdminHandler) ResetMFA(c *fiber.Ctx) error {
 func (h *AdminHandler) MFAStatus(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
+		logger.LogError("missing user id in mfa status", logger.String("ip", c.IP()), logger.String("body", string(c.Body())))
 		return errorResponse(c, fiber.StatusBadRequest, "invalid_user_id", "Invalid user_id", nil)
 	}
 	status, err := h.store.MFAStatus(userID)
 	if err != nil {
-		if err := h.store.LogAuditEvent("admin", "mfa_status_failed", userID, map[string]interface{}{"error": err.Error()}); err != nil {
-			logger.LogError("failed to log audit event", logger.ErrorField(err))
-		}
+		logger.LogError("failed to get mfa status", logger.ErrorField(err), logger.String("user_id", userID))
 		return errorResponse(c, fiber.StatusInternalServerError, "mfa_status_failed", "Failed to get MFA status", err)
 	}
 	if err := h.store.LogAuditEvent("admin", "mfa_status", userID, nil); err != nil {
@@ -759,9 +809,7 @@ func (h *AdminHandler) MFAStatus(c *fiber.Ctx) error {
 func (h *AdminHandler) ListPolicies(c *fiber.Ctx) error {
 	policies, err := h.store.ListPolicies()
 	if err != nil {
-		if err := h.store.LogAuditEvent("admin", "list_policies_failed", "", map[string]interface{}{"error": err.Error()}); err != nil {
-			logger.LogError("failed to log audit event", logger.ErrorField(err))
-		}
+		logger.LogError("failed to list policies", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "list_policies_failed", "Failed to fetch policies", err)
 	}
 	if err := h.store.LogAuditEvent("admin", "list_policies", "", nil); err != nil {
@@ -777,9 +825,7 @@ func (h *AdminHandler) GetPolicy(c *fiber.Ctx) error {
 	}
 	policy, err := h.store.GetPolicy(id)
 	if err != nil {
-		if err := h.store.LogAuditEvent("admin", "get_policy_failed", id, map[string]interface{}{"error": err.Error()}); err != nil {
-			logger.LogError("failed to log audit event", logger.ErrorField(err))
-		}
+		logger.LogError("failed to get policy", logger.ErrorField(err), logger.String("policy_id", id))
 		return errorResponse(c, fiber.StatusInternalServerError, "get_policy_failed", "Failed to fetch policy", err)
 	}
 	if err := h.store.LogAuditEvent("admin", "get_policy", id, nil); err != nil {
@@ -791,9 +837,11 @@ func (h *AdminHandler) GetPolicy(c *fiber.Ctx) error {
 func (h *AdminHandler) CreatePolicy(c *fiber.Ctx) error {
 	var policy Policy
 	if err := c.BodyParser(&policy); err != nil {
+		logger.LogError("invalid policy payload in create policy", logger.ErrorField(err), logger.String("ip", c.IP()), logger.String("body", string(c.Body())))
 		return errorResponse(c, fiber.StatusBadRequest, "invalid_policy_payload", "Invalid policy payload", err)
 	}
 	if err := h.store.CreatePolicy(&policy); err != nil {
+		logger.LogError("failed to create policy", logger.ErrorField(err), logger.String("policy_id", policy.ID))
 		return errorResponse(c, fiber.StatusInternalServerError, "create_policy_failed", "Failed to create policy", err)
 	}
 	if err := h.store.LogAuditEvent("admin", "create_policy", policy.ID, nil); err != nil {
@@ -806,13 +854,12 @@ func (h *AdminHandler) UpdatePolicy(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var policy Policy
 	if err := c.BodyParser(&policy); err != nil {
+		logger.LogError("invalid policy payload in update policy", logger.ErrorField(err), logger.String("ip", c.IP()), logger.String("body", string(c.Body())))
 		return errorResponse(c, fiber.StatusBadRequest, "invalid_policy_payload", "Invalid policy payload", err)
 	}
 	policy.ID = id
 	if err := h.store.UpdatePolicy(&policy); err != nil {
-		if err := h.store.LogAuditEvent("admin", "update_policy_failed", policy.ID, map[string]interface{}{"error": err.Error()}); err != nil {
-			logger.LogError("failed to log audit event", logger.ErrorField(err))
-		}
+		logger.LogError("failed to update policy", logger.ErrorField(err), logger.String("policy_id", policy.ID))
 		return errorResponse(c, fiber.StatusInternalServerError, "update_policy_failed", "Failed to update policy", err)
 	}
 	if err := h.store.LogAuditEvent("admin", "update_policy", policy.ID, nil); err != nil {
@@ -824,9 +871,7 @@ func (h *AdminHandler) UpdatePolicy(c *fiber.Ctx) error {
 func (h *AdminHandler) DeletePolicy(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if err := h.store.DeletePolicy(id); err != nil {
-		if err := h.store.LogAuditEvent("admin", "delete_policy_failed", id, map[string]interface{}{"error": err.Error()}); err != nil {
-			logger.LogError("failed to log audit event", logger.ErrorField(err))
-		}
+		logger.LogError("failed to delete policy", logger.ErrorField(err), logger.String("policy_id", id))
 		return errorResponse(c, fiber.StatusInternalServerError, "delete_policy_failed", "Failed to delete policy", err)
 	}
 	if err := h.store.LogAuditEvent("admin", "delete_policy", id, nil); err != nil {
@@ -843,6 +888,7 @@ func (h *AdminHandler) UserTrace(c *fiber.Ctx) error {
 	}
 	logs, err := h.store.TraceUserActivity(userID)
 	if err != nil {
+		logger.LogError("failed to fetch user trace logs", logger.ErrorField(err), logger.String("user_id", userID))		
 		return errorResponse(c, fiber.StatusInternalServerError, "user_trace_failed", "Failed to fetch user trace logs", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"logs": logs})
@@ -856,6 +902,7 @@ func (h *AdminHandler) BillingTrace(c *fiber.Ctx) error {
 	}
 	logs, err := h.store.TraceBillingActivity(accountID)
 	if err != nil {
+		logger.LogError("failed to fetch billing trace logs", logger.ErrorField(err), logger.String("account_id", accountID))
 		return errorResponse(c, fiber.StatusInternalServerError, "billing_trace_failed", "Failed to fetch billing trace logs", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"logs": logs})
@@ -870,6 +917,7 @@ func (h *AdminHandler) ImpersonationAudit(c *fiber.Ctx) error {
 	offset := c.QueryInt("offset", 0)
 	logs, err := h.store.ListImpersonationAudits(limit, offset)
 	if err != nil {
+		logger.LogError("failed to fetch impersonation audit logs", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "impersonation_audit_failed", "Failed to fetch impersonation audit logs", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"logs": logs})
@@ -879,26 +927,29 @@ func (h *AdminHandler) ImpersonationAudit(c *fiber.Ctx) error {
 func (h *AdminHandler) AssignPermissionToRole(c *fiber.Ctx) error {
 	roleID := c.Params("id")
 	if roleID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "role id required"})
+		return errorResponse(c, fiber.StatusBadRequest, "role_id_required", "role id required", nil)
 	}
 	var req struct {
 		PermissionID string `json:"permission_id"`
 	}
-	if err := c.BodyParser(&req); err != nil || req.PermissionID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "permission_id required"})
+	if err := c.BodyParser(&req); err != nil || req.PermissionID == "" {	
+		logger.LogError("invalid permission id in assign permission to role", logger.ErrorField(err), logger.String("ip", c.IP()), logger.String("body", string(c.Body())))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_permission_id", "Invalid permission_id", err)
 	}
 	role, err := h.store.GetRoleByID(roleID)
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "role not found"})
+		logger.LogError("failed to get role by id", logger.ErrorField(err), logger.String("role_id", roleID))
+		return errorResponse(c, fiber.StatusNotFound, "role_not_found", "role not found", err)
 	}
 	for _, pid := range role.Permissions {
 		if pid == req.PermissionID {
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "permission already assigned"})
+			return errorResponse(c, fiber.StatusConflict, "permission_already_assigned", "permission already assigned", nil)
 		}
 	}
 	role.Permissions = append(role.Permissions, req.PermissionID)
 	if err := h.store.UpdateRole(role); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to assign permission"})
+		logger.LogError("failed to assign permission", logger.ErrorField(err), logger.String("role_id", roleID), logger.String("permission_id", req.PermissionID))
+		return errorResponse(c, fiber.StatusInternalServerError, "assign_permission_failed", "Failed to assign permission", err)
 	}
 	actor := getActorID(c)
 	if err := h.store.LogAuditEvent("role_permission", "assign", actor, map[string]interface{}{"role_id": roleID, "permission_id": req.PermissionID}); err != nil {
@@ -916,6 +967,7 @@ func (h *AdminHandler) RemovePermissionFromRole(c *fiber.Ctx) error {
 	}
 	role, err := h.store.GetRoleByID(roleID)
 	if err != nil {
+		logger.LogError("failed to get role by id", logger.ErrorField(err), logger.String("role_id", roleID))
 		return errorResponse(c, fiber.StatusNotFound, "role_not_found", "role not found", err)
 	}
 	newPerms := make([]string, 0, len(role.Permissions))
@@ -928,10 +980,12 @@ func (h *AdminHandler) RemovePermissionFromRole(c *fiber.Ctx) error {
 		newPerms = append(newPerms, pid)
 	}
 	if !found {
+		logger.LogError("permission not found in role", logger.String("role_id", roleID), logger.String("permission_id", permID))
 		return errorResponse(c, fiber.StatusNotFound, "permission_not_assigned", "permission not assigned", nil)
 	}
 	role.Permissions = newPerms
 	if err := h.store.UpdateRole(role); err != nil {
+		logger.LogError("failed to remove permission", logger.ErrorField(err), logger.String("role_id", roleID), logger.String("permission_id", permID))
 		return errorResponse(c, fiber.StatusInternalServerError, "remove_permission_failed", "Failed to remove permission", err)
 	}
 	actor := getActorID(c)
@@ -962,6 +1016,7 @@ func AuditLogsToCSV(logs []interface{}) (string, error) {
 	for _, l := range logs {
 		m, ok := l.(map[string]interface{})
 		if !ok {
+			logger.LogError("invalid log format", logger.ErrorField(nil))	
 			return "", fiber.NewError(fiber.StatusInternalServerError, "invalid log format")
 		}
 		csv += sanitizeCSV(m["id"]) + "," + sanitizeCSV(m["actor_id"]) + "," + sanitizeCSV(m["action"]) + "," + sanitizeCSV(m["resource"]) + "," + sanitizeCSV(m["details"]) + "," + sanitizeCSV(m["created_at"]) + "," + sanitizeCSV(m["hash"]) + "," + sanitizeCSV(m["prev_hash"]) + "\n"
@@ -1008,6 +1063,7 @@ func (h *AdminHandler) ListAPIKeys(c *fiber.Ctx) error {
 	offset := c.QueryInt("offset", 0)
 	keys, total, err := h.store.ListAPIKeys(userID, status, limit, offset)
 	if err != nil {
+		logger.LogError("failed to list api keys", logger.ErrorField(err), logger.String("user_id", userID), logger.String("status", status))
 		return errorResponse(c, fiber.StatusInternalServerError, "list_api_keys_failed", "Failed to fetch api keys", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"total": total, "api_keys": keys})
@@ -1024,6 +1080,7 @@ func (h *AdminHandler) CreateAPIKey(c *fiber.Ctx) error {
 	}
 	keyIface, err := h.store.CreateAPIKey(req.UserID, req.Name)
 	if err != nil {
+		logger.LogError("failed to create api key", logger.ErrorField(err), logger.String("user_id", req.UserID), logger.String("name", req.Name))	
 		return errorResponse(c, fiber.StatusInternalServerError, "create_api_key_failed", "Failed to create api key", err)
 	}
 	key, ok := keyIface.(*APIKey)
@@ -1044,6 +1101,7 @@ func (h *AdminHandler) GetAPIKey(c *fiber.Ctx) error {
 	}
 	key, err := h.store.GetAPIKey(id)
 	if err != nil {
+		logger.LogError("failed to get api key", logger.ErrorField(err), logger.String("api_key_id", id))
 		return errorResponse(c, fiber.StatusNotFound, "api_key_not_found", "api key not found", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(key)
@@ -1060,6 +1118,7 @@ func (h *AdminHandler) UpdateAPIKey(c *fiber.Ctx) error {
 	}
 	keyIface, err := h.store.UpdateAPIKey(id, req.Name)
 	if err != nil {
+		logger.LogError("failed to update api key", logger.ErrorField(err), logger.String("api_key_id", id))
 		return errorResponse(c, fiber.StatusInternalServerError, "update_api_key_failed", "Failed to update api key", err)
 	}
 	key, ok := keyIface.(*APIKey)
@@ -1080,6 +1139,7 @@ func (h *AdminHandler) RevokeAPIKey(c *fiber.Ctx) error {
 	}
 	keyIface, err := h.store.GetAPIKey(id)
 	if err != nil {
+		logger.LogError("failed to get api key", logger.ErrorField(err), logger.String("api_key_id", id))
 		return errorResponse(c, fiber.StatusNotFound, "api_key_not_found", "api key not found", err)
 	}
 	key, ok := keyIface.(*APIKey)
@@ -1087,6 +1147,7 @@ func (h *AdminHandler) RevokeAPIKey(c *fiber.Ctx) error {
 		return errorResponse(c, fiber.StatusInternalServerError, "internal_error", "internal error", nil)
 	}
 	if err := h.store.RevokeAPIKey(id); err != nil {
+		logger.LogError("failed to revoke api key", logger.ErrorField(err), logger.String("api_key_id", id))
 		return errorResponse(c, fiber.StatusInternalServerError, "revoke_api_key_failed", "Failed to revoke api key", err)
 	}
 	if err := h.store.LogAuditEvent("api_key", "revoke", key.UserID, map[string]interface{}{"api_key_id": key.ID}); err != nil {
@@ -1103,6 +1164,7 @@ func (h *AdminHandler) RotateAPIKey(c *fiber.Ctx) error {
 	}
 	keyIface, err := h.store.RotateAPIKey(id)
 	if err != nil {
+		logger.LogError("failed to rotate api key", logger.ErrorField(err), logger.String("api_key_id", id))
 		return errorResponse(c, fiber.StatusInternalServerError, "rotate_api_key_failed", "Failed to rotate api key", err)
 	}
 	key, ok := keyIface.(*APIKey)
@@ -1140,6 +1202,7 @@ func (h *AdminHandler) ListAPIKeyAuditLogs(c *fiber.Ctx) error {
 	offset := c.QueryInt("offset", 0)
 	logs, total, err := h.store.ListAPIKeyAuditLogs(apiKeyID, userID, action, start, end, limit, offset)
 	if err != nil {
+		logger.LogError("failed to fetch api key audit logs", logger.ErrorField(err), logger.String("api_key_id", apiKeyID), logger.String("user_id", userID), logger.String("action", action), logger.Time("start", *start), logger.Time("end", *end), logger.Int("limit", limit), logger.Int("offset", offset))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch api key audit logs"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"total": total, "logs": logs})
@@ -1157,7 +1220,8 @@ func (h *AdminHandler) ListNotifications(c *fiber.Ctx) error {
 	offset := c.QueryInt("offset", 0)
 	notifs, total, err := h.store.ListNotifications(recipient, nType, status, limit, offset)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch notifications"})
+		logger.LogError("failed to fetch notifications", logger.ErrorField(err), logger.String("recipient", recipient), logger.String("type", nType), logger.String("status", status), logger.Int("limit", limit), logger.Int("offset", offset))
+		return errorResponse(c, fiber.StatusInternalServerError, "fetch_notifications_failed", "Failed to fetch notifications", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"total": total, "notifications": notifs})
 }
@@ -1171,11 +1235,12 @@ func (h *AdminHandler) SendNotification(c *fiber.Ctx) error {
 		Body      string `json:"body"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.Type == "" || req.Recipient == "" || req.Subject == "" || req.Body == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid payload"})
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_payload", "invalid payload", err)
 	}
 	notif, err := h.store.SendNotification(req.Type, req.Recipient, req.Subject, req.Body)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to send notification"})
+		logger.LogError("failed to send notification", logger.ErrorField(err), logger.String("type", req.Type), logger.String("recipient", req.Recipient), logger.String("subject", req.Subject), logger.String("body", req.Body))
+		return errorResponse(c, fiber.StatusInternalServerError, "send_notification_failed", "Failed to send notification", err)
 	}
 	return c.Status(fiber.StatusCreated).JSON(notif)
 }
@@ -1184,11 +1249,12 @@ func (h *AdminHandler) SendNotification(c *fiber.Ctx) error {
 func (h *AdminHandler) GetNotification(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid id"})
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_id", "invalid id", nil)
 	}
 	notif, err := h.store.GetNotification(id)
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "notification not found"})
+		logger.LogError("failed to get notification", logger.ErrorField(err), logger.String("id", id))
+		return errorResponse(c, fiber.StatusNotFound, "notification_not_found", "notification not found", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(notif)
 }
@@ -1200,14 +1266,17 @@ func (h *AdminHandler) MarkNotificationSent(c *fiber.Ctx) error {
 		SentAt string `json:"sent_at"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.SentAt == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid payload"})
+		logger.LogError("invalid payload", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_payload", "invalid payload", nil)
 	}
 	t, err := time.Parse(time.RFC3339, req.SentAt)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid sent_at format"})
+		logger.LogError("invalid sent_at format", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_sent_at_format", "invalid sent_at format", nil)
 	}
 	notif, err := h.store.MarkNotificationSent(id, t)
 	if err != nil {
+		logger.LogError("failed to mark notification sent", logger.ErrorField(err), logger.String("id", id), logger.Time("sent_at", t))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to mark notification sent"})
 	}
 	return c.Status(fiber.StatusOK).JSON(notif)
@@ -1217,7 +1286,8 @@ func (h *AdminHandler) MarkNotificationSent(c *fiber.Ctx) error {
 func (h *AdminHandler) GetRateLimitConfig(c *fiber.Ctx) error {
 	cfg, err := h.store.GetRateLimitConfig()
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch rate limit config"})
+		logger.LogError("failed to fetch rate limit config", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "fetch_rate_limit_config_failed", "Failed to fetch rate limit config", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(cfg)
 }
@@ -1226,11 +1296,13 @@ func (h *AdminHandler) GetRateLimitConfig(c *fiber.Ctx) error {
 func (h *AdminHandler) UpdateRateLimitConfig(c *fiber.Ctx) error {
 	var input RateLimitConfigInput
 	if err := c.BodyParser(&input); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid payload"})
+		logger.LogError("invalid payload", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_payload", "invalid payload", err)
 	}
 	cfg, err := h.store.UpdateRateLimitConfig(&input)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update rate limit config"})
+		logger.LogError("failed to update rate limit config", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "update_rate_limit_config_failed", "Failed to update rate limit config", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(cfg)
 }
@@ -1239,7 +1311,8 @@ func (h *AdminHandler) UpdateRateLimitConfig(c *fiber.Ctx) error {
 func (h *AdminHandler) GetMonitoringConfig(c *fiber.Ctx) error {
 	cfg, err := h.store.GetMonitoringConfig()
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch monitoring config"})
+		logger.LogError("failed to fetch monitoring config", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "fetch_monitoring_config_failed", "Failed to fetch monitoring config", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(cfg)
 }
@@ -1248,11 +1321,13 @@ func (h *AdminHandler) GetMonitoringConfig(c *fiber.Ctx) error {
 func (h *AdminHandler) UpdateMonitoringConfig(c *fiber.Ctx) error {
 	var input MonitoringConfigInput
 	if err := c.BodyParser(&input); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid payload"})
+		logger.LogError("invalid payload", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_payload", "invalid payload", err)
 	}
 	cfg, err := h.store.UpdateMonitoringConfig(&input)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update monitoring config"})
+		logger.LogError("failed to update monitoring config", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "update_monitoring_config_failed", "Failed to update monitoring config", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(cfg)
 }
@@ -1261,6 +1336,7 @@ func (h *AdminHandler) UpdateMonitoringConfig(c *fiber.Ctx) error {
 func (h *AdminHandler) GetSecretsStatus(c *fiber.Ctx) error {
 	status, err := h.store.GetSecretsStatus()
 	if err != nil {
+		logger.LogError("failed to fetch secrets status", logger.ErrorField(err))
 		return errorResponse(c, fiber.StatusInternalServerError, "secrets_status_failed", "Failed to fetch secrets status", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(status)
@@ -1270,11 +1346,13 @@ func (h *AdminHandler) GetSecretsStatus(c *fiber.Ctx) error {
 func (h *AdminHandler) UpdateSecrets(c *fiber.Ctx) error {
 	var input SecretsUpdateInput
 	if err := c.BodyParser(&input); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid payload"})
+		logger.LogError("invalid payload", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_payload", "invalid payload", err)
 	}
 	status, err := h.store.UpdateSecrets(&input)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update secrets"})
+		logger.LogError("failed to update secrets", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "update_secrets_failed", "Failed to update secrets", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(status)
 }
@@ -1368,7 +1446,8 @@ func (h *AdminHandler) SSMBlogs(c *fiber.Ctx) error {
 	}
 	blogs, err := h.store.GetSSMBlog(c.Context(), filter.Query)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list SSM blogs"})
+		logger.LogError("failed to list SSM blogs", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "list_ssm_blogs_failed", "Failed to list SSM blogs", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(blogs)
 }
@@ -1388,7 +1467,8 @@ func (h *AdminHandler) SSMNews(c *fiber.Ctx) error {
 	}
 	news, err := h.store.GetSSMNews(c.Context(), filter.Query)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list SSM news"})
+		logger.LogError("failed to list SSM news", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "list_ssm_news_failed", "Failed to list SSM news", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(news)
 }
@@ -1403,7 +1483,8 @@ func (h *AdminHandler) ListEmailProviders(c *fiber.Ctx) error {
 func (h *AdminHandler) AddEmailProvider(c *fiber.Ctx) error {
 	var cfg email.EmailProviderConfig
 	if err := c.BodyParser(&cfg); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid provider config"})
+		logger.LogError("invalid provider config", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_provider_config", "invalid provider config", err)
 	}
 	setDefault := c.QueryBool("set_default", false)
 	h.emailManager.AddProvider(cfg, setDefault)
@@ -1413,10 +1494,12 @@ func (h *AdminHandler) AddEmailProvider(c *fiber.Ctx) error {
 func (h *AdminHandler) UpdateEmailProvider(c *fiber.Ctx) error {
 	var cfg email.EmailProviderConfig
 	if err := c.BodyParser(&cfg); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid provider config"})
+		logger.LogError("invalid provider config", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_provider_config", "invalid provider config", err)
 	}
 	if err := h.emailManager.UpdateProvider(cfg); err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": err.Error()})
+		logger.LogError("failed to update provider", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusNotFound, "provider_not_found", "provider not found", err)
 	}
 	return c.SendStatus(204)
 }
@@ -1424,7 +1507,8 @@ func (h *AdminHandler) UpdateEmailProvider(c *fiber.Ctx) error {
 func (h *AdminHandler) RemoveEmailProvider(c *fiber.Ctx) error {
 	name := c.Params("name")
 	if name == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "provider name required"})
+		logger.LogError("provider name required") 
+		return errorResponse(c, fiber.StatusBadRequest, "provider_name_required", "provider name required", nil)
 	}
 	h.emailManager.RemoveProvider(name)
 	return c.SendStatus(204)
@@ -1433,10 +1517,12 @@ func (h *AdminHandler) RemoveEmailProvider(c *fiber.Ctx) error {
 func (h *AdminHandler) SetDefaultEmailProvider(c *fiber.Ctx) error {
 	name := c.Params("name")
 	if name == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "provider name required"})
+		logger.LogError("provider name required")
+		return errorResponse(c, fiber.StatusBadRequest, "provider_name_required", "provider name required", nil)
 	}
 	if err := h.emailManager.SetDefaultProvider(name); err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": err.Error()})
+		logger.LogError("failed to set default provider", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusNotFound, "provider_not_found", "provider not found", err)
 	}
 	return c.SendStatus(204)
 }
@@ -1444,10 +1530,12 @@ func (h *AdminHandler) SetDefaultEmailProvider(c *fiber.Ctx) error {
 func (h *AdminHandler) TestSMTPConnection(c *fiber.Ctx) error {
 	name := c.Params("name")
 	if name == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "provider name required"})
+		logger.LogError("provider name required")
+		return errorResponse(c, fiber.StatusBadRequest, "provider_name_required", "provider name required", nil)
 	}
 	if err := h.emailManager.TestSMTPConnection(name); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		logger.LogError("failed to test SMTP connection", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "test_smtp_connection_failed", "failed to test SMTP connection", err)
 	}
 	return c.SendStatus(204)
 }
@@ -1460,7 +1548,8 @@ func (h *AdminHandler) ListEmailTemplates(c *fiber.Ctx) error {
 func (h *AdminHandler) AddEmailTemplate(c *fiber.Ctx) error {
 	var tpl email.EmailTemplate
 	if err := c.BodyParser(&tpl); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid template"})
+		logger.LogError("invalid template", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_template", "invalid template", err)
 	}
 	h.emailManager.AddTemplate(tpl)
 	return c.SendStatus(201)
@@ -1469,7 +1558,8 @@ func (h *AdminHandler) AddEmailTemplate(c *fiber.Ctx) error {
 func (h *AdminHandler) RemoveEmailTemplate(c *fiber.Ctx) error {
 	name := c.Params("name")
 	if name == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "template name required"})
+		logger.LogError("template name required")
+		return errorResponse(c, fiber.StatusBadRequest, "template_name_required", "template name required", nil)
 	}
 	h.emailManager.RemoveTemplate(name)
 	return c.SendStatus(204)
@@ -1478,7 +1568,8 @@ func (h *AdminHandler) RemoveEmailTemplate(c *fiber.Ctx) error {
 func (h *AdminHandler) ListTeamAdmins(c *fiber.Ctx) error {
 	team := c.Params("team")
 	if team == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "team required"})
+		logger.LogError("team required")
+		return errorResponse(c, fiber.StatusBadRequest, "team_required", "team required", nil)
 	}
 	admins := h.emailManager.ListTeamAdmins(team)
 	return c.Status(200).JSON(admins)
@@ -1487,13 +1578,15 @@ func (h *AdminHandler) ListTeamAdmins(c *fiber.Ctx) error {
 func (h *AdminHandler) AddTeamAdmin(c *fiber.Ctx) error {
 	team := c.Params("team")
 	if team == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "team required"})
+		logger.LogError("team required")
+		return errorResponse(c, fiber.StatusBadRequest, "team_required", "team required", nil)
 	}
 	var req struct {
 		Email string `json:"email"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.Email == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid email"})
+		logger.LogError("invalid email", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_email", "invalid email", err)
 	}
 	h.emailManager.AddTeamAdmin(team, req.Email)
 	return c.SendStatus(201)
@@ -1503,7 +1596,8 @@ func (h *AdminHandler) RemoveTeamAdmin(c *fiber.Ctx) error {
 	team := c.Params("team")
 	email := c.Params("email")
 	if team == "" || email == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "team and email required"})
+		logger.LogError("team and email required")
+		return errorResponse(c, fiber.StatusBadRequest, "team_and_email_required", "team and email required", nil)
 	}
 	h.emailManager.RemoveTeamAdmin(team, email)
 	return c.SendStatus(204)
@@ -1517,7 +1611,8 @@ func (h *AdminHandler) SendTestEmail(c *fiber.Ctx) error {
 		Body     string `json:"body"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.Provider == "" || req.To == "" || req.Subject == "" || req.Body == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid payload"})
+		logger.LogError("invalid payload", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_payload", "invalid payload", err)
 	}
 	providers := h.emailManager.ListProviders()
 	var cfg *email.EmailProviderConfig
@@ -1528,14 +1623,17 @@ func (h *AdminHandler) SendTestEmail(c *fiber.Ctx) error {
 		}
 	}
 	if cfg == nil {
-		return c.Status(404).JSON(fiber.Map{"error": "provider not found"})
+		logger.LogError("provider not found")
+		return errorResponse(c, fiber.StatusNotFound, "provider_not_found", "provider not found", nil)
 	}
 	if cfg.Type != email.ProviderSMTP {
-		return c.Status(400).JSON(fiber.Map{"error": "unsupported provider type"})
+		logger.LogError("unsupported provider type")
+		return errorResponse(c, fiber.StatusBadRequest, "unsupported_provider_type", "unsupported provider type", nil)
 	}
 	// Use SendWithTemplate with ad-hoc template name and pass subject/body as data
 	if err := h.emailManager.SendWithTemplate(cfg.Name, "test", req.To, map[string]interface{}{"subject": req.Subject, "body": req.Body}); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		logger.LogError("failed to send test email", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "send_test_email_failed", "failed to send test email", err)
 	}
 	return c.SendStatus(204)
 }
@@ -1552,7 +1650,8 @@ func (h *AdminHandler) ListEmailDeliveries(c *fiber.Ctx) error {
 	// This assumes EmailManager has ListDeliveries(recipient, status string, limit, offset int) ([]DeliveryStatus, error)
 	deliveries, err := h.emailManager.ListDeliveries(recipient, status, limit, offset)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		logger.LogError("failed to list email deliveries", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "list_email_deliveries_failed", "failed to list email deliveries", err)
 	}
 	return c.Status(200).JSON(deliveries)
 }
@@ -1561,7 +1660,8 @@ func (h *AdminHandler) ListEmailDeliveries(c *fiber.Ctx) error {
 func (h *AdminHandler) ListConversations(c *fiber.Ctx) error {
 	participant := c.Query("participant")
 	if participant == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "participant required"})
+		logger.LogError("participant required")
+		return errorResponse(c, fiber.StatusBadRequest, "participant_required", "participant required", nil)
 	}
 	convs := h.emailManager.ListConversations(participant)
 	return c.Status(200).JSON(convs)
@@ -1571,7 +1671,8 @@ func (h *AdminHandler) ListConversations(c *fiber.Ctx) error {
 func (h *AdminHandler) ListMessages(c *fiber.Ctx) error {
 	conversationID := c.Params("conversationID")
 	if conversationID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "conversationID required"})
+		logger.LogError("conversationID required")
+		return errorResponse(c, fiber.StatusBadRequest, "conversationID_required", "conversationID required", nil)
 	}
 	msgs := h.emailManager.ListMessages(conversationID)
 	return c.Status(200).JSON(msgs)
@@ -1586,11 +1687,13 @@ func (h *AdminHandler) StartConversation(c *fiber.Ctx) error {
 		Body    string   `json:"body"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.Subject == "" || req.From == "" || len(req.To) == 0 || req.Body == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid payload"})
+		logger.LogError("invalid payload", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_payload", "invalid payload", err)
 	}
 	cid, err := h.emailManager.StartConversation(req.Subject, req.From, req.To, req.Body)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		logger.LogError("failed to start conversation", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "start_conversation_failed", "failed to start conversation", err)
 	}
 	return c.Status(201).JSON(fiber.Map{"conversationID": cid})
 }
@@ -1604,11 +1707,13 @@ func (h *AdminHandler) AddMessage(c *fiber.Ctx) error {
 		Body           string   `json:"body"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.ConversationID == "" || req.From == "" || len(req.To) == 0 || req.Body == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid payload"})
+		logger.LogError("invalid payload", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "invalid_payload", "invalid payload", err)
 	}
 	mid, err := h.emailManager.AddMessage(req.ConversationID, req.From, req.To, req.Body)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		logger.LogError("failed to add message", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "add_message_failed", "failed to add message", err)
 	}
 	return c.Status(201).JSON(fiber.Map{"messageID": mid})
 }
@@ -1616,12 +1721,14 @@ func (h *AdminHandler) AddMessage(c *fiber.Ctx) error {
 func (h *AdminHandler) ListUserEffectivePermissions(c *fiber.Ctx) error {
 	userID := c.Params("id")
 	if userID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id required"})
+		logger.LogError("user id required")
+		return errorResponse(c, fiber.StatusBadRequest, "user_id_required", "user id required", nil)
 	}
 	ctx := c.Context()
 	roles, err := h.userStore.ListRolesByUser(ctx, userID)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list user roles"})
+		logger.LogError("failed to list user roles", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "list_user_roles_failed", "failed to list user roles", err)
 	}
 	permSet := make(map[string]struct{})
 	for _, r := range roles {
@@ -1641,14 +1748,15 @@ func (h *AdminHandler) ListUserEffectivePermissions(c *fiber.Ctx) error {
 func (h *AdminHandler) ListProjectUsers(c *fiber.Ctx) error {
 	projectID := c.Params("id")
 	if projectID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "project id required"})
+		logger.LogError("project id required")
+		return errorResponse(c, fiber.StatusBadRequest, "project_id_required", "project id required", nil)
 	}
 	users, err := h.userStore.ListRolesByProject(c.Context(), projectID)
 	if err != nil {
 		if err := h.store.LogAuditEvent("admin", "list_project_users_failed", projectID, map[string]interface{}{"error": err.Error()}); err != nil {
 			logger.LogError("failed to log audit event", logger.ErrorField(err))
 		}
-		return c.Status(500).JSON(fiber.Map{"error": "failed to list project users"})
+		return errorResponse(c, fiber.StatusInternalServerError, "list_project_users_failed", "failed to list project users", err)
 	}
 	if err := h.store.LogAuditEvent("admin", "list_project_users", projectID, nil); err != nil {
 		logger.LogError("failed to log audit event", logger.ErrorField(err))
@@ -1660,7 +1768,8 @@ func (h *AdminHandler) ListProjectUsers(c *fiber.Ctx) error {
 func (h *AdminHandler) AddUserToProject(c *fiber.Ctx) error {
 	projectID := c.Params("id")
 	if projectID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "project id required"})
+		logger.LogError("project id required")
+		return errorResponse(c, fiber.StatusBadRequest, "project_id_required", "project id required", nil)
 	}
 	var req struct {
 		UserID string   `json:"user_id"`
@@ -1668,7 +1777,8 @@ func (h *AdminHandler) AddUserToProject(c *fiber.Ctx) error {
 		Perms  []string `json:"permissions"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.UserID == "" || req.Role == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "user_id and role required"})
+		logger.LogError("user_id and role required", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "user_id_and_role_required", "user_id and role required", nil)
 	}
 	role := &user.UserOrgProjectRole{
 		ID:          uuid.NewString(),
@@ -1695,20 +1805,22 @@ func (h *AdminHandler) AddUserToProject(c *fiber.Ctx) error {
 func (h *AdminHandler) RemoveUserFromProject(c *fiber.Ctx) error {
 	projectID := c.Params("id")
 	if projectID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "project id required"})
+		logger.LogError("project id required")
+		return errorResponse(c, fiber.StatusBadRequest, "project_id_required", "project id required", nil)
 	}
 	var req struct {
 		UserID string `json:"user_id"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.UserID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "user_id required"})
+		logger.LogError("user_id required")
+		return errorResponse(c, fiber.StatusBadRequest, "user_id_required", "user_id required", nil)
 	}
 	roles, err := h.userStore.ListRolesByUser(c.Context(), req.UserID)
 	if err != nil {
 		if err := h.store.LogAuditEvent("admin", "remove_user_from_project_failed", projectID, map[string]interface{}{"user_id": req.UserID, "error": err.Error()}); err != nil {
 			logger.LogError("failed to log audit event", logger.ErrorField(err))
 		}
-		return c.Status(500).JSON(fiber.Map{"error": "failed to list user roles"})
+		return errorResponse(c, fiber.StatusInternalServerError, "list_user_roles_failed", "failed to list user roles", err)
 	}
 	var removed bool
 	for _, r := range roles {
@@ -1723,7 +1835,7 @@ func (h *AdminHandler) RemoveUserFromProject(c *fiber.Ctx) error {
 		}
 	}
 	if !removed {
-		return c.Status(404).JSON(fiber.Map{"error": "user has no roles in project"})
+		return errorResponse(c, fiber.StatusNotFound, "user_has_no_roles_in_project", "user has no roles in project", nil)
 	}
 	if err := h.store.LogAuditEvent("admin", "remove_user_from_project", projectID, map[string]interface{}{"user_id": req.UserID}); err != nil {
 		logger.LogError("failed to log audit event", logger.ErrorField(err))
@@ -1735,20 +1847,22 @@ func (h *AdminHandler) RemoveUserFromProject(c *fiber.Ctx) error {
 func (h *AdminHandler) TransferProjectOwner(c *fiber.Ctx) error {
 	projectID := c.Params("id")
 	if projectID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "project id required"})
+		logger.LogError("project id required")
+		return errorResponse(c, fiber.StatusBadRequest, "project_id_required", "project id required", nil)
 	}
 	var req struct {
 		NewOwnerID string `json:"new_owner_id"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.NewOwnerID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "new_owner_id required"})
+				logger.LogError("new_owner_id required")
+		return errorResponse(c, fiber.StatusBadRequest, "new_owner_id_required", "new_owner_id required", nil)
 	}
 	roles, err := h.userStore.ListRolesByProject(c.Context(), projectID)
 	if err != nil {
 		if err := h.store.LogAuditEvent("admin", "transfer_project_owner_failed", projectID, map[string]interface{}{"error": err.Error()}); err != nil {
 			logger.LogError("failed to log audit event", logger.ErrorField(err))
 		}
-		return c.Status(500).JSON(fiber.Map{"error": "failed to list project roles"})
+		return errorResponse(c, fiber.StatusInternalServerError, "list_project_roles_failed", "failed to list project roles", err)
 	}
 	var oldOwnerID string
 	for _, r := range roles {
@@ -1758,7 +1872,7 @@ func (h *AdminHandler) TransferProjectOwner(c *fiber.Ctx) error {
 				if err := h.store.LogAuditEvent("admin", "transfer_project_owner_failed", projectID, map[string]interface{}{"error": err.Error()}); err != nil {
 					logger.LogError("failed to log audit event", logger.ErrorField(err))
 				}
-				return c.Status(500).JSON(fiber.Map{"error": "failed to remove old owner"})
+				return errorResponse(c, fiber.StatusInternalServerError, "remove_old_owner_failed", "failed to remove old owner", err)
 			}
 		}
 	}
@@ -1775,7 +1889,7 @@ func (h *AdminHandler) TransferProjectOwner(c *fiber.Ctx) error {
 		if err := h.store.LogAuditEvent("admin", "transfer_project_owner_failed", projectID, map[string]interface{}{"error": err.Error()}); err != nil {
 			logger.LogError("failed to log audit event", logger.ErrorField(err))
 		}
-		return c.Status(500).JSON(fiber.Map{"error": "failed to assign new owner"})
+		return errorResponse(c, fiber.StatusInternalServerError, "assign_new_owner_failed", "failed to assign new owner", err)
 	}
 	if err := h.store.LogAuditEvent("admin", "transfer_project_owner", projectID, map[string]interface{}{"old_owner_id": oldOwnerID, "new_owner_id": req.NewOwnerID}); err != nil {
 		logger.LogError("failed to log audit event", logger.ErrorField(err))
@@ -1791,14 +1905,15 @@ func (h *AdminHandler) TransferUserToOrg(c *fiber.Ctx) error {
 		ToOrgID   string `json:"to_org_id"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.UserID == "" || req.FromOrgID == "" || req.ToOrgID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "user_id, from_org_id, to_org_id required"})
+		logger.LogError("user_id, from_org_id, to_org_id required", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "user_id_from_org_id_to_org_id_required", "user_id, from_org_id, to_org_id required", nil)
 	}
 	roles, err := h.userStore.ListRolesByUser(c.Context(), req.UserID)
 	if err != nil {
 		if err := h.store.LogAuditEvent("admin", "transfer_user_to_org_failed", req.FromOrgID, map[string]interface{}{"user_id": req.UserID, "error": err.Error()}); err != nil {
 			logger.LogError("failed to log audit event", logger.ErrorField(err))
 		}
-		return c.Status(500).JSON(fiber.Map{"error": "failed to list user roles"})
+		return errorResponse(c, fiber.StatusInternalServerError, "list_user_roles_failed", "failed to list user roles", err)
 	}
 	var transferred bool
 	for _, r := range roles {
@@ -1807,7 +1922,7 @@ func (h *AdminHandler) TransferUserToOrg(c *fiber.Ctx) error {
 				if err := h.store.LogAuditEvent("admin", "transfer_user_to_org_failed", req.FromOrgID, map[string]interface{}{"user_id": req.UserID, "error": err.Error()}); err != nil {
 					logger.LogError("failed to log audit event", logger.ErrorField(err))
 				}
-				return c.Status(500).JSON(fiber.Map{"error": "failed to remove user from old org"})
+				return errorResponse(c, fiber.StatusInternalServerError, "remove_user_from_old_org_failed", "failed to remove user from old org", err)
 			}
 			newRole := &user.UserOrgProjectRole{
 				ID:          uuid.NewString(),
@@ -1822,13 +1937,13 @@ func (h *AdminHandler) TransferUserToOrg(c *fiber.Ctx) error {
 				if err := h.store.LogAuditEvent("admin", "transfer_user_to_org_failed", req.ToOrgID, map[string]interface{}{"user_id": req.UserID, "error": err.Error()}); err != nil {
 					logger.LogError("failed to log audit event", logger.ErrorField(err))
 				}
-				return c.Status(500).JSON(fiber.Map{"error": "failed to assign user to new org"})
+				return errorResponse(c, fiber.StatusInternalServerError, "assign_user_to_new_org_failed", "failed to assign user to new org", err)
 			}
 			transferred = true
 		}
 	}
 	if !transferred {
-		return c.Status(404).JSON(fiber.Map{"error": "user has no roles in fromOrgID"})
+		return errorResponse(c, fiber.StatusNotFound, "user_has_no_roles_in_from_org", "user has no roles in fromOrgID", nil)
 	}
 	if err := h.store.LogAuditEvent("admin", "transfer_user_to_org", req.ToOrgID, map[string]interface{}{"user_id": req.UserID, "from": req.FromOrgID, "to": req.ToOrgID}); err != nil {
 		logger.LogError("failed to log audit event", logger.ErrorField(err))
@@ -1840,7 +1955,8 @@ func (h *AdminHandler) TransferUserToOrg(c *fiber.Ctx) error {
 func (h *AdminHandler) ChangeUserOrgRole(c *fiber.Ctx) error {
 	orgID := c.Params("id")
 	if orgID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "org id required"})
+		logger.LogError("org id required")
+		return errorResponse(c, fiber.StatusBadRequest, "org_id_required", "org id required", nil)
 	}
 	var req struct {
 		UserID string   `json:"user_id"`
@@ -1848,16 +1964,19 @@ func (h *AdminHandler) ChangeUserOrgRole(c *fiber.Ctx) error {
 		Perms  []string `json:"permissions"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.UserID == "" || req.Role == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "user_id and role required"})
+		logger.LogError("user_id and role required", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "user_id_and_role_required", "user_id and role required", nil)
 	}
 	roles, err := h.userStore.ListRolesByUser(c.Context(), req.UserID)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to list user roles"})
+		logger.LogError("failed to list user roles", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "list_user_roles_failed", "failed to list user roles", err)
 	}
 	for _, r := range roles {
 		if r.OrgID != nil && *r.OrgID == orgID {
 			if err := h.userStore.DeleteRole(c.Context(), r.ID); err != nil {
-				return c.Status(500).JSON(fiber.Map{"error": "failed to remove old org role"})
+				logger.LogError("failed to remove old org role", logger.ErrorField(err))
+				return errorResponse(c, fiber.StatusInternalServerError, "remove_old_org_role_failed", "failed to remove old org role", err)
 			}
 		}
 	}
@@ -1871,7 +1990,8 @@ func (h *AdminHandler) ChangeUserOrgRole(c *fiber.Ctx) error {
 		UpdatedAt:   time.Now().UTC(),
 	}
 	if err := h.userStore.CreateRole(c.Context(), newRole); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to assign new org role"})
+		logger.LogError("failed to assign new org role", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "assign_new_org_role_failed", "failed to assign new org role", err)
 	}
 	err = h.store.LogAuditEvent("admin", "change_user_org_role", orgID, map[string]interface{}{"user_id": req.UserID, "role": req.Role})
 	if err != nil {
@@ -1885,11 +2005,13 @@ func (h *AdminHandler) ViewUserOrgEffectivePermissions(c *fiber.Ctx) error {
 	orgID := c.Params("id")
 	userID := c.Params("user_id")
 	if orgID == "" || userID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "org id and user_id required"})
+		logger.LogError("org id and user_id required")
+		return errorResponse(c, fiber.StatusBadRequest, "org_id_and_user_id_required", "org id and user_id required", nil)
 	}
 	roles, err := h.userStore.ListRolesByUser(c.Context(), userID)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to list user roles"})
+		logger.LogError("failed to list user roles", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "list_user_roles_failed", "failed to list user roles", err)
 	}
 	permSet := make(map[string]struct{})
 	for _, r := range roles {
@@ -1910,7 +2032,8 @@ func (h *AdminHandler) ViewUserOrgEffectivePermissions(c *fiber.Ctx) error {
 func (h *AdminHandler) BulkAddUsersToProject(c *fiber.Ctx) error {
 	projectID := c.Params("id")
 	if projectID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "project id required"})
+		logger.LogError("project id required")
+		return errorResponse(c, fiber.StatusBadRequest, "project_id_required", "project id required", nil)
 	}
 	var req struct {
 		Users []struct {
@@ -1920,7 +2043,8 @@ func (h *AdminHandler) BulkAddUsersToProject(c *fiber.Ctx) error {
 		} `json:"users"`
 	}
 	if err := c.BodyParser(&req); err != nil || len(req.Users) == 0 {
-		return c.Status(400).JSON(fiber.Map{"error": "users required"})
+		logger.LogError("users required", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "users_required", "users required", nil)
 	}
 	if len(req.Users) > 100 {
 		// Async job for large batches
@@ -1929,7 +2053,8 @@ func (h *AdminHandler) BulkAddUsersToProject(c *fiber.Ctx) error {
 	}
 	tx, err := h.userStore.DB.Begin(c.Context())
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to begin transaction"})
+		logger.LogError("failed to begin transaction", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "failed_to_begin_transaction", "failed to begin transaction", err)
 	}
 	defer func() {
 		if err := tx.Rollback(c.Context()); err != nil && err.Error() != "tx is closed" {
@@ -1955,10 +2080,12 @@ func (h *AdminHandler) BulkAddUsersToProject(c *fiber.Ctx) error {
 	}
 	err = h.userStore.CreateRolesTx(c.Context(), tx, roles)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to add users to project", "details": err.Error(), "failed": failed})
+		logger.LogError("failed to add users to project", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "failed_to_add_users_to_project", "failed to add users to project", err)
 	}
 	if err := tx.Commit(c.Context()); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to commit transaction"})
+		logger.LogError("failed to commit transaction", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "failed_to_commit_transaction", "failed to commit transaction", err)
 	}
 	err = h.store.LogAuditEvent("admin", "bulk_add_users_to_project", projectID, map[string]interface{}{"added": len(roles), "failed": failed})
 	if err != nil {
@@ -1971,13 +2098,15 @@ func (h *AdminHandler) BulkAddUsersToProject(c *fiber.Ctx) error {
 func (h *AdminHandler) BulkRemoveUsersFromProject(c *fiber.Ctx) error {
 	projectID := c.Params("id")
 	if projectID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "project id required"})
+		logger.LogError("project id required")
+		return errorResponse(c, fiber.StatusBadRequest, "project_id_required", "project id required", nil)
 	}
 	var req struct {
 		UserIDs []string `json:"user_ids"`
 	}
 	if err := c.BodyParser(&req); err != nil || len(req.UserIDs) == 0 {
-		return c.Status(400).JSON(fiber.Map{"error": "user_ids required"})
+		logger.LogError("user_ids required", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "user_ids_required", "user_ids required", nil)
 	}
 	if len(req.UserIDs) > 100 {
 		go h.bulkRemoveUsersFromProjectAsync(projectID, req.UserIDs)
@@ -1985,7 +2114,8 @@ func (h *AdminHandler) BulkRemoveUsersFromProject(c *fiber.Ctx) error {
 	}
 	tx, err := h.userStore.DB.Begin(c.Context())
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to begin transaction"})
+		logger.LogError("failed to begin transaction", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "failed_to_begin_transaction", "failed to begin transaction", err)
 	}
 	defer func() {
 		if err := tx.Rollback(c.Context()); err != nil && err.Error() != "tx is closed" {
@@ -2012,10 +2142,12 @@ func (h *AdminHandler) BulkRemoveUsersFromProject(c *fiber.Ctx) error {
 		}
 	}
 	if err := h.userStore.DeleteRolesTx(c.Context(), tx, toDelete); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to remove users from project", "details": err.Error(), "failed": failed})
+		logger.LogError("failed to remove users from project", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "failed_to_remove_users_from_project", "failed to remove users from project", err)
 	}
 	if err := tx.Commit(c.Context()); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to commit transaction"})
+		logger.LogError("failed to commit transaction", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "failed_to_commit_transaction", "failed to commit transaction", err)
 	}
 	h.store.LogAuditEvent("admin", "bulk_remove_users_from_project", projectID, map[string]interface{}{"removed": len(toDelete), "failed": failed})
 	return c.Status(200).JSON(fiber.Map{"removed": len(toDelete), "failed": failed})
@@ -2029,7 +2161,8 @@ func (h *AdminHandler) BulkTransferUsersBetweenProjects(c *fiber.Ctx) error {
 		ToProjectID   string   `json:"to_project_id"`
 	}
 	if err := c.BodyParser(&req); err != nil || len(req.UserIDs) == 0 || req.FromProjectID == "" || req.ToProjectID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "user_ids, from_project_id, to_project_id required"})
+		logger.LogError("user_ids, from_project_id, to_project_id required", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "user_ids_from_project_id_to_project_id_required", "user_ids, from_project_id, to_project_id required", nil)
 	}
 	if len(req.UserIDs) > 100 {
 		go h.bulkTransferUsersBetweenProjectsAsync(req.UserIDs, req.FromProjectID, req.ToProjectID)
@@ -2037,7 +2170,8 @@ func (h *AdminHandler) BulkTransferUsersBetweenProjects(c *fiber.Ctx) error {
 	}
 	tx, err := h.userStore.DB.Begin(c.Context())
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to begin transaction"})
+		logger.LogError("failed to begin transaction", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "failed_to_begin_transaction", "failed to begin transaction", err)
 	}
 	defer func() {
 		if err := tx.Rollback(c.Context()); err != nil && err.Error() != "tx is closed" {
@@ -2076,13 +2210,16 @@ func (h *AdminHandler) BulkTransferUsersBetweenProjects(c *fiber.Ctx) error {
 		}
 	}
 	if err := h.userStore.DeleteRolesTx(c.Context(), tx, toDelete); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to remove users from old project", "details": err.Error(), "failed": failed})
+		logger.LogError("failed to remove users from old project", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "failed_to_remove_users_from_old_project", "failed to remove users from old project", err)
 	}
 	if err := h.userStore.CreateRolesTx(c.Context(), tx, toCreate); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to assign users to new project", "details": err.Error(), "failed": failed})
+		logger.LogError("failed to assign users to new project", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "failed_to_assign_users_to_new_project", "failed to assign users to new project", err)
 	}
 	if err := tx.Commit(c.Context()); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to commit transaction"})
+		logger.LogError("failed to commit transaction", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "failed_to_commit_transaction", "failed to commit transaction", err)
 	}
 	h.store.LogAuditEvent("admin", "bulk_transfer_users_between_projects", req.ToProjectID, map[string]interface{}{"transferred": transferred, "failed": failed})
 	return c.Status(200).JSON(fiber.Map{"transferred": transferred, "failed": failed})
@@ -2092,12 +2229,12 @@ func (h *AdminHandler) BulkTransferUsersBetweenProjects(c *fiber.Ctx) error {
 func (h *AdminHandler) bulkTransferUsersBetweenProjectsAsync(userIDs []string, fromProjectID, toProjectID string) {
 	tx, err := h.userStore.DB.Begin(context.Background())
 	if err != nil {
-		h.store.LogAuditEvent("admin", "bulk_transfer_users_between_projects_async_failed", toProjectID, map[string]interface{}{"error": "failed to begin transaction"})
+		logger.LogError("failed to begin transaction", logger.ErrorField(err))
 		return
 	}
 	defer func() {
 		if err := tx.Rollback(context.Background()); err != nil && err.Error() != "tx is closed" {
-			h.store.LogAuditEvent("admin", "bulk_transfer_users_between_projects_async_failed", toProjectID, map[string]interface{}{"error": err.Error()})
+			logger.LogError("failed to rollback tx", logger.ErrorField(err))
 		}
 	}()
 	var toDelete []string
@@ -2174,7 +2311,8 @@ func (h *AdminHandler) BulkAddUsersToOrg(c *fiber.Ctx) error {
 
 	tx, err := h.userStore.DB.Begin(ctx)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to begin transaction"})
+		logger.LogError("failed to begin transaction", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "failed_to_begin_transaction", "failed to begin transaction", err)
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil && err.Error() != "tx is closed" {
@@ -2202,14 +2340,17 @@ func (h *AdminHandler) BulkAddUsersToOrg(c *fiber.Ctx) error {
 	}
 
 	if err := h.userStore.CreateRolesTx(ctx, tx, roles); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to add users to org", "details": err.Error(), "failed": failed})
+		logger.LogError("failed to add users to org", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "failed_to_add_users_to_org", "failed to add users to org", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to commit transaction"})
+		logger.LogError("failed to commit transaction", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "failed_to_commit_transaction", "failed to commit transaction", err)
 	}
 
 	h.store.LogAuditEvent("admin", "bulk_add_users_to_org", orgID, map[string]interface{}{"added": len(roles), "failed": failed})
+
 	return c.Status(200).JSON(fiber.Map{"added": len(roles), "failed": failed})
 }
 
@@ -2223,12 +2364,12 @@ func (h *AdminHandler) bulkAddUsersToOrgAsync(orgID string, users []struct {
 	defer cancel()
 	tx, err := h.userStore.DB.Begin(ctx)
 	if err != nil {
-		h.store.LogAuditEvent("admin", "bulk_add_users_to_org_async_failed", orgID, map[string]interface{}{"error": "failed to begin transaction"})
+		logger.LogError("failed to begin transaction", logger.ErrorField(err))
 		return
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil && err.Error() != "tx is closed" {
-			h.store.LogAuditEvent("admin", "bulk_add_users_to_org_async_failed", orgID, map[string]interface{}{"error": err.Error()})
+			logger.LogError("failed to rollback tx", logger.ErrorField(err))
 		}
 	}()
 	var toCreate []*user.UserOrgProjectRole
@@ -2247,10 +2388,12 @@ func (h *AdminHandler) bulkAddUsersToOrgAsync(orgID string, users []struct {
 		added = append(added, u.UserID)
 	}
 	if err := h.userStore.CreateRolesTx(ctx, tx, toCreate); err != nil {
+		logger.LogError("failed to add users to org", logger.ErrorField(err))
 		h.store.LogAuditEvent("admin", "bulk_add_users_to_org_async_failed", orgID, map[string]interface{}{"error": err.Error(), "failed": failed})
 		return
 	}
 	if err := tx.Commit(ctx); err != nil {
+		logger.LogError("failed to commit transaction", logger.ErrorField(err))
 		h.store.LogAuditEvent("admin", "bulk_add_users_to_org_async_failed", orgID, map[string]interface{}{"error": "failed to commit transaction"})
 		return
 	}
@@ -2261,13 +2404,15 @@ func (h *AdminHandler) bulkAddUsersToOrgAsync(orgID string, users []struct {
 func (h *AdminHandler) BulkRemoveUsersFromOrg(c *fiber.Ctx) error {
 	orgID := c.Params("id")
 	if orgID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "org id required"})
+		logger.LogError("org id required")
+		return errorResponse(c, fiber.StatusBadRequest, "org_id_required", "org id required", nil)
 	}
 	var req struct {
 		UserIDs []string `json:"user_ids"`
 	}
 	if err := c.BodyParser(&req); err != nil || len(req.UserIDs) == 0 {
-		return c.Status(400).JSON(fiber.Map{"error": "user_ids required"})
+		logger.LogError("user_ids required", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "user_ids_required", "user_ids required", nil)
 	}
 	var removed []string
 	var failed []string
@@ -2293,6 +2438,7 @@ func (h *AdminHandler) BulkRemoveUsersFromOrg(c *fiber.Ctx) error {
 		}
 	}
 	h.store.LogAuditEvent("admin", "bulk_remove_users_from_org", orgID, map[string]interface{}{"removed": removed, "failed": failed})
+
 	return c.Status(200).JSON(fiber.Map{"removed": removed, "failed": failed})
 }
 
@@ -2301,13 +2447,15 @@ func (h *AdminHandler) BulkTransferUsersBetweenOrgs(c *fiber.Ctx) error {
 	fromOrgID := c.Params("from_org_id")
 	toOrgID := c.Params("to_org_id")
 	if fromOrgID == "" || toOrgID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "from_org_id and to_org_id required"})
+		logger.LogError("from_org_id and to_org_id required")
+		return errorResponse(c, fiber.StatusBadRequest, "from_org_id_and_to_org_id_required", "from_org_id and to_org_id required", nil)
 	}
 	var req struct {
 		UserIDs []string `json:"user_ids"`
 	}
 	if err := c.BodyParser(&req); err != nil || len(req.UserIDs) == 0 {
-		return c.Status(400).JSON(fiber.Map{"error": "user_ids required"})
+		logger.LogError("user_ids required", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusBadRequest, "user_ids_required", "user_ids required", nil)
 	}
 	if len(req.UserIDs) > 100 {
 		go h.bulkTransferUsersBetweenOrgsAsync(fromOrgID, toOrgID, req.UserIDs)
@@ -2317,7 +2465,8 @@ func (h *AdminHandler) BulkTransferUsersBetweenOrgs(c *fiber.Ctx) error {
 	defer cancel()
 	tx, err := h.userStore.DB.Begin(ctx)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to begin transaction"})
+		logger.LogError("failed to begin transaction", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "failed_to_begin_transaction", "failed to begin transaction", err)
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil && err.Error() != "tx is closed" {
@@ -2356,13 +2505,16 @@ func (h *AdminHandler) BulkTransferUsersBetweenOrgs(c *fiber.Ctx) error {
 		}
 	}
 	if err := h.userStore.DeleteRolesTx(ctx, tx, toDelete); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to remove users from old org", "details": err.Error(), "failed": failed})
+		logger.LogError("failed to remove users from old org", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "failed_to_remove_users_from_old_org", "failed to remove users from old org", err)
 	}
 	if err := h.userStore.CreateRolesTx(ctx, tx, toCreate); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to assign users to new org", "details": err.Error(), "failed": failed})
+		logger.LogError("failed to assign users to new org", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "failed_to_assign_users_to_new_org", "failed to assign users to new org", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to commit transaction"})
+		logger.LogError("failed to commit transaction", logger.ErrorField(err))
+		return errorResponse(c, fiber.StatusInternalServerError, "failed_to_commit_transaction", "failed to commit transaction", err)
 	}
 	h.store.LogAuditEvent("admin", "bulk_transfer_users_between_orgs", toOrgID, map[string]interface{}{"transferred": transferred, "failed": failed})
 	return c.Status(200).JSON(fiber.Map{"transferred": transferred, "failed": failed})
@@ -2373,12 +2525,12 @@ func (h *AdminHandler) bulkTransferUsersBetweenOrgsAsync(fromOrgID, toOrgID stri
 	defer cancel()
 	tx, err := h.userStore.DB.Begin(ctx)
 	if err != nil {
-		h.store.LogAuditEvent("admin", "bulk_transfer_users_between_orgs_async_failed", toOrgID, map[string]interface{}{"error": "failed to begin transaction"})
+		logger.LogError("failed to begin transaction", logger.ErrorField(err))
 		return
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil && err.Error() != "tx is closed" {
-			h.store.LogAuditEvent("admin", "bulk_transfer_users_between_orgs_async_failed", toOrgID, map[string]interface{}{"error": err.Error()})
+			logger.LogError("failed to rollback tx", logger.ErrorField(err))
 		}
 	}()
 	var toDelete []string
@@ -2413,18 +2565,22 @@ func (h *AdminHandler) bulkTransferUsersBetweenOrgsAsync(fromOrgID, toOrgID stri
 		}
 	}
 	if err := h.userStore.DeleteRolesTx(ctx, tx, toDelete); err != nil {
+		logger.LogError("failed to remove users from old org", logger.ErrorField(err))	
 		h.store.LogAuditEvent("admin", "bulk_transfer_users_between_orgs_async_failed", toOrgID, map[string]interface{}{"error": err.Error(), "failed": failed})
 		return
 	}
 	if err := h.userStore.CreateRolesTx(ctx, tx, toCreate); err != nil {
+		logger.LogError("failed to add users to new org", logger.ErrorField(err))
 		h.store.LogAuditEvent("admin", "bulk_transfer_users_between_orgs_async_failed", toOrgID, map[string]interface{}{"error": err.Error(), "failed": failed})
 		return
 	}
 	if err := tx.Commit(ctx); err != nil {
+		logger.LogError("failed to commit transaction", logger.ErrorField(err))
 		h.store.LogAuditEvent("admin", "bulk_transfer_users_between_orgs_async_failed", toOrgID, map[string]interface{}{"error": "failed to commit transaction"})
 		return
 	}
 	h.store.LogAuditEvent("admin", "bulk_transfer_users_between_orgs_async", toOrgID, map[string]interface{}{"transferred": transferred, "failed": failed})
+
 }
 
 // Async job for bulk add users to project
@@ -2437,11 +2593,13 @@ func (h *AdminHandler) bulkAddUsersToProjectAsync(projectID string, users []stru
 	defer cancel()
 	tx, err := h.userStore.DB.Begin(ctx)
 	if err != nil {
+		logger.LogError("failed to begin transaction", logger.ErrorField(err))
 		h.store.LogAuditEvent("admin", "bulk_add_users_to_project_async_failed", projectID, map[string]interface{}{"error": "failed to begin transaction"})
 		return
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil && err.Error() != "tx is closed" {
+			logger.LogError("failed to rollback tx", logger.ErrorField(err))
 			h.store.LogAuditEvent("admin", "bulk_add_users_to_project_async_failed", projectID, map[string]interface{}{"error": err.Error()})
 		}
 	}()
@@ -2461,10 +2619,12 @@ func (h *AdminHandler) bulkAddUsersToProjectAsync(projectID string, users []stru
 		added = append(added, u.UserID)
 	}
 	if err := h.userStore.CreateRolesTx(ctx, tx, toCreate); err != nil {
+		logger.LogError("failed to add users to project", logger.ErrorField(err))
 		h.store.LogAuditEvent("admin", "bulk_add_users_to_project_async_failed", projectID, map[string]interface{}{"error": err.Error(), "failed": failed})
 		return
 	}
 	if err := tx.Commit(ctx); err != nil {
+		logger.LogError("failed to commit transaction", logger.ErrorField(err))
 		h.store.LogAuditEvent("admin", "bulk_add_users_to_project_async_failed", projectID, map[string]interface{}{"error": "failed to commit transaction"})
 		return
 	}
@@ -2476,11 +2636,13 @@ func (h *AdminHandler) bulkRemoveUsersFromProjectAsync(projectID string, userIDs
 	defer cancel()
 	tx, err := h.userStore.DB.Begin(ctx)
 	if err != nil {
+		logger.LogError("failed to begin transaction", logger.ErrorField(err))
 		h.store.LogAuditEvent("admin", "bulk_remove_users_from_project_async_failed", projectID, map[string]interface{}{"error": "failed to begin transaction"})
 		return
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil && err.Error() != "tx is closed" {
+			logger.LogError("failed to rollback tx", logger.ErrorField(err))
 			h.store.LogAuditEvent("admin", "bulk_remove_users_from_project_async_failed", projectID, map[string]interface{}{"error": err.Error()})
 		}
 	}()
@@ -2506,14 +2668,17 @@ func (h *AdminHandler) bulkRemoveUsersFromProjectAsync(projectID string, userIDs
 		}
 	}
 	if err := h.userStore.DeleteRolesTx(ctx, tx, toDelete); err != nil {
+		logger.LogError("failed to remove users from project", logger.ErrorField(err))
 		h.store.LogAuditEvent("admin", "bulk_remove_users_from_project_async_failed", projectID, map[string]interface{}{"error": err.Error(), "failed": failed})
 		return
 	}
 	if err := tx.Commit(ctx); err != nil {
+		logger.LogError("failed to commit transaction", logger.ErrorField(err))
 		h.store.LogAuditEvent("admin", "bulk_remove_users_from_project_async_failed", projectID, map[string]interface{}{"error": "failed to commit transaction"})
 		return
 	}
 	h.store.LogAuditEvent("admin", "bulk_remove_users_from_project_async", projectID, map[string]interface{}{"removed": removed, "failed": failed})
+
 }
 
 // List all users with all their roles and permissions across orgs/projects/global
@@ -2534,11 +2699,13 @@ func (h *AdminHandler) Login(c *fiber.Ctx) error {
 		Password string `json:"password"`
 	}
 	if err := c.BodyParser(&creds); err != nil {
+		logger.LogError("invalid request body", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
 	ctx := c.Context()
 	adminUser, err := h.store.Login(ctx, creds.Username, creds.Password)
 	if err != nil {
+		logger.LogError("failed to login", logger.ErrorField(err))				
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid credentials"})
 	}
 
@@ -2548,10 +2715,12 @@ func (h *AdminHandler) Login(c *fiber.Ctx) error {
 		adminUser, err = h.store.GetByUsername(ctx, creds.Username)
 	}
 	if err != nil || adminUser == nil {
+		logger.LogError("failed to get admin user", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid credentials"})
 	}
 	ok, err := user.VerifyPassword(creds.Password, adminUser.PasswordHash)
 	if err != nil || !ok {
+		logger.LogError("failed to verify password", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid credentials"})
 	}
 	// JWT generation
@@ -2559,6 +2728,7 @@ func (h *AdminHandler) Login(c *fiber.Ctx) error {
 		GetSecret(context.Context, string) (string, error)
 	})
 	if !ok {
+		logger.LogError("secrets manager not available", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "secrets manager not available"})
 	}
 	jwtSecret, err := secretsMgr.GetSecret(ctx, h.JWTSecretName)
@@ -2580,6 +2750,7 @@ func (h *AdminHandler) Login(c *fiber.Ctx) error {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString([]byte(jwtSecret))
 	if err != nil {
+		logger.LogError("failed to sign token", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to sign token"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"token": tokenString, "type": "admin"})
@@ -2588,6 +2759,7 @@ func (h *AdminHandler) Login(c *fiber.Ctx) error {
 func (h *AdminHandler) GetProfile(c *fiber.Ctx) error {
 	admin, ok := c.Locals("admin").(*AdminUser)
 	if !ok || admin == nil {
+		logger.LogError("failed to get admin user")
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -2604,13 +2776,16 @@ func (h *AdminHandler) GetProfile(c *fiber.Ctx) error {
 func (h *AdminHandler) CreateProject(c *fiber.Ctx) error {
 	var req Project
 	if err := c.BodyParser(&req); err != nil {
+		logger.LogError("invalid request body", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
 	if req.Name == "" {
+		logger.LogError("project name required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project name required"})
 	}
 	err := h.store.CreateProject(c.Context(), &req)
 	if err != nil {
+		logger.LogError("failed to create project", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create project"})
 	}
 	return c.Status(fiber.StatusCreated).JSON(req)
@@ -2663,8 +2838,10 @@ func (h *AdminHandler) GetProject(c *fiber.Ctx) error {
 	project, err := h.store.GetProject(c.Context(), id)
 	if err != nil {
 		if err == pgx.ErrNoRows {
+			logger.LogError("project not found")
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "project not found"})
 		}
+		logger.LogError("failed to get project", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get project"})
 	}
 	return c.Status(fiber.StatusOK).JSON(project)
@@ -2677,6 +2854,7 @@ func (h *AdminHandler) ListOrgAPIKeys(c *fiber.Ctx) error {
 	}
 	apiKeys, err := h.store.ListOrgAPIKeys(orgID)
 	if err != nil {
+		logger.LogError("failed to list organization API keys", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list organization API keys"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"api_keys": apiKeys})
@@ -2945,6 +3123,7 @@ func (h *AdminHandler) InviteProjectUser(c *fiber.Ctx) error {
 	}
 	invitation, err := h.store.InviteProjectUser(id, req.Email, req.Role)
 	if err != nil {
+		logger.LogError("failed to invite project user", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to invite project user"})
 	}
 	return c.Status(fiber.StatusCreated).JSON(invitation)
@@ -3148,6 +3327,7 @@ func (h *AdminHandler) UpdateOrgSettings(c *fiber.Ctx) error {
 	}
 	var input map[string]interface{}
 	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("invalid request body", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid payload"})
 	}
 	settings, err := h.store.UpdateOrgSettings(id, input)
@@ -3422,6 +3602,7 @@ func (h *AdminHandler) DeactivateProject(c *fiber.Ctx) error {
 	}
 	err := h.store.DeactivateProject(c.Context(), id)
 	if err != nil {
+		logger.LogError("failed to deactivate project", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to deactivate project"})
 	}
 	return c.SendStatus(fiber.StatusOK)
@@ -3434,6 +3615,7 @@ func (h *AdminHandler) ReactivateProject(c *fiber.Ctx) error {
 	}
 	err := h.store.ReactivateProject(c.Context(), id)
 	if err != nil {
+		logger.LogError("failed to reactivate project", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to reactivate project"})
 	}
 	return c.SendStatus(fiber.StatusOK)
@@ -3446,6 +3628,7 @@ func (h *AdminHandler) PurgeProject(c *fiber.Ctx) error {
 	}
 	err := h.store.PurgeProject(c.Context(), id)
 	if err != nil {
+		logger.LogError("failed to purge project", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to purge project"})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
@@ -3459,6 +3642,7 @@ func (h *AdminHandler) ListProjectRoles(c *fiber.Ctx) error {
 	}
 	roles, err := h.store.ListProjectRoles(c.Context(), id)
 	if err != nil {
+		logger.LogError("failed to list project roles", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list project roles"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"roles": roles})
@@ -3471,11 +3655,13 @@ func (h *AdminHandler) CreateProjectRole(c *fiber.Ctx) error {
 	}
 	var role user.UserOrgProjectRole
 	if err := c.BodyParser(&role); err != nil || role.Role == "" {
+		logger.LogError("invalid request body", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid role payload"})
 	}
 	role.ProjectID = &id
 	err := h.store.CreateProjectRole(c.Context(), &role)
 	if err != nil {
+		logger.LogError("failed to create project role", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create project role"})
 	}
 	return c.Status(fiber.StatusCreated).JSON(role)
@@ -3489,12 +3675,14 @@ func (h *AdminHandler) UpdateProjectRole(c *fiber.Ctx) error {
 	}
 	var role user.UserOrgProjectRole
 	if err := c.BodyParser(&role); err != nil {
+		logger.LogError("invalid request body", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid role payload"})
 	}
 	role.ID = roleID
 	role.ProjectID = &id
 	err := h.store.UpdateProjectRole(c.Context(), &role)
 	if err != nil {
+		logger.LogError("failed to update project role", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update project role"})
 	}
 	return c.Status(fiber.StatusOK).JSON(role)
@@ -3508,6 +3696,7 @@ func (h *AdminHandler) DeleteProjectRole(c *fiber.Ctx) error {
 	}
 	err := h.store.DeleteProjectRole(c.Context(), id, roleID)
 	if err != nil {
+		logger.LogError("failed to delete project role", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete project role"})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
@@ -3521,6 +3710,7 @@ func (h *AdminHandler) GetProjectUsage(c *fiber.Ctx) error {
 	}
 	usage, err := h.store.GetProjectUsage(c.Context(), id)
 	if err != nil {
+		logger.LogError("failed to get project usage", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get project usage"})
 	}
 	return c.Status(fiber.StatusOK).JSON(usage)
@@ -3534,6 +3724,7 @@ func (h *AdminHandler) GetProjectFeatureFlags(c *fiber.Ctx) error {
 	}
 	flags, err := h.store.GetProjectFeatureFlags(c.Context(), id)
 	if err != nil {
+		logger.LogError("failed to get project feature flags", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get project feature flags"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"flags": flags})
@@ -3546,10 +3737,12 @@ func (h *AdminHandler) UpdateProjectFeatureFlags(c *fiber.Ctx) error {
 	}
 	var flags map[string]interface{}
 	if err := c.BodyParser(&flags); err != nil {
+		logger.LogError("invalid request body", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid payload"})
 	}
 	updated, err := h.store.UpdateProjectFeatureFlags(c.Context(), id, flags)
 	if err != nil {
+		logger.LogError("failed to update project feature flags", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update project feature flags"})
 	}
 	return c.Status(fiber.StatusOK).JSON(updated)
@@ -3563,6 +3756,7 @@ func (h *AdminHandler) ListProjectWebhooks(c *fiber.Ctx) error {
 	}
 	webhooks, err := h.store.ListProjectWebhooks(c.Context(), id)
 	if err != nil {
+		logger.LogError("failed to list project webhooks", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list project webhooks"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"webhooks": webhooks})
@@ -3580,6 +3774,7 @@ func (h *AdminHandler) CreateProjectWebhook(c *fiber.Ctx) error {
 	webhook.ProjectID = &id
 	err := h.store.CreateProjectWebhook(c.Context(), &webhook)
 	if err != nil {
+		logger.LogError("failed to create project webhook", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create project webhook"})
 	}
 	return c.Status(fiber.StatusCreated).JSON(webhook)
@@ -3593,6 +3788,7 @@ func (h *AdminHandler) DeleteProjectWebhook(c *fiber.Ctx) error {
 	}
 	err := h.store.DeleteProjectWebhook(c.Context(), id, webhookID)
 	if err != nil {
+		logger.LogError("failed to delete project webhook", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete project webhook"})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
@@ -3606,6 +3802,7 @@ func (h *AdminHandler) ListProjectSecrets(c *fiber.Ctx) error {
 	}
 	secrets, err := h.store.ListProjectSecrets(c.Context(), id)
 	if err != nil {
+		logger.LogError("failed to list project secrets", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list project secrets"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"secrets": secrets})
@@ -3623,6 +3820,7 @@ func (h *AdminHandler) CreateProjectSecret(c *fiber.Ctx) error {
 	secret.ProjectID = &id
 	err := h.store.CreateProjectSecret(c.Context(), &secret)
 	if err != nil {
+		logger.LogError("failed to create project secret", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create project secret"})
 	}
 	return c.Status(fiber.StatusCreated).JSON(secret)
@@ -3636,6 +3834,7 @@ func (h *AdminHandler) DeleteProjectSecret(c *fiber.Ctx) error {
 	}
 	err := h.store.DeleteProjectSecret(c.Context(), id, secretID)
 	if err != nil {
+		logger.LogError("failed to delete project secret", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete project secret"})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
@@ -3649,6 +3848,7 @@ func (h *AdminHandler) ListProjectEvents(c *fiber.Ctx) error {
 	}
 	events, err := h.store.ListProjectEvents(c.Context(), id)
 	if err != nil {
+		logger.LogError("failed to list project events", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list project events"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"events": events})
@@ -3662,6 +3862,7 @@ func (h *AdminHandler) DeactivateOrg(c *fiber.Ctx) error {
 	}
 	err := h.store.DeactivateOrg(c.Context(), id)
 	if err != nil {
+		logger.LogError("failed to deactivate org", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to deactivate org"})
 	}
 	return c.SendStatus(fiber.StatusOK)
@@ -3674,6 +3875,7 @@ func (h *AdminHandler) ReactivateOrg(c *fiber.Ctx) error {
 	}
 	err := h.store.ReactivateOrg(c.Context(), id)
 	if err != nil {
+		logger.LogError("failed to reactivate org", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to reactivate org"})
 	}
 	return c.SendStatus(fiber.StatusOK)
@@ -3686,6 +3888,7 @@ func (h *AdminHandler) PurgeOrg(c *fiber.Ctx) error {
 	}
 	err := h.store.PurgeOrg(c.Context(), id)
 	if err != nil {
+		logger.LogError("failed to purge org", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to purge org"})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
@@ -3699,6 +3902,7 @@ func (h *AdminHandler) ListOrgRoles(c *fiber.Ctx) error {
 	}
 	roles, err := h.store.ListOrgRoles(c.Context(), id)
 	if err != nil {
+		logger.LogError("failed to list org roles", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list org roles"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"roles": roles})
@@ -3716,6 +3920,7 @@ func (h *AdminHandler) CreateOrgRole(c *fiber.Ctx) error {
 	role.OrgID = &id
 	err := h.store.CreateOrgRole(c.Context(), &role)
 	if err != nil {
+		logger.LogError("failed to create org role", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create org role"})
 	}
 	return c.Status(fiber.StatusCreated).JSON(role)
@@ -3729,12 +3934,14 @@ func (h *AdminHandler) UpdateOrgRole(c *fiber.Ctx) error {
 	}
 	var role user.UserOrgProjectRole
 	if err := c.BodyParser(&role); err != nil {
+		logger.LogError("invalid request body", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid role payload"})
 	}
 	role.ID = roleID
 	role.OrgID = &id
 	err := h.store.UpdateOrgRole(c.Context(), &role)
 	if err != nil {
+		logger.LogError("failed to update org role", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update org role"})
 	}
 	return c.Status(fiber.StatusOK).JSON(role)
@@ -3748,6 +3955,7 @@ func (h *AdminHandler) DeleteOrgRole(c *fiber.Ctx) error {
 	}
 	err := h.store.DeleteOrgRole(c.Context(), id, roleID)
 	if err != nil {
+		logger.LogError("failed to delete org role", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete org role"})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
@@ -3761,6 +3969,7 @@ func (h *AdminHandler) GetOrgUsage(c *fiber.Ctx) error {
 	}
 	usage, err := h.store.GetOrgUsage(c.Context(), id)
 	if err != nil {
+		logger.LogError("failed to get org usage", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get org usage"})
 	}
 	return c.Status(fiber.StatusOK).JSON(usage)
@@ -3774,6 +3983,7 @@ func (h *AdminHandler) GetOrgFeatureFlags(c *fiber.Ctx) error {
 	}
 	flags, err := h.store.GetOrgFeatureFlags(c.Context(), id)
 	if err != nil {
+		logger.LogError("failed to get org feature flags", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get org feature flags"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"flags": flags})
@@ -3786,10 +3996,12 @@ func (h *AdminHandler) UpdateOrgFeatureFlags(c *fiber.Ctx) error {
 	}
 	var flags map[string]interface{}
 	if err := c.BodyParser(&flags); err != nil {
+		logger.LogError("invalid request body", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid payload"})
 	}
 	updated, err := h.store.UpdateOrgFeatureFlags(c.Context(), id, flags)
 	if err != nil {
+		logger.LogError("failed to update org feature flags", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update org feature flags"})
 	}
 	return c.Status(fiber.StatusOK).JSON(updated)
@@ -3803,6 +4015,7 @@ func (h *AdminHandler) ListOrgWebhooks(c *fiber.Ctx) error {
 	}
 	webhooks, err := h.store.ListOrgWebhooks(c.Context(), id)
 	if err != nil {
+		logger.LogError("failed to list org webhooks", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list org webhooks"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"webhooks": webhooks})
@@ -3820,6 +4033,7 @@ func (h *AdminHandler) CreateOrgWebhook(c *fiber.Ctx) error {
 	webhook.OrgID = &id
 	err := h.store.CreateOrgWebhook(c.Context(), &webhook)
 	if err != nil {
+		logger.LogError("failed to create org webhook", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create org webhook"})
 	}
 	return c.Status(fiber.StatusCreated).JSON(webhook)
@@ -3833,6 +4047,7 @@ func (h *AdminHandler) DeleteOrgWebhook(c *fiber.Ctx) error {
 	}
 	err := h.store.DeleteOrgWebhook(c.Context(), id, webhookID)
 	if err != nil {
+		logger.LogError("failed to delete org webhook", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete org webhook"})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
@@ -3846,6 +4061,7 @@ func (h *AdminHandler) ListOrgSecrets(c *fiber.Ctx) error {
 	}
 	secrets, err := h.store.ListOrgSecrets(c.Context(), id)
 	if err != nil {
+		logger.LogError("failed to list org secrets", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list org secrets"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"secrets": secrets})
@@ -3858,11 +4074,13 @@ func (h *AdminHandler) CreateOrgSecret(c *fiber.Ctx) error {
 	}
 	var secret Secret
 	if err := c.BodyParser(&secret); err != nil || secret.Name == "" || secret.Value == "" {
+		logger.LogError("invalid request body", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid secret payload"})
 	}
 	secret.OrgID = &id
 	err := h.store.CreateOrgSecret(c.Context(), &secret)
 	if err != nil {
+		logger.LogError("failed to create org secret", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create org secret"})
 	}
 	return c.Status(fiber.StatusCreated).JSON(secret)
@@ -3876,6 +4094,7 @@ func (h *AdminHandler) DeleteOrgSecret(c *fiber.Ctx) error {
 	}
 	err := h.store.DeleteOrgSecret(c.Context(), id, secretID)
 	if err != nil {
+		logger.LogError("failed to delete org secret", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete org secret"})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
@@ -3889,6 +4108,7 @@ func (h *AdminHandler) ListOrgEvents(c *fiber.Ctx) error {
 	}
 	events, err := h.store.ListOrgEvents(c.Context(), id)
 	if err != nil {
+		logger.LogError("failed to list org events", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list org events"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"events": events})
