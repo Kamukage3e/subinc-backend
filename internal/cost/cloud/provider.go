@@ -4,9 +4,8 @@ import (
 	"context"
 	"time"
 
-
-	"github.com/subinc/subinc-backend/internal/cost/domain"
 	"github.com/subinc/subinc-backend/internal/architecture"
+	"github.com/subinc/subinc-backend/internal/cost/domain"
 )
 
 // CostDataProvider defines the interface for retrieving cost data from cloud providers

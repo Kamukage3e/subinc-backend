@@ -9,8 +9,6 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-
-
 // NewCostHandler creates a new cost handler
 func NewCostHandler(service service.CostService, log *logger.Logger) *CostHandler {
 	return &CostHandler{
@@ -19,10 +17,7 @@ func NewCostHandler(service service.CostService, log *logger.Logger) *CostHandle
 	}
 }
 
-
-
 // Response formats
-
 
 // Helper function to parse time params
 func parseTimeParams(c *fiber.Ctx, startParam, endParam string, defaults bool) (time.Time, time.Time, error) {

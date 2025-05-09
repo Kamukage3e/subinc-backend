@@ -2,10 +2,7 @@ package architecture
 
 import (
 	"context"
-
 )
-
-
 
 // ListAWSResources fetches AWS resources for a tenant using AWSInventory
 func ListAWSResources(ctx context.Context, tenantID string, inv *AWSInventory) ([]ResourceNode, error) {

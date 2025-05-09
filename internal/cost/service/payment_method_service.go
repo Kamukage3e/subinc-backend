@@ -5,10 +5,10 @@ import (
 
 	"time"
 
-	"github.com/spf13/viper"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/spf13/viper"
 	"io"
 	"net/http"
 

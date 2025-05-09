@@ -33,6 +33,11 @@ type cachedSecret struct {
 	expiresAt time.Time
 }
 
+type inMemorySecretsManager struct {
+	secrets map[string]string
+	mu      sync.RWMutex
+}
+
 // NewAWSSecretsManager returns a production-grade AWS Secrets Manager client with in-memory caching.
 func NewAWSSecretsManager(ctx context.Context, log *logger.Logger) (SecretsManager, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
@@ -130,4 +135,24 @@ func HashPassword(password string) (string, error) {
 		return "", err
 	}
 	return string(hashedPassword), nil
+}
+
+func NewInMemorySecretsManager() SecretsManager {
+	return &inMemorySecretsManager{secrets: make(map[string]string)}
+}
+
+func (m *inMemorySecretsManager) GetSecret(ctx context.Context, name string) (string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if val, ok := m.secrets[name]; ok {
+		return val, nil
+	}
+	return "", fmt.Errorf("secret not found: %s", name)
+}
+
+// SetSecret is only for dev/test, not part of the interface
+func (m *inMemorySecretsManager) SetSecret(name, value string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.secrets[name] = value
 }

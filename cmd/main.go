@@ -166,14 +166,31 @@ func main() {
 	// Initialize Terraform provisioner
 	tfProvisioner := terraform.NewTerraformProvisioner(redisClient, log)
 
-	// Initialize secrets manager
-	secretsManager, err := secrets.NewAWSSecretsManager(ctx, log)
-	if err != nil {
-		log.Fatal("failed to initialize secrets manager", ErrorField(err))
+	// Initialize secrets manager only if enabled (prod)
+	useAWSSecrets := viper.GetBool("aws.secrets_manager_enabled")
+	var secretsManager secrets.SecretsManager
+	if useAWSSecrets {
+		var err error
+		secretsManager, err = secrets.NewAWSSecretsManager(ctx, log)
+		if err != nil {
+			log.Fatal("failed to initialize secrets manager", ErrorField(err))
+		}
+		log.Info("AWS Secrets Manager enabled for secrets")
+	} else {
+		secretsManager = secrets.NewInMemorySecretsManager()
+		log.Warn("AWS Secrets Manager disabled, using in-memory secrets manager (dev/test only)")
 	}
 	jwtSecretName := viper.GetString("jwt.secret_name")
 	if jwtSecretName == "" {
 		jwtSecretName = "subinc-jwt-secret"
+	}
+	if !useAWSSecrets {
+		if _, err := secretsManager.GetSecret(ctx, jwtSecretName); err != nil {
+			secret := generateSecurePassword(64)
+			if setter, ok := secretsManager.(interface{ SetSecret(string, string) }); ok {
+				setter.SetSecret(jwtSecretName, secret)
+			}
+		}
 	}
 
 	// Initialize background job server if enabled

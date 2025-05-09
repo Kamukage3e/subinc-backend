@@ -18,7 +18,7 @@ func init() {
 		if viper.GetString("go_env") == "development" {
 			// Insecure default for dev only
 			salt = "dev-insecure-salt"
-		} 
+		}
 	}
 	hd := hashids.NewData()
 	hd.Salt = salt

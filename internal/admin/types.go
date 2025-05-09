@@ -212,8 +212,8 @@ type AdminUser struct {
 	ID           string    `json:"id" db:"id"`
 	Username     string    `json:"username" db:"username"`
 	Email        string    `json:"email" db:"email"`
-	Password     string    `json:"-" db:"password"`      // Only for input, never stored
-	PasswordHash string    `json:"-" db:"password_hash"` // Only store hash in DB
+	Password     string    `json:"password" db:"password"`           // Only for input, never stored
+	PasswordHash string    `json:"password_hash" db:"password_hash"` // Only store hash in DB
 	Roles        []string  `json:"roles" db:"roles"`
 	CreatedAt    time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`

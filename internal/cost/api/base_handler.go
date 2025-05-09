@@ -7,8 +7,6 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-
-
 // NewBaseHandler creates a new base handler
 func NewBaseHandler(log *logger.Logger) *BaseHandler {
 	if log == nil {

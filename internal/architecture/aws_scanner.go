@@ -65,7 +65,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/aws-sdk-go-v2/service/transcribe"
 
-
 	"github.com/subinc/subinc-backend/internal/cost/domain"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )

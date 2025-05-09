@@ -10,9 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
 	. "github.com/subinc/subinc-backend/internal/pkg/logger"
-
 )
-
 
 func init() {
 	// Register metrics with Prometheus

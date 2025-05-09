@@ -9,14 +9,12 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/spf13/viper"
 	"github.com/subinc/subinc-backend/internal/cost/domain"
 	"github.com/subinc/subinc-backend/internal/cost/service"
 	"github.com/subinc/subinc-backend/internal/pkg/idencode"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
-	"github.com/spf13/viper"
 )
-
-
 
 func NewBillingHandler(
 	svc service.BillingService,
@@ -40,8 +38,6 @@ func NewBillingHandler(
 		invoiceAdjustmentService: invoiceAdjustmentSvc,
 	}
 }
-
-
 
 func (h *BillingHandler) CreateAccount(c *fiber.Ctx) error {
 	var input service.CreateAccountInput

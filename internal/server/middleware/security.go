@@ -9,10 +9,10 @@ import (
 // SecurityHeaders applies strict HTTP security headers using helmet with custom config
 func SecurityHeaders() fiber.Handler {
 	return helmet.New(helmet.Config{
-		XSSProtection:        viper.GetString("XSS_PROTECTION"),
-		ContentTypeNosniff:    viper.GetString("CONTENT_TYPE_NOSNIFF"),
-		XFrameOptions:         viper.GetString("X_FRAME_OPTIONS"),
-		ReferrerPolicy:        viper.GetString("REFERRER_POLICY"),
+		XSSProtection:             viper.GetString("XSS_PROTECTION"),
+		ContentTypeNosniff:        viper.GetString("CONTENT_TYPE_NOSNIFF"),
+		XFrameOptions:             viper.GetString("X_FRAME_OPTIONS"),
+		ReferrerPolicy:            viper.GetString("REFERRER_POLICY"),
 		CrossOriginResourcePolicy: viper.GetString("CROSS_ORIGIN_RESOURCE_POLICY"),
 		CrossOriginOpenerPolicy:   viper.GetString("CROSS_ORIGIN_OPENER_POLICY"),
 		CrossOriginEmbedderPolicy: viper.GetString("CROSS_ORIGIN_EMBEDDER_POLICY"),

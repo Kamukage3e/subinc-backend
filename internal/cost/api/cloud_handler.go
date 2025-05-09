@@ -10,8 +10,6 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-
-
 // NewCloudHandler creates a new cloud handler
 func NewCloudHandler(cloudProviderService service.CloudProviderService, log *logger.Logger) *CloudHandler {
 	if log == nil {
@@ -23,8 +21,6 @@ func NewCloudHandler(cloudProviderService service.CloudProviderService, log *log
 		logger:               log,
 	}
 }
-
-
 
 // ListProviders lists all supported cloud providers
 // @Summary List all supported cloud providers
@@ -627,7 +623,6 @@ func (h *CloudHandler) ImportCostData(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusAccepted).JSON(response)
 }
-
 
 // Helper functions
 

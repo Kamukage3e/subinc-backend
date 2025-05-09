@@ -3,9 +3,7 @@ package server
 import (
 	"time"
 
-
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
-
 )
 
 // Use custom type for context keys to avoid collisions
@@ -33,4 +31,3 @@ type RedisConfig struct {
 type RedisHook struct {
 	logger *logger.Logger
 }
-

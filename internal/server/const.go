@@ -6,7 +6,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-
 var (
 	// ErrRedisConnection represents Redis connection failures
 	ErrRedisConnection = errors.New("failed to connect to Redis")

@@ -14,16 +14,12 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-
-
 func init() {
 	// Register metrics with Prometheus
 	prometheus.MustRegister(redisOperations)
 	prometheus.MustRegister(redisOperationDuration)
 	prometheus.MustRegister(redisConnectionsActive)
 }
-
-
 
 // NewRedisConfig creates a production-ready Redis configuration from environment or viper
 func NewRedisConfig(log *logger.Logger) (*RedisConfig, error) {
@@ -222,7 +218,6 @@ func RedisHealthCheck(ctx context.Context, client *redis.Client) error {
 
 	return nil
 }
-
 
 // BeforeProcess logs and records metrics before each Redis command
 func (hook *RedisHook) BeforeProcess(ctx context.Context, cmd redis.Cmder) (context.Context, error) {

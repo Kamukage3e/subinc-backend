@@ -134,7 +134,6 @@ type SuccessResponse struct {
 	Message string `json:"message"`
 }
 
-
 type BillingHandler struct {
 	service                  service.BillingService
 	couponService            service.CouponService
@@ -173,7 +172,7 @@ type AnomalyHandler struct {
 type CostHandler struct {
 	service service.CostService
 	logger  *logger.Logger
-} 
+}
 
 type OptimizationHandler struct {
 	service *service.OptimizationService

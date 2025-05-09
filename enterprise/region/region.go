@@ -1,4 +1,4 @@
- package region
+package region
 
 import (
 	"context"
@@ -23,4 +23,4 @@ type RegionStore interface {
 	List(ctx context.Context) ([]*Region, error)
 	Update(ctx context.Context, r *Region) error
 	Delete(ctx context.Context, id string) error
-} 
+}

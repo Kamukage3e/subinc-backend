@@ -11,8 +11,6 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-
-
 func NewAnomalyHandler(anomalyService service.AnomalyDetectionService, log *logger.Logger) *AnomalyHandler {
 	if log == nil {
 		log = logger.NewNoop()

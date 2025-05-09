@@ -9,7 +9,6 @@ import (
 	"github.com/subinc/subinc-backend/internal/cost/service"
 )
 
-
 func NewOptimizationHandler(svc *service.OptimizationService) *OptimizationHandler {
 	return &OptimizationHandler{service: svc}
 }

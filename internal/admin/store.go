@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	"strconv"
 	"strings"
 	"time"
@@ -147,18 +148,6 @@ func (s *PostgresAdminStore) ListPermissions() ([]interface{}, error) {
 	return perms, nil
 }
 
-func (s *PostgresAdminStore) BillingSummary() (interface{}, error) {
-	const q = `SELECT COALESCE(SUM(amount),0) as total, COALESCE(MAX(currency),'USD') as currency FROM billing_records WHERE status = 'paid'`
-	row := s.DB.QueryRow(context.Background(), q)
-	var total float64
-	var currency string
-	if err := row.Scan(&total, &currency); err != nil {
-		logger.LogError("failed to aggregate billing summary", logger.ErrorField(err))
-		return nil, errors.New("failed to aggregate billing summary")
-	}
-	return map[string]interface{}{"total": total, "currency": currency}, nil
-}
-
 func (s *PostgresAdminStore) SystemHealth() (interface{}, error) {
 	ctx := context.Background()
 	// Check DB connection
@@ -261,14 +250,41 @@ func (s *PostgresAdminStore) SupportTools() (interface{}, error) {
 }
 
 func (s *PostgresAdminStore) RBACStatus() (interface{}, error) {
-	const q = `SELECT value FROM system_config WHERE key = 'rbac_enabled'`
-	row := s.DB.QueryRow(context.Background(), q)
-	var value string
-	if err := row.Scan(&value); err != nil {
-		logger.LogError("failed to query RBAC status", logger.ErrorField(err))
-		return nil, errors.New("failed to query RBAC status")
+	ctx := context.Background()
+	// Get RBAC enabled flag
+	const qEnabled = `SELECT value FROM system_config WHERE key = 'rbac_enabled'`
+	row := s.DB.QueryRow(ctx, qEnabled)
+	var enabledVal string
+	err := row.Scan(&enabledVal)
+	isEnabled := false
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			logger.LogWarn("rbac_enabled config missing, treating as disabled")
+		} else {
+			logger.LogError("failed to query RBAC status", logger.ErrorField(err))
+			return nil, errors.New("failed to query RBAC status")
+		}
+	} else {
+		isEnabled = enabledVal == "true"
 	}
-	return map[string]interface{}{"rbac": value == "true"}, nil
+
+	roles, err := s.ListRoles()
+	if err != nil {
+		logger.LogError("failed to list admin roles", logger.ErrorField(err))
+		return nil, errors.New("failed to list admin roles")
+	}
+
+	perms, err := s.ListPermissions()
+	if err != nil {
+		logger.LogError("failed to list admin permissions", logger.ErrorField(err))
+		return nil, errors.New("failed to list admin permissions")
+	}
+
+	return map[string]interface{}{
+		"enabled":     isEnabled,
+		"roles":       roles,
+		"permissions": perms,
+	}, nil
 }
 
 func (s *PostgresAdminStore) StepUpAuth(userID string) (interface{}, error) {
@@ -317,7 +333,7 @@ func (s *PostgresAdminStore) AuditAnomalies() (interface{}, error) {
 	var anomalies []map[string]interface{}
 	for rows.Next() {
 		var id, actorID, action, resource, details string
-		var createdAt string
+		var createdAt time.Time
 		if err := rows.Scan(&id, &actorID, &action, &resource, &details, &createdAt); err != nil {
 			logger.LogError("failed to scan audit anomaly row", logger.ErrorField(err))
 			return nil, errors.New("failed to scan audit anomaly row")
@@ -328,7 +344,7 @@ func (s *PostgresAdminStore) AuditAnomalies() (interface{}, error) {
 			"action":     action,
 			"resource":   resource,
 			"details":    details,
-			"created_at": createdAt,
+			"created_at": createdAt.Format(time.RFC3339),
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -378,7 +394,7 @@ func (s *PostgresAdminStore) AbuseDetection() (interface{}, error) {
 	var events []map[string]interface{}
 	for rows.Next() {
 		var id, userID, eventType, details string
-		var createdAt string
+		var createdAt time.Time
 		if err := rows.Scan(&id, &userID, &eventType, &details, &createdAt); err != nil {
 			logger.LogError("failed to scan abuse event row", logger.ErrorField(err))
 			return nil, errors.New("failed to scan abuse event row")
@@ -388,7 +404,7 @@ func (s *PostgresAdminStore) AbuseDetection() (interface{}, error) {
 			"user_id":    userID,
 			"event_type": eventType,
 			"details":    details,
-			"created_at": createdAt,
+			"created_at": createdAt.Format(time.RFC3339),
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -561,12 +577,22 @@ func (s *PostgresAdminStore) RealTimeMonitoring() (interface{}, error) {
 }
 
 func (s *PostgresAdminStore) Create(ctx context.Context, u *AdminUser) error {
-	if u.Username == "" || u.Email == "" || u.Password == "" {
+	if u.Email == "" || u.Password == "" {
 		logger.LogError("invalid admin user input",
-			logger.String("username", u.Username),
 			logger.String("email", u.Email),
+			logger.String("password", u.Password),
 		)
-		return errors.New("username, email, and password required")
+		return errors.New("email and password required")
+	}
+	if u.Username == "" {
+		at := strings.Index(u.Email, "@")
+		if at > 0 {
+			u.Username = u.Email[:at]
+			logger.LogInfo("using email username", logger.String("username", u.Username))
+		}
+	}
+	if u.Roles == nil {
+		u.Roles = []string{"admin"}
 	}
 	if u.ID == "" {
 		u.ID = uuid.NewString()
@@ -614,6 +640,13 @@ func (s *PostgresAdminStore) DeleteUser(id string) error {
 }
 
 func (s *PostgresAdminStore) CreateTenant(tenant *Tenant) error {
+	if tenant.ID == "" {
+		tenant.ID = uuid.NewString()
+	}
+	if tenant.CreatedAt.IsZero() {
+		tenant.CreatedAt = time.Now().UTC()
+	}
+
 	const q = `INSERT INTO tenants (id, name, settings, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())`
 	_, err := s.DB.Exec(context.Background(), q, tenant.ID, tenant.Name, tenant.Settings)
 	if err != nil {
@@ -644,6 +677,10 @@ func (s *PostgresAdminStore) DeleteTenant(id string) error {
 }
 
 func (s *PostgresAdminStore) CreateRole(role *AdminRole) error {
+	if role.ID == "" {
+		role.ID = uuid.NewString()
+	}
+
 	const q = `INSERT INTO admin_roles (id, name, permissions) VALUES ($1, $2, $3)`
 	_, err := s.DB.Exec(context.Background(), q, role.ID, role.Name, role.Permissions)
 	if err != nil {
@@ -674,6 +711,9 @@ func (s *PostgresAdminStore) DeleteRole(id string) error {
 }
 
 func (s *PostgresAdminStore) CreatePermission(perm *AdminPermission) error {
+	if perm.ID == "" {
+		perm.ID = uuid.NewString()
+	}
 	const q = `INSERT INTO admin_permissions (id, name) VALUES ($1, $2)`
 	_, err := s.DB.Exec(context.Background(), q, perm.ID, perm.Name)
 	if err != nil {
@@ -966,7 +1006,8 @@ func (s *PostgresAdminStore) SearchAuditLogs(filter AuditLogFilter) ([]interface
 	defer rows.Close()
 	logs := []interface{}{}
 	for rows.Next() {
-		var id, actorID, action, resource, details, createdAt, hash, prevHash string
+		var id, actorID, action, resource, details, hash, prevHash string
+		var createdAt time.Time
 		if err := rows.Scan(&id, &actorID, &action, &resource, &details, &createdAt, &hash, &prevHash); err != nil {
 			logger.LogError("failed to scan audit log row", logger.ErrorField(err))
 			return nil, 0, errors.New("failed to scan audit log row: " + err.Error())
@@ -977,7 +1018,7 @@ func (s *PostgresAdminStore) SearchAuditLogs(filter AuditLogFilter) ([]interface
 			"action":     action,
 			"resource":   resource,
 			"details":    details,
-			"created_at": createdAt,
+			"created_at": createdAt.Format(time.RFC3339),
 			"hash":       hash,
 			"prev_hash":  prevHash,
 		})
@@ -1284,7 +1325,8 @@ func (s *PostgresAdminStore) TraceUserActivity(userID string) ([]interface{}, er
 	defer rows.Close()
 	var logs []interface{}
 	for rows.Next() {
-		var id, actorID, action, resource, details, createdAt string
+		var id, actorID, action, resource, details string
+		var createdAt time.Time
 		if err := rows.Scan(&id, &actorID, &action, &resource, &details, &createdAt); err != nil {
 			logger.LogError("failed to scan user trace log row", logger.ErrorField(err))
 			return nil, errors.New("failed to scan user trace log row: " + err.Error())
@@ -1295,7 +1337,7 @@ func (s *PostgresAdminStore) TraceUserActivity(userID string) ([]interface{}, er
 			"action":     action,
 			"resource":   resource,
 			"details":    details,
-			"created_at": createdAt,
+			"created_at": createdAt.Format(time.RFC3339),
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -1321,7 +1363,8 @@ func (s *PostgresAdminStore) TraceBillingActivity(accountID string) ([]interface
 	defer rows.Close()
 	var logs []interface{}
 	for rows.Next() {
-		var id, actorID, action, resource, details, createdAt string
+		var id, actorID, action, resource, details string
+		var createdAt time.Time
 		if err := rows.Scan(&id, &actorID, &action, &resource, &details, &createdAt); err != nil {
 			logger.LogError("failed to scan billing trace log row", logger.ErrorField(err))
 			return nil, errors.New("failed to scan billing trace log row: " + err.Error())
@@ -1332,7 +1375,7 @@ func (s *PostgresAdminStore) TraceBillingActivity(accountID string) ([]interface
 			"action":     action,
 			"resource":   resource,
 			"details":    details,
-			"created_at": createdAt,
+			"created_at": createdAt.Format(time.RFC3339),
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -1360,7 +1403,8 @@ func (s *PostgresAdminStore) ListImpersonationAudits(limit, offset int) ([]inter
 	defer rows.Close()
 	var logs []interface{}
 	for rows.Next() {
-		var id, actorID, action, resource, details, createdAt string
+		var id, actorID, action, resource, details string
+		var createdAt time.Time
 		if err := rows.Scan(&id, &actorID, &action, &resource, &details, &createdAt); err != nil {
 			logger.LogError("failed to scan impersonation audit log row", logger.ErrorField(err))
 			return nil, errors.New("failed to scan impersonation audit log row: " + err.Error())
@@ -1371,7 +1415,7 @@ func (s *PostgresAdminStore) ListImpersonationAudits(limit, offset int) ([]inter
 			"action":     action,
 			"resource":   resource,
 			"details":    details,
-			"created_at": createdAt,
+			"created_at": createdAt.Format(time.RFC3339),
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -2237,7 +2281,7 @@ func (s *PostgresAdminStore) CreateProject(ctx context.Context, p *Project) erro
 		return errors.New("project required")
 	}
 	if p.ID == "" {
-		p.ID = "prj-" + uuid.NewString()
+		p.ID = uuid.NewString()
 	}
 	if p.CreatedAt.IsZero() {
 		p.CreatedAt = time.Now().UTC()
@@ -2371,15 +2415,6 @@ func (s *PostgresAdminStore) ListAllUserRolesPermissions(ctx context.Context) ([
 		return nil, errors.New("failed to iterate user roles/permissions: " + err.Error())
 	}
 	return results, nil
-}
-func (s *PostgresAdminStore) Login(ctx context.Context, username, password string) (*AdminUser, error) {
-	const q = `SELECT id, username, email, password_hash FROM admin_users WHERE username = $1 AND password_hash = $2`
-	row := s.DB.QueryRow(ctx, q, username, password)
-	var user AdminUser
-	if err := row.Scan(&user.ID, &user.Username, &user.Email, &user.PasswordHash); err != nil {
-		return nil, errors.New("failed to login: " + err.Error())
-	}
-	return &user, nil
 }
 
 func (s *PostgresAdminStore) DeleteOrg(ctx context.Context, id string) error {
@@ -3772,4 +3807,38 @@ func (s *PostgresAdminStore) ListOrgEvents(ctx context.Context, orgID string) ([
 		out = append(out, &e)
 	}
 	return out, nil
+}
+
+func (s *PostgresAdminStore) Login(ctx context.Context, usernameOrEmail, password string) (*AdminUser, error) {
+	input := strings.TrimSpace(usernameOrEmail)
+	if input == "" || password == "" {
+		logger.LogWarn("login failed: missing credentials", logger.String("input", input))
+		return nil, errors.New("invalid credentials")
+	}
+
+	// Rate limiting is not implemented in this store. Add here if needed.
+
+	var userObj *AdminUser
+	var err error
+	if strings.Contains(input, "@") {
+		userObj, err = s.GetByEmail(ctx, input)
+	} else {
+		userObj, err = s.GetByUsername(ctx, input)
+	}
+	if err != nil || userObj == nil {
+		logger.LogWarn("login failed: user not found", logger.ErrorField(err))
+		return nil, errors.New("invalid credentials")
+	}
+
+	valid, verifyErr := user.VerifyPassword(password, userObj.PasswordHash)
+	if verifyErr != nil {
+		logger.LogWarn("login failed: password hash error", logger.ErrorField(verifyErr), logger.String("user", input))
+		return nil, errors.New("invalid credentials")
+	}
+	if !valid {
+		logger.LogWarn("login failed: password mismatch", logger.String("user", input))
+		return nil, errors.New("invalid credentials")
+	}
+
+	return userObj, nil
 }

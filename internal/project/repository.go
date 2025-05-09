@@ -8,9 +8,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-
-
-
 func NewPostgresRepository(db *pgxpool.Pool) Repository {
 	return &postgresRepository{db: db}
 }

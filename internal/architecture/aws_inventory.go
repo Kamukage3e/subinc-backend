@@ -11,8 +11,6 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-
-
 func NewAWSInventory(log *logger.Logger) *AWSInventory {
 	if log == nil {
 		log = logger.NewNoop()

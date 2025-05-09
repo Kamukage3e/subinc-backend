@@ -1,5 +1,8 @@
 # Production configuration for subinc-cost-microservice
 
+# Environment (controls dev/prod features like rate limiting)
+APP_ENV: development
+
 server:
   port: 8080
   read_timeout: 10s

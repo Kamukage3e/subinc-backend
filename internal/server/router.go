@@ -25,6 +25,11 @@ import (
 	// Add other handler imports as needed (user, tenant, admin, etc)
 )
 
+func isDevEnv() bool {
+	env := viper.GetString("APP_ENV")
+	return env == "dev" || env == "development" || env == "test"
+}
+
 // SetupRouter centralizes all route registration for the microservice.
 // This enforces modular, SaaS-grade routing boundaries and testability.
 func SetupRouter(
@@ -62,7 +67,7 @@ func SetupRouter(
 	// 3. Apply request logging middleware globally (audit, trace, compliance)
 	app.Use(middleware.RequestLogger(log, adminStore))
 	// 4. Apply distributed rate limiting middleware globally (protects against abuse, DoS)
-	if viper.GetBool("rate_limit.enabled") {
+	if viper.GetBool("rate_limit.enabled") && !isDevEnv() {
 		app.Use(middleware.IPRateLimiter(redisClient, log, viper.GetInt("rate_limit.max_requests"), viper.GetDuration("rate_limit.window")))
 	}
 	// --- END GLOBAL MIDDLEWARE ---
