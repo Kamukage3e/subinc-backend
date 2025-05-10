@@ -35,7 +35,3 @@ type UserSessionService interface {
 
 type UserAuditLogger = security_management.AuditLogger
 
-type UserAuditLogService interface {
-	CreateAuditLog(ctx context.Context, log UserAuditLog) (UserAuditLog, error)
-	ListAuditLogs(ctx context.Context, userID, actorID, action string, page, pageSize int) ([]UserAuditLog, error)
-}

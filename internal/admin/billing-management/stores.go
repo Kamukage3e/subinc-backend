@@ -805,3 +805,17 @@ func (s *PostgresStore) CreateManualRefund(ctx context.Context, refund Refund) (
 	}
 	return out, nil
 }
+
+func (s *PostgresStore) GetPaymentByIdempotencyKey(ctx context.Context, idempotencyKey string) (Payment, error) {
+	const q = `SELECT id, invoice_id, amount, status, method, created_at, updated_at, metadata FROM payments WHERE metadata::jsonb ->> 'idempotency_key' = $1 LIMIT 1`
+	row := s.db.QueryRow(ctx, q, idempotencyKey)
+	var out Payment
+	if err := row.Scan(&out.ID, &out.InvoiceID, &out.Amount, &out.Status, &out.Method, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
+		if err.Error() == "no rows in result set" {
+			return Payment{}, nil
+		}
+		s.logger.Error("GetPaymentByIdempotencyKey failed", logger.ErrorField(err), logger.String("idempotency_key", idempotencyKey))
+		return Payment{}, err
+	}
+	return out, nil
+}

@@ -1,7 +1,6 @@
 package user_management
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 
@@ -9,20 +8,24 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-type Handler struct {
+type UserHandler struct {
 	Store *PostgresStore
 }
 
-func NewHandler(store *PostgresStore) *Handler {
-	return &Handler{Store: store}
+func NewUserHandler(store *PostgresStore) *UserHandler {
+	return &UserHandler{Store: store}
 }
 
 // --- User Handlers ---
-func (h *Handler) CreateUser(c *fiber.Ctx) error {
+func (h *UserHandler) CreateUser(c *fiber.Ctx) error {
 	var user User
 	if err := c.BodyParser(&user); err != nil {
 		logger.LogError("invalid user input", logger.ErrorField(err))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if err := user.Validate(); err != nil {
+		logger.LogError("CreateUser: validation failed", logger.ErrorField(err))
+		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	user.CreatedAt = NowUTC()
 	user.UpdatedAt = user.CreatedAt
@@ -34,18 +37,21 @@ func (h *Handler) CreateUser(c *fiber.Ctx) error {
 	return c.Status(http.StatusCreated).JSON(created)
 }
 
-func (h *Handler) UpdateUser(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
+func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
+	var input struct {
+		ID string `json:"id"`
+		User
+	}
+	if err := c.BodyParser(&input); err != nil || input.ID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
 	}
-	var user User
-	if err := c.BodyParser(&user); err != nil {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	if err := input.User.Validate(); err != nil {
+		logger.LogError("UpdateUser: validation failed", logger.ErrorField(err))
+		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	user.ID = id
-	user.UpdatedAt = NowUTC()
-	updated, err := h.Store.UpdateUser(c.Context(), user)
+	input.User.ID = input.ID
+	input.User.UpdatedAt = NowUTC()
+	updated, err := h.Store.UpdateUser(c.Context(), input.User)
 	if err != nil {
 		logger.LogError("failed to update user", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update user"})
@@ -53,24 +59,28 @@ func (h *Handler) UpdateUser(c *fiber.Ctx) error {
 	return c.JSON(updated)
 }
 
-func (h *Handler) DeleteUser(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
+func (h *UserHandler) DeleteUser(c *fiber.Ctx) error {
+	var input struct {
+		ID string `json:"id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.ID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
 	}
-	if err := h.Store.DeleteUser(c.Context(), id); err != nil {
+	if err := h.Store.DeleteUser(c.Context(), input.ID); err != nil {
 		logger.LogError("failed to delete user", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete user"})
 	}
 	return c.SendStatus(http.StatusNoContent)
 }
 
-func (h *Handler) GetUser(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
+func (h *UserHandler) GetUser(c *fiber.Ctx) error {
+	var input struct {
+		ID string `json:"id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.ID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
 	}
-	user, err := h.Store.GetUser(c.Context(), id)
+	user, err := h.Store.GetUser(c.Context(), input.ID)
 	if err != nil {
 		logger.LogError("failed to get user", logger.ErrorField(err))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "user not found"})
@@ -78,12 +88,14 @@ func (h *Handler) GetUser(c *fiber.Ctx) error {
 	return c.JSON(user)
 }
 
-func (h *Handler) GetUserByEmail(c *fiber.Ctx) error {
-	email := c.Query("email")
-	if email == "" {
+func (h *UserHandler) GetUserByEmail(c *fiber.Ctx) error {
+	var input struct {
+		Email string `json:"email"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.Email == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing email"})
 	}
-	user, err := h.Store.GetUserByEmail(c.Context(), email)
+	user, err := h.Store.GetUserByEmail(c.Context(), input.Email)
 	if err != nil {
 		logger.LogError("failed to get user by email", logger.ErrorField(err))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "user not found"})
@@ -91,11 +103,22 @@ func (h *Handler) GetUserByEmail(c *fiber.Ctx) error {
 	return c.JSON(user)
 }
 
-func (h *Handler) ListUsers(c *fiber.Ctx) error {
-	status := c.Query("status")
-	page := parseIntDefault(c.Query("page"), 1)
-	pageSize := parseIntDefault(c.Query("page_size"), 50)
-	users, err := h.Store.ListUsers(c.Context(), status, page, pageSize)
+func (h *UserHandler) ListUsers(c *fiber.Ctx) error {
+	var input struct {
+		Status   string `json:"status"`
+		Page     int    `json:"page"`
+		PageSize int    `json:"page_size"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.Page == 0 {
+		input.Page = 1
+	}
+	if input.PageSize == 0 {
+		input.PageSize = 50
+	}
+	users, err := h.Store.ListUsers(c.Context(), input.Status, input.Page, input.PageSize)
 	if err != nil {
 		logger.LogError("failed to list users", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list users"})
@@ -104,7 +127,7 @@ func (h *Handler) ListUsers(c *fiber.Ctx) error {
 }
 
 // --- UserProfile Handlers ---
-func (h *Handler) CreateProfile(c *fiber.Ctx) error {
+func (h *UserHandler) CreateProfile(c *fiber.Ctx) error {
 	var profile UserProfile
 	if err := c.BodyParser(&profile); err != nil {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
@@ -119,18 +142,17 @@ func (h *Handler) CreateProfile(c *fiber.Ctx) error {
 	return c.Status(http.StatusCreated).JSON(created)
 }
 
-func (h *Handler) UpdateProfile(c *fiber.Ctx) error {
-	userID := c.Params("user_id")
-	if userID == "" {
+func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
+	var input struct {
+		UserID string `json:"user_id"`
+		UserProfile
+	}
+	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
 	}
-	var profile UserProfile
-	if err := c.BodyParser(&profile); err != nil {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	profile.UserID = userID
-	profile.UpdatedAt = NowUTC()
-	updated, err := h.Store.UpdateProfile(c.Context(), profile)
+	input.UserProfile.UserID = input.UserID
+	input.UserProfile.UpdatedAt = NowUTC()
+	updated, err := h.Store.UpdateProfile(c.Context(), input.UserProfile)
 	if err != nil {
 		logger.LogError("failed to update profile", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update profile"})
@@ -138,12 +160,14 @@ func (h *Handler) UpdateProfile(c *fiber.Ctx) error {
 	return c.JSON(updated)
 }
 
-func (h *Handler) GetProfile(c *fiber.Ctx) error {
-	userID := c.Params("user_id")
-	if userID == "" {
+func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
+	var input struct {
+		UserID string `json:"user_id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
 	}
-	profile, err := h.Store.GetProfile(c.Context(), userID)
+	profile, err := h.Store.GetProfile(c.Context(), input.UserID)
 	if err != nil {
 		logger.LogError("failed to get profile", logger.ErrorField(err))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "profile not found"})
@@ -152,12 +176,14 @@ func (h *Handler) GetProfile(c *fiber.Ctx) error {
 }
 
 // --- UserSettings Handlers ---
-func (h *Handler) GetSettings(c *fiber.Ctx) error {
-	userID := c.Params("user_id")
-	if userID == "" {
+func (h *UserHandler) GetSettings(c *fiber.Ctx) error {
+	var input struct {
+		UserID string `json:"user_id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
 	}
-	settings, err := h.Store.GetSettings(c.Context(), userID)
+	settings, err := h.Store.GetSettings(c.Context(), input.UserID)
 	if err != nil {
 		logger.LogError("failed to get settings", logger.ErrorField(err))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "settings not found"})
@@ -165,18 +191,15 @@ func (h *Handler) GetSettings(c *fiber.Ctx) error {
 	return c.JSON(settings)
 }
 
-func (h *Handler) UpdateSettings(c *fiber.Ctx) error {
-	userID := c.Params("user_id")
-	if userID == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
-	}
-	var req struct {
+func (h *UserHandler) UpdateSettings(c *fiber.Ctx) error {
+	var input struct {
+		UserID   string `json:"user_id"`
 		Settings string `json:"settings"`
 	}
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
 	}
-	if err := h.Store.UpdateSettings(c.Context(), userID, req.Settings); err != nil {
+	if err := h.Store.UpdateSettings(c.Context(), input.UserID, input.Settings); err != nil {
 		logger.LogError("failed to update settings", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update settings"})
 	}
@@ -184,7 +207,7 @@ func (h *Handler) UpdateSettings(c *fiber.Ctx) error {
 }
 
 // --- UserSession Handlers ---
-func (h *Handler) CreateSession(c *fiber.Ctx) error {
+func (h *UserHandler) CreateSession(c *fiber.Ctx) error {
 	var session UserSession
 	if err := c.BodyParser(&session); err != nil {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
@@ -198,24 +221,28 @@ func (h *Handler) CreateSession(c *fiber.Ctx) error {
 	return c.Status(http.StatusCreated).JSON(created)
 }
 
-func (h *Handler) DeleteSession(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
+func (h *UserHandler) DeleteSession(c *fiber.Ctx) error {
+	var input struct {
+		ID string `json:"id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.ID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing session id"})
 	}
-	if err := h.Store.DeleteSession(c.Context(), id); err != nil {
+	if err := h.Store.DeleteSession(c.Context(), input.ID); err != nil {
 		logger.LogError("failed to delete session", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete session"})
 	}
 	return c.SendStatus(http.StatusNoContent)
 }
 
-func (h *Handler) GetSession(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
+func (h *UserHandler) GetSession(c *fiber.Ctx) error {
+	var input struct {
+		ID string `json:"id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.ID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing session id"})
 	}
-	session, err := h.Store.GetSession(c.Context(), id)
+	session, err := h.Store.GetSession(c.Context(), input.ID)
 	if err != nil {
 		logger.LogError("failed to get session", logger.ErrorField(err))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "session not found"})
@@ -223,14 +250,22 @@ func (h *Handler) GetSession(c *fiber.Ctx) error {
 	return c.JSON(session)
 }
 
-func (h *Handler) ListSessions(c *fiber.Ctx) error {
-	userID := c.Query("user_id")
-	if userID == "" {
+func (h *UserHandler) ListSessions(c *fiber.Ctx) error {
+	var input struct {
+		UserID   string `json:"user_id"`
+		Page     int    `json:"page"`
+		PageSize int    `json:"page_size"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
 	}
-	page := parseIntDefault(c.Query("page"), 1)
-	pageSize := parseIntDefault(c.Query("page_size"), 50)
-	sessions, err := h.Store.ListSessions(c.Context(), userID, page, pageSize)
+	if input.Page == 0 {
+		input.Page = 1
+	}
+	if input.PageSize == 0 {
+		input.PageSize = 50
+	}
+	sessions, err := h.Store.ListSessions(c.Context(), input.UserID, input.Page, input.PageSize)
 	if err != nil {
 		logger.LogError("failed to list sessions", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list sessions"})
@@ -238,48 +273,22 @@ func (h *Handler) ListSessions(c *fiber.Ctx) error {
 	return c.JSON(sessions)
 }
 
-// --- UserAuditLog Handlers ---
-func (h *Handler) CreateAuditLog(c *fiber.Ctx) error {
-	var log UserAuditLog
-	if err := c.BodyParser(&log); err != nil {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	log.CreatedAt = NowUTC()
-	created, err := h.Store.CreateAuditLog(c.Context(), log)
-	if err != nil {
-		logger.LogError("failed to create audit log", logger.ErrorField(err))
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create audit log"})
-	}
-	return c.Status(http.StatusCreated).JSON(created)
-}
-
-func (h *Handler) ListAuditLogs(c *fiber.Ctx) error {
-	userID := c.Query("user_id")
-	actorID := c.Query("actor_id")
-	action := c.Query("action")
-	page := parseIntDefault(c.Query("page"), 1)
-	pageSize := parseIntDefault(c.Query("page_size"), 50)
-	logs, err := h.Store.ListAuditLogs(c.Context(), userID, actorID, action, page, pageSize)
-	if err != nil {
-		logger.LogError("failed to list audit logs", logger.ErrorField(err))
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list audit logs"})
-	}
-	return c.JSON(logs)
-}
-
-// --- Helpers ---
-func parseIntDefault(val string, def int) int {
-	if val == "" {
-		return def
-	}
-	var i int
-	_, err := fmt.Sscanf(val, "%d", &i)
-	if err != nil || i < 1 {
-		return def
-	}
-	return i
-}
-
 func NowUTC() (t time.Time) {
 	return time.Now().UTC()
+}
+
+func (u *User) Validate() error {
+	if u.Email == "" {
+		return fiber.NewError(http.StatusUnprocessableEntity, "email must not be empty")
+	}
+	if len(u.Email) > 256 {
+		return fiber.NewError(http.StatusUnprocessableEntity, "email too long")
+	}
+	if u.Password == "" {
+		return fiber.NewError(http.StatusUnprocessableEntity, "password must not be empty")
+	}
+	if len(u.Password) < 8 {
+		return fiber.NewError(http.StatusUnprocessableEntity, "password too short")
+	}
+	return nil
 }

@@ -1,12 +1,35 @@
 package billing_management
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
+
+// BillingAdminHandler is a struct that contains all the services for the billing admin
+type BillingAdminHandler struct {
+	AccountService             AccountService
+	PlanService                PlanService
+	UsageService               UsageService
+	InvoiceService             InvoiceService
+	PaymentService             PaymentService
+	DiscountService            DiscountService
+	CouponService              CouponService
+	CreditService              CreditService
+	RefundService              RefundService
+	PaymentMethodService       PaymentMethodService
+	SubscriptionService        SubscriptionService
+	WebhookEventService        WebhookEventService
+	InvoiceAdjustmentService   InvoiceAdjustmentService
+	ManualAdjustmentService    ManualAdjustmentService
+	ManualRefundService        ManualRefundService
+	AccountActionService       AccountActionService
+	WebhookSubscriptionService WebhookSubscriptionService
+	TaxInfoService             TaxInfoService
+	Store                      *PostgresStore
+	AuditLogger                BillingAuditLogger // use interface for audit logging
+}
 
 // Account represents a billing account
 // All fields are required for SaaS billing and auditability
@@ -24,7 +47,7 @@ type Account struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-func (a *Account) Validate() error {
+func (a *Account) Validate() *Error {
 	if a.TenantID == "" {
 		return NewValidationError("tenant_id", "must not be empty")
 	}
@@ -48,7 +71,7 @@ type Plan struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-func (p *Plan) Validate() error {
+func (p *Plan) Validate() *Error {
 	if p.Name == "" {
 		return NewValidationError("name", "must not be empty")
 	}
@@ -67,7 +90,7 @@ type Usage struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-func (u *Usage) Validate() error {
+func (u *Usage) Validate() *Error {
 	if u.AccountID == "" {
 		return NewValidationError("account_id", "must not be empty")
 	}
@@ -93,7 +116,7 @@ type Invoice struct {
 	Fees      string    `json:"fees"`
 }
 
-func (i *Invoice) Validate() error {
+func (i *Invoice) Validate() *Error {
 	if i.AccountID == "" {
 		return NewValidationError("account_id", "must not be empty")
 	}
@@ -123,7 +146,7 @@ type Payment struct {
 	Metadata  string    `json:"metadata"`
 }
 
-func (p *Payment) Validate() error {
+func (p *Payment) Validate() *Error {
 	if p.InvoiceID == "" {
 		return NewValidationError("invoice_id", "must not be empty")
 	}
@@ -160,7 +183,7 @@ type Credit struct {
 	Metadata  string    `json:"metadata"`
 }
 
-func (c *Credit) Validate() error {
+func (c *Credit) Validate() *Error {
 	if c.AccountID == "" {
 		return NewValidationError("account_id", "must not be empty")
 	}
@@ -196,7 +219,7 @@ type Refund struct {
 	Metadata  string    `json:"metadata"`
 }
 
-func (r *Refund) Validate() error {
+func (r *Refund) Validate() *Error {
 	if r.PaymentID == "" {
 		return NewValidationError("payment_id", "must not be empty")
 	}
@@ -206,11 +229,8 @@ func (r *Refund) Validate() error {
 	if r.Currency == "" {
 		return NewValidationError("currency", "must not be empty")
 	}
-	if r.Status != "pending" && r.Status != "processed" && r.Status != "failed" && r.Status != "reversed" {
-		return NewValidationError("status", "must be 'pending', 'processed', 'failed', or 'reversed'")
-	}
-	if r.Reason == "" {
-		return NewValidationError("reason", "must not be empty")
+	if r.Status == "" {
+		return NewValidationError("status", "must not be empty")
 	}
 	return nil
 }
@@ -238,7 +258,7 @@ type Discount struct {
 	Metadata       string    `json:"metadata"`
 }
 
-func (d *Discount) Validate() error {
+func (d *Discount) Validate() *Error {
 	if d.Code == "" {
 		return NewValidationError("code", "must not be empty")
 	}
@@ -274,15 +294,15 @@ type Coupon struct {
 	Metadata       string    `json:"metadata"`
 }
 
-func (c *Coupon) Validate() error {
+func (c *Coupon) Validate() *Error {
 	if c.Code == "" {
 		return NewValidationError("code", "must not be empty")
 	}
 	if c.DiscountID == "" {
 		return NewValidationError("discount_id", "must not be empty")
 	}
-	if c.StartAt.After(c.EndAt) {
-		return NewValidationError("start_at", "must be before end_at")
+	if c.MaxRedemptions < 0 {
+		return NewValidationError("max_redemptions", "must be non-negative")
 	}
 	return nil
 }
@@ -302,15 +322,18 @@ type AuditLog struct {
 	Hash      string    `json:"hash"`
 }
 
-func (a *AuditLog) Validate() error {
+func (a *AuditLog) Validate() *Error {
 	if a.ActorID == "" {
 		return NewValidationError("actor_id", "must not be empty")
 	}
 	if a.Action == "" {
 		return NewValidationError("action", "must not be empty")
 	}
-	if a.Hash == "" {
-		return NewValidationError("hash", "must not be empty")
+	if a.Resource == "" {
+		return NewValidationError("resource", "must not be empty")
+	}
+	if a.TargetID == "" {
+		return NewValidationError("target_id", "must not be empty")
 	}
 	return nil
 }
@@ -331,7 +354,7 @@ type WebhookEvent struct {
 	Metadata    string     `json:"metadata"`
 }
 
-func (w *WebhookEvent) Validate() error {
+func (w *WebhookEvent) Validate() *Error {
 	if w.Provider == "" {
 		return NewValidationError("provider", "must not be empty")
 	}
@@ -340,12 +363,6 @@ func (w *WebhookEvent) Validate() error {
 	}
 	if w.Payload == "" {
 		return NewValidationError("payload", "must not be empty")
-	}
-	if w.Status != "received" && w.Status != "processed" && w.Status != "failed" {
-		return NewValidationError("status", "must be 'received', 'processed', or 'failed'")
-	}
-	if w.ReceivedAt.IsZero() {
-		return NewValidationError("received_at", "must not be zero")
 	}
 	return nil
 }
@@ -366,21 +383,18 @@ type InvoiceAdjustment struct {
 	Metadata  string    `json:"metadata"`
 }
 
-func (a *InvoiceAdjustment) Validate() error {
+func (a *InvoiceAdjustment) Validate() *Error {
 	if a.InvoiceID == "" {
 		return NewValidationError("invoice_id", "must not be empty")
 	}
-	if a.Type != "discount" && a.Type != "credit" && a.Type != "manual" {
-		return NewValidationError("type", "must be 'discount', 'credit', or 'manual'")
+	if a.Type == "" {
+		return NewValidationError("type", "must not be empty")
 	}
 	if a.Amount == 0 {
 		return NewValidationError("amount", "must not be zero")
 	}
 	if a.Currency == "" {
 		return NewValidationError("currency", "must not be empty")
-	}
-	if a.Reason == "" {
-		return NewValidationError("reason", "must not be empty")
 	}
 	return nil
 }
@@ -413,7 +427,7 @@ type PaymentMethod struct {
 	Metadata      string    `json:"metadata"`
 }
 
-func (p *PaymentMethod) Validate() error {
+func (p *PaymentMethod) Validate() *Error {
 	if p.AccountID == "" {
 		return NewValidationError("account_id", "must not be empty")
 	}
@@ -464,33 +478,17 @@ type Subscription struct {
 	Metadata           string     `json:"metadata"`
 }
 
-func (s *Subscription) Validate() error {
+func (s *Subscription) Validate() *Error {
 	if s.AccountID == "" {
 		return NewValidationError("account_id", "must not be empty")
 	}
 	if s.PlanID == "" {
 		return NewValidationError("plan_id", "must not be empty")
 	}
-	if s.Status != "active" && s.Status != "trialing" && s.Status != "canceled" && s.Status != "grace" && s.Status != "dunning" && s.Status != "past_due" && s.Status != "scheduled" && s.Status != "expired" {
-		return NewValidationError("status", "must be a valid subscription status")
-	}
-	if s.CurrentPeriodStart.IsZero() || s.CurrentPeriodEnd.IsZero() {
-		return NewValidationError("current_period", "must not be zero")
+	if s.Status == "" {
+		return NewValidationError("status", "must not be empty")
 	}
 	return nil
-}
-
-type ValidationError struct {
-	Field   string
-	Message string
-}
-
-func (e *ValidationError) Error() string {
-	return fmt.Sprintf("validation error on field '%s': %s", e.Field, e.Message)
-}
-
-func NewValidationError(field, message string) error {
-	return &ValidationError{Field: field, Message: message}
 }
 
 // Add tenant-aware fields, API metering, audit, currency, region, localization, webhooks, SLA, rate limiting, plugin types

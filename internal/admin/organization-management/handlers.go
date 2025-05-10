@@ -2,26 +2,13 @@ package organization_management
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-	user_management "github.com/subinc/subinc-backend/internal/admin/user-management"
-	project_management "github.com/subinc/subinc-backend/internal/admin/project-management"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
-
-type OrganizationAdminHandler struct {
-	OrganizationService OrganizationService
-	OrgInviteService    OrgInviteService
-	OrgSettingsService  OrgSettingsService
-	OrgAuditLogger      OrgAuditLogger
-	UserService         user_management.UserService    // optional, may be nil
-	RBACService         rbac_management.RBACService    // optional, may be nil
-	ProjectService      project_management.ProjectService // optional, may be nil
-	Store               *PostgresStore
-}
 
 // Helper to serialize details to string for audit logs
 func auditDetails(v interface{}) string {
@@ -48,7 +35,20 @@ func getActorID(c *fiber.Ctx) string {
 	return ""
 }
 
-func (h *OrganizationAdminHandler) CreateOrganization(c *fiber.Ctx) error {
+func (o *Organization) Validate() error {
+	if o.Name == "" {
+		return errors.New("organization name must not be empty")
+	}
+	if len(o.Name) > 128 {
+		return errors.New("organization name too long")
+	}
+	if o.OwnerID == "" {
+		return errors.New("owner_id must not be empty")
+	}
+	return nil
+}
+
+func (h *OrganizationHandler) CreateOrganization(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "organization", "create")
 		if err != nil {
@@ -63,6 +63,10 @@ func (h *OrganizationAdminHandler) CreateOrganization(c *fiber.Ctx) error {
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateOrganization: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if err := input.Validate(); err != nil {
+		logger.LogError("CreateOrganization: validation failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	org, err := h.OrganizationService.CreateOrganization(c.Context(), input)
 	if err != nil {
@@ -82,7 +86,7 @@ func (h *OrganizationAdminHandler) CreateOrganization(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(org)
 }
 
-func (h *OrganizationAdminHandler) UpdateOrganization(c *fiber.Ctx) error {
+func (h *OrganizationHandler) UpdateOrganization(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "organization", "update")
 		if err != nil {
@@ -102,6 +106,10 @@ func (h *OrganizationAdminHandler) UpdateOrganization(c *fiber.Ctx) error {
 		logger.LogError("UpdateOrganization: id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
+	if err := input.Validate(); err != nil {
+		logger.LogError("UpdateOrganization: validation failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
 	org, err := h.OrganizationService.UpdateOrganization(c.Context(), input)
 	if err != nil {
 		logger.LogError("UpdateOrganization: failed", logger.ErrorField(err), logger.Any("input", input))
@@ -120,7 +128,7 @@ func (h *OrganizationAdminHandler) UpdateOrganization(c *fiber.Ctx) error {
 	return c.JSON(org)
 }
 
-func (h *OrganizationAdminHandler) DeleteOrganization(c *fiber.Ctx) error {
+func (h *OrganizationHandler) DeleteOrganization(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "organization", "delete")
 		if err != nil {
@@ -155,7 +163,7 @@ func (h *OrganizationAdminHandler) DeleteOrganization(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *OrganizationAdminHandler) GetOrganization(c *fiber.Ctx) error {
+func (h *OrganizationHandler) GetOrganization(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "organization", "get")
 		if err != nil {
@@ -191,7 +199,7 @@ func (h *OrganizationAdminHandler) GetOrganization(c *fiber.Ctx) error {
 	return c.JSON(org)
 }
 
-func (h *OrganizationAdminHandler) ListOrganizations(c *fiber.Ctx) error {
+func (h *OrganizationHandler) ListOrganizations(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "organization", "list")
 		if err != nil {
@@ -235,7 +243,20 @@ func (h *OrganizationAdminHandler) ListOrganizations(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"organizations": orgs, "page": input.Page, "page_size": input.PageSize})
 }
 
-func (h *OrganizationAdminHandler) CreateInvite(c *fiber.Ctx) error {
+func (i *OrgInvite) Validate() error {
+	if i.OrgID == "" {
+		return errors.New("org_id must not be empty")
+	}
+	if i.Email == "" {
+		return errors.New("email must not be empty")
+	}
+	if i.Role == "" {
+		return errors.New("role must not be empty")
+	}
+	return nil
+}
+
+func (h *OrganizationHandler) CreateInvite(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "organization", "invite")
 		if err != nil {
@@ -251,9 +272,9 @@ func (h *OrganizationAdminHandler) CreateInvite(c *fiber.Ctx) error {
 		logger.LogError("CreateInvite: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	if input.OrgID == "" || input.Email == "" || input.Role == "" {
-		logger.LogError("CreateInvite: missing required fields", logger.Any("input", input))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org_id, email, and role required"})
+	if err := input.Validate(); err != nil {
+		logger.LogError("CreateInvite: validation failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	invite, err := h.OrgInviteService.CreateInvite(c.Context(), input)
 	if err != nil {
@@ -273,7 +294,7 @@ func (h *OrganizationAdminHandler) CreateInvite(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(invite)
 }
 
-func (h *OrganizationAdminHandler) AcceptInvite(c *fiber.Ctx) error {
+func (h *OrganizationHandler) AcceptInvite(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "organization", "invite")
 		if err != nil {
@@ -309,7 +330,7 @@ func (h *OrganizationAdminHandler) AcceptInvite(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *OrganizationAdminHandler) RevokeInvite(c *fiber.Ctx) error {
+func (h *OrganizationHandler) RevokeInvite(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "organization", "invite")
 		if err != nil {
@@ -344,7 +365,7 @@ func (h *OrganizationAdminHandler) RevokeInvite(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *OrganizationAdminHandler) ListInvites(c *fiber.Ctx) error {
+func (h *OrganizationHandler) ListInvites(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "organization", "invite")
 		if err != nil {
@@ -388,7 +409,7 @@ func (h *OrganizationAdminHandler) ListInvites(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"invites": invites, "page": input.Page, "page_size": input.PageSize})
 }
 
-func (h *OrganizationAdminHandler) GetSettings(c *fiber.Ctx) error {
+func (h *OrganizationHandler) GetSettings(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "organization", "get")
 		if err != nil {
@@ -424,7 +445,7 @@ func (h *OrganizationAdminHandler) GetSettings(c *fiber.Ctx) error {
 	return c.JSON(settings)
 }
 
-func (h *OrganizationAdminHandler) UpdateSettings(c *fiber.Ctx) error {
+func (h *OrganizationHandler) UpdateSettings(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "organization", "update")
 		if err != nil {

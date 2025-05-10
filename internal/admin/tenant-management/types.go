@@ -1,6 +1,14 @@
 package tenant_management
 
-import "time"
+import (
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
+	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	user_management "github.com/subinc/subinc-backend/internal/admin/user-management"
+	"github.com/subinc/subinc-backend/internal/pkg/logger"
+)
 
 // Tenant represents a SaaS tenant/org
 // All fields are required for production
@@ -28,4 +36,22 @@ type TenantFilter struct {
 	SortDir string
 	Limit   int
 	Offset  int
+}
+
+type TenantAdminHandler struct {
+	// TenantStore is optional for deployments that do not require tenant management.
+	TenantStore *TenantStore // optional
+	// TenantSettingsStore is optional for deployments that do not require tenant settings management.
+	TenantSettingsStore *TenantSettingsStore // optional
+	// AuditLogger is optional for deployments that do not require audit logging.
+	AuditLogger security_management.AuditLogger // optional
+	// RBACHandler is optional and only required if tenant management needs to delegate to RBAC.
+	RBACHandler *rbac_management.RBACHandler // optional
+	// UserHandler is optional and only required if tenant management needs to delegate to user management.
+	UserHandler *user_management.UserHandler // optional
+}
+
+type TenantSettingsStore struct {
+	DB  *pgxpool.Pool
+	log *logger.Logger
 }

@@ -11,7 +11,7 @@ alwaysApply: true
 
 ## Coding Rules (Strict)
 
-- **No placeholders, no dummy code, no mixed prod/non-prod content.**
+- **No placeholders, no dummy code, no mixed prod/non-prod content. Don't chat to me**
 - **All code must be linter-clean, type-safe, and pass static analysis.**
 - **No commented-out code, no TODOs, no "fix later" notes.**
 - **No hardcoded secrets, no insecure defaults, no panics.**

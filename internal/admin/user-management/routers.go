@@ -2,31 +2,28 @@ package user_management
 
 import "github.com/gofiber/fiber/v2"
 
-func RegisterRoutes(r fiber.Router, h *Handler) {
+func RegisterRoutes(r fiber.Router, h *UserHandler) {
 	// User routes
-	r.Post("/users", h.CreateUser)
-	r.Put("/users/:id", h.UpdateUser)
-	r.Delete("/users/:id", h.DeleteUser)
-	r.Get("/users/:id", h.GetUser)
-	r.Get("/users/by-email", h.GetUserByEmail)
-	r.Get("/users", h.ListUsers)
+	r.Post("/users/create", h.CreateUser)
+	r.Post("/users/update", h.UpdateUser)
+	r.Post("/users/delete", h.DeleteUser)
+	r.Post("/users/get", h.GetUser)
+	r.Post("/users/get-by-email", h.GetUserByEmail)
+	r.Post("/users/list", h.ListUsers)
 
 	// UserProfile routes
-	r.Post("/profiles", h.CreateProfile)
-	r.Put("/profiles/:user_id", h.UpdateProfile)
-	r.Get("/profiles/:user_id", h.GetProfile)
+	r.Post("/profiles/create", h.CreateProfile)
+	r.Post("/profiles/update", h.UpdateProfile)
+	r.Post("/profiles/get", h.GetProfile)
 
 	// UserSettings routes
-	r.Get("/settings/:user_id", h.GetSettings)
-	r.Put("/settings/:user_id", h.UpdateSettings)
+	r.Post("/settings/get", h.GetSettings)
+	r.Post("/settings/update", h.UpdateSettings)
 
 	// UserSession routes
-	r.Post("/sessions", h.CreateSession)
-	r.Delete("/sessions/:id", h.DeleteSession)
-	r.Get("/sessions/:id", h.GetSession)
-	r.Get("/sessions", h.ListSessions)
+	r.Post("/sessions/create", h.CreateSession)
+	r.Post("/sessions/delete", h.DeleteSession)
+	r.Post("/sessions/get", h.GetSession)
+	r.Post("/sessions/list", h.ListSessions)
 
-	// UserAuditLog routes
-	r.Post("/audit-logs", h.CreateAuditLog)
-	r.Get("/audit-logs", h.ListAuditLogs)
 }

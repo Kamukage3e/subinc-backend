@@ -3,15 +3,28 @@ package project_management
 import (
 	"time"
 
+	"errors"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
+func (p *Project) Validate() error {
+	if p.Name == "" {
+		return errors.New("project name must not be empty")
+	}
+	if len(p.Name) > 128 {
+		return errors.New("project name too long")
+	}
+	if p.OrgID == "" {
+		return errors.New("org_id must not be empty")
+	}
+	return nil
+}
 
-
-func (h *ProjectAdminHandler) CreateProject(c *fiber.Ctx) error {
+func (h *ProjectHandler) CreateProject(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "create")
 		if err != nil || !permitted {
@@ -23,6 +36,10 @@ func (h *ProjectAdminHandler) CreateProject(c *fiber.Ctx) error {
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateProject: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if err := input.Validate(); err != nil {
+		logger.LogError("CreateProject: validation failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	proj, err := h.ProjectService.CreateProject(c.Context(), input)
 	if err != nil {
@@ -42,7 +59,7 @@ func (h *ProjectAdminHandler) CreateProject(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(proj)
 }
 
-func (h *ProjectAdminHandler) UpdateProject(c *fiber.Ctx) error {
+func (h *ProjectHandler) UpdateProject(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "update")
 		if err != nil || !permitted {
@@ -54,6 +71,10 @@ func (h *ProjectAdminHandler) UpdateProject(c *fiber.Ctx) error {
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateProject: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if err := input.Validate(); err != nil {
+		logger.LogError("UpdateProject: validation failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	proj, err := h.ProjectService.UpdateProject(c.Context(), input)
 	if err != nil {
@@ -73,7 +94,7 @@ func (h *ProjectAdminHandler) UpdateProject(c *fiber.Ctx) error {
 	return c.JSON(proj)
 }
 
-func (h *ProjectAdminHandler) DeleteProject(c *fiber.Ctx) error {
+func (h *ProjectHandler) DeleteProject(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "delete")
 		if err != nil || !permitted {
@@ -105,7 +126,7 @@ func (h *ProjectAdminHandler) DeleteProject(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *ProjectAdminHandler) GetProject(c *fiber.Ctx) error {
+func (h *ProjectHandler) GetProject(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "read")
 		if err != nil || !permitted {
@@ -128,7 +149,7 @@ func (h *ProjectAdminHandler) GetProject(c *fiber.Ctx) error {
 	return c.JSON(proj)
 }
 
-func (h *ProjectAdminHandler) ListProjects(c *fiber.Ctx) error {
+func (h *ProjectHandler) ListProjects(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "list")
 		if err != nil || !permitted {
@@ -159,7 +180,20 @@ func (h *ProjectAdminHandler) ListProjects(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"projects": projs, "page": input.Page, "page_size": input.PageSize})
 }
 
-func (h *ProjectAdminHandler) CreateInvite(c *fiber.Ctx) error {
+func (i *ProjectInvite) Validate() error {
+	if i.ProjectID == "" {
+		return errors.New("project_id must not be empty")
+	}
+	if i.Email == "" {
+		return errors.New("email must not be empty")
+	}
+	if i.Role == "" {
+		return errors.New("role must not be empty")
+	}
+	return nil
+}
+
+func (h *ProjectHandler) CreateInvite(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "invite")
 		if err != nil || !permitted {
@@ -172,9 +206,9 @@ func (h *ProjectAdminHandler) CreateInvite(c *fiber.Ctx) error {
 		logger.LogError("CreateInvite: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	if input.ProjectID == "" || input.Email == "" || input.Role == "" {
-		logger.LogError("CreateInvite: missing required fields", logger.Any("input", input))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project_id, email, and role required"})
+	if err := input.Validate(); err != nil {
+		logger.LogError("CreateInvite: validation failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	invite, err := h.ProjectInviteService.CreateInvite(c.Context(), input)
 	if err != nil {
@@ -194,7 +228,7 @@ func (h *ProjectAdminHandler) CreateInvite(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(invite)
 }
 
-func (h *ProjectAdminHandler) AcceptInvite(c *fiber.Ctx) error {
+func (h *ProjectHandler) AcceptInvite(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "accept_invite")
 		if err != nil || !permitted {
@@ -226,7 +260,7 @@ func (h *ProjectAdminHandler) AcceptInvite(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *ProjectAdminHandler) RevokeInvite(c *fiber.Ctx) error {
+func (h *ProjectHandler) RevokeInvite(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "revoke_invite")
 		if err != nil || !permitted {
@@ -258,7 +292,7 @@ func (h *ProjectAdminHandler) RevokeInvite(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *ProjectAdminHandler) ListInvites(c *fiber.Ctx) error {
+func (h *ProjectHandler) ListInvites(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "list_invites")
 		if err != nil || !permitted {
@@ -289,7 +323,7 @@ func (h *ProjectAdminHandler) ListInvites(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"invites": invites, "page": input.Page, "page_size": input.PageSize})
 }
 
-func (h *ProjectAdminHandler) GetSettings(c *fiber.Ctx) error {
+func (h *ProjectHandler) GetSettings(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "read")
 		if err != nil || !permitted {
@@ -312,7 +346,7 @@ func (h *ProjectAdminHandler) GetSettings(c *fiber.Ctx) error {
 	return c.JSON(settings)
 }
 
-func (h *ProjectAdminHandler) UpdateSettings(c *fiber.Ctx) error {
+func (h *ProjectHandler) UpdateSettings(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "update")
 		if err != nil || !permitted {

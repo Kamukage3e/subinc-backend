@@ -22,11 +22,64 @@ func getActorID(c *fiber.Ctx) string {
 	return ""
 }
 
-func (h *RBACAdminHandler) CreateRole(c *fiber.Ctx) error {
+func (r *Role) Validate() error {
+	if r.TenantID == "" {
+		return fiber.NewError(fiber.StatusUnprocessableEntity, "tenant_id must not be empty")
+	}
+	if r.Name == "" {
+		return fiber.NewError(fiber.StatusUnprocessableEntity, "role name must not be empty")
+	}
+	if len(r.Name) > 128 {
+		return fiber.NewError(fiber.StatusUnprocessableEntity, "role name too long")
+	}
+	return nil
+}
+
+func (p *Permission) Validate() error {
+	if p.Resource == "" {
+		return fiber.NewError(fiber.StatusUnprocessableEntity, "resource must not be empty")
+	}
+	if p.Action == "" {
+		return fiber.NewError(fiber.StatusUnprocessableEntity, "action must not be empty")
+	}
+	return nil
+}
+
+func (b *RoleBinding) Validate() error {
+	if b.TenantID == "" {
+		return fiber.NewError(fiber.StatusUnprocessableEntity, "tenant_id must not be empty")
+	}
+	if b.RoleID == "" {
+		return fiber.NewError(fiber.StatusUnprocessableEntity, "role_id must not be empty")
+	}
+	if b.UserID == "" {
+		return fiber.NewError(fiber.StatusUnprocessableEntity, "user_id must not be empty")
+	}
+	return nil
+}
+
+func (p *Policy) Validate() error {
+	if p.TenantID == "" {
+		return fiber.NewError(fiber.StatusUnprocessableEntity, "tenant_id must not be empty")
+	}
+	if p.Name == "" {
+		return fiber.NewError(fiber.StatusUnprocessableEntity, "policy name must not be empty")
+	}
+	if len(p.Name) > 128 {
+		return fiber.NewError(fiber.StatusUnprocessableEntity, "policy name too long")
+	}
+	return nil
+}
+
+func (h *RBACHandler) CreateRole(c *fiber.Ctx) error {
 	var input Role
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateRole: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if err := input.Validate(); err != nil {
+		logger.LogError("CreateRole: validation failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	role, err := h.RoleService.CreateRole(c.Context(), input)
 	if err != nil {
@@ -46,7 +99,7 @@ func (h *RBACAdminHandler) CreateRole(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(role)
 }
 
-func (h *RBACAdminHandler) UpdateRole(c *fiber.Ctx) error {
+func (h *RBACHandler) UpdateRole(c *fiber.Ctx) error {
 	var input Role
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateRole: invalid input", logger.ErrorField(err))
@@ -73,7 +126,7 @@ func (h *RBACAdminHandler) UpdateRole(c *fiber.Ctx) error {
 	return c.JSON(role)
 }
 
-func (h *RBACAdminHandler) DeleteRole(c *fiber.Ctx) error {
+func (h *RBACHandler) DeleteRole(c *fiber.Ctx) error {
 	var req IDTenantRequest
 	if err := c.BodyParser(&req); err != nil {
 		logger.LogError("DeleteRole: invalid input", logger.ErrorField(err))
@@ -100,7 +153,7 @@ func (h *RBACAdminHandler) DeleteRole(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *RBACAdminHandler) GetRole(c *fiber.Ctx) error {
+func (h *RBACHandler) GetRole(c *fiber.Ctx) error {
 	var req IDTenantRequest
 	if err := c.BodyParser(&req); err != nil {
 		logger.LogError("GetRole: invalid input", logger.ErrorField(err))
@@ -128,7 +181,7 @@ func (h *RBACAdminHandler) GetRole(c *fiber.Ctx) error {
 	return c.JSON(role)
 }
 
-func (h *RBACAdminHandler) ListRoles(c *fiber.Ctx) error {
+func (h *RBACHandler) ListRoles(c *fiber.Ctx) error {
 	var req ListRequest
 	if err := c.BodyParser(&req); err != nil {
 		logger.LogError("ListRoles: invalid input", logger.ErrorField(err))
@@ -158,11 +211,15 @@ func (h *RBACAdminHandler) ListRoles(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"roles": roles, "page": req.Page, "page_size": req.PageSize})
 }
 
-func (h *RBACAdminHandler) CreatePermission(c *fiber.Ctx) error {
+func (h *RBACHandler) CreatePermission(c *fiber.Ctx) error {
 	var input Permission
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreatePermission: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if err := input.Validate(); err != nil {
+		logger.LogError("CreatePermission: validation failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	perm, err := h.PermissionService.CreatePermission(c.Context(), input)
 	if err != nil {
@@ -182,7 +239,7 @@ func (h *RBACAdminHandler) CreatePermission(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(perm)
 }
 
-func (h *RBACAdminHandler) UpdatePermission(c *fiber.Ctx) error {
+func (h *RBACHandler) UpdatePermission(c *fiber.Ctx) error {
 	var input Permission
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdatePermission: invalid input", logger.ErrorField(err))
@@ -209,7 +266,7 @@ func (h *RBACAdminHandler) UpdatePermission(c *fiber.Ctx) error {
 	return c.JSON(perm)
 }
 
-func (h *RBACAdminHandler) DeletePermission(c *fiber.Ctx) error {
+func (h *RBACHandler) DeletePermission(c *fiber.Ctx) error {
 	var req IDRequest
 	if err := c.BodyParser(&req); err != nil {
 		logger.LogError("DeletePermission: invalid input", logger.ErrorField(err))
@@ -236,7 +293,7 @@ func (h *RBACAdminHandler) DeletePermission(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *RBACAdminHandler) GetPermission(c *fiber.Ctx) error {
+func (h *RBACHandler) GetPermission(c *fiber.Ctx) error {
 	var req IDRequest
 	if err := c.BodyParser(&req); err != nil {
 		logger.LogError("GetPermission: invalid input", logger.ErrorField(err))
@@ -264,7 +321,7 @@ func (h *RBACAdminHandler) GetPermission(c *fiber.Ctx) error {
 	return c.JSON(perm)
 }
 
-func (h *RBACAdminHandler) ListPermissions(c *fiber.Ctx) error {
+func (h *RBACHandler) ListPermissions(c *fiber.Ctx) error {
 	var req ListPermissionRequest
 	if err := c.BodyParser(&req); err != nil {
 		logger.LogError("ListPermissions: invalid input", logger.ErrorField(err))
@@ -294,11 +351,15 @@ func (h *RBACAdminHandler) ListPermissions(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"permissions": perms, "page": req.Page, "page_size": req.PageSize})
 }
 
-func (h *RBACAdminHandler) CreateRoleBinding(c *fiber.Ctx) error {
+func (h *RBACHandler) CreateRoleBinding(c *fiber.Ctx) error {
 	var input RoleBinding
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateRoleBinding: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if err := input.Validate(); err != nil {
+		logger.LogError("CreateRoleBinding: validation failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	binding, err := h.RoleBindingService.CreateRoleBinding(c.Context(), input)
 	if err != nil {
@@ -318,7 +379,7 @@ func (h *RBACAdminHandler) CreateRoleBinding(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(binding)
 }
 
-func (h *RBACAdminHandler) DeleteRoleBinding(c *fiber.Ctx) error {
+func (h *RBACHandler) DeleteRoleBinding(c *fiber.Ctx) error {
 	var req IDRequest
 	if err := c.BodyParser(&req); err != nil {
 		logger.LogError("DeleteRoleBinding: invalid input", logger.ErrorField(err))
@@ -345,7 +406,7 @@ func (h *RBACAdminHandler) DeleteRoleBinding(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *RBACAdminHandler) ListRoleBindings(c *fiber.Ctx) error {
+func (h *RBACHandler) ListRoleBindings(c *fiber.Ctx) error {
 	var req ListRoleBindingRequest
 	if err := c.BodyParser(&req); err != nil {
 		logger.LogError("ListRoleBindings: invalid input", logger.ErrorField(err))
@@ -375,11 +436,15 @@ func (h *RBACAdminHandler) ListRoleBindings(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"role_bindings": bindings, "page": req.Page, "page_size": req.PageSize})
 }
 
-func (h *RBACAdminHandler) CreatePolicy(c *fiber.Ctx) error {
+func (h *RBACHandler) CreatePolicy(c *fiber.Ctx) error {
 	var input Policy
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreatePolicy: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if err := input.Validate(); err != nil {
+		logger.LogError("CreatePolicy: validation failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	policy, err := h.PolicyService.CreatePolicy(c.Context(), input)
 	if err != nil {
@@ -399,7 +464,7 @@ func (h *RBACAdminHandler) CreatePolicy(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(policy)
 }
 
-func (h *RBACAdminHandler) UpdatePolicy(c *fiber.Ctx) error {
+func (h *RBACHandler) UpdatePolicy(c *fiber.Ctx) error {
 	var input Policy
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdatePolicy: invalid input", logger.ErrorField(err))
@@ -426,7 +491,7 @@ func (h *RBACAdminHandler) UpdatePolicy(c *fiber.Ctx) error {
 	return c.JSON(policy)
 }
 
-func (h *RBACAdminHandler) DeletePolicy(c *fiber.Ctx) error {
+func (h *RBACHandler) DeletePolicy(c *fiber.Ctx) error {
 	var req IDRequest
 	if err := c.BodyParser(&req); err != nil {
 		logger.LogError("DeletePolicy: invalid input", logger.ErrorField(err))
@@ -453,7 +518,7 @@ func (h *RBACAdminHandler) DeletePolicy(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *RBACAdminHandler) GetPolicy(c *fiber.Ctx) error {
+func (h *RBACHandler) GetPolicy(c *fiber.Ctx) error {
 	var req IDRequest
 	if err := c.BodyParser(&req); err != nil {
 		logger.LogError("GetPolicy: invalid input", logger.ErrorField(err))
@@ -481,7 +546,7 @@ func (h *RBACAdminHandler) GetPolicy(c *fiber.Ctx) error {
 	return c.JSON(policy)
 }
 
-func (h *RBACAdminHandler) ListPolicies(c *fiber.Ctx) error {
+func (h *RBACHandler) ListPolicies(c *fiber.Ctx) error {
 	var req ListRequest
 	if err := c.BodyParser(&req); err != nil {
 		logger.LogError("ListPolicies: invalid input", logger.ErrorField(err))
@@ -511,7 +576,7 @@ func (h *RBACAdminHandler) ListPolicies(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"policies": policies, "page": req.Page, "page_size": req.PageSize})
 }
 
-func (h *RBACAdminHandler) CreateAPIPermission(c *fiber.Ctx) error {
+func (h *RBACHandler) CreateAPIPermission(c *fiber.Ctx) error {
 	var input APIPermission
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateAPIPermission: invalid input", logger.ErrorField(err))
@@ -525,7 +590,7 @@ func (h *RBACAdminHandler) CreateAPIPermission(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(perm)
 }
 
-func (h *RBACAdminHandler) DeleteAPIPermission(c *fiber.Ctx) error {
+func (h *RBACHandler) DeleteAPIPermission(c *fiber.Ctx) error {
 	var req IDRequest
 	if err := c.BodyParser(&req); err != nil {
 		logger.LogError("DeleteAPIPermission: invalid input", logger.ErrorField(err))
@@ -542,7 +607,7 @@ func (h *RBACAdminHandler) DeleteAPIPermission(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *RBACAdminHandler) ListAPIPermissions(c *fiber.Ctx) error {
+func (h *RBACHandler) ListAPIPermissions(c *fiber.Ctx) error {
 	var req ListAPIPermissionRequest
 	if err := c.BodyParser(&req); err != nil {
 		logger.LogError("ListAPIPermissions: invalid input", logger.ErrorField(err))
@@ -572,7 +637,7 @@ func (h *RBACAdminHandler) ListAPIPermissions(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"api_permissions": perms, "page": req.Page, "page_size": req.PageSize})
 }
 
-func (h *RBACAdminHandler) CreateResource(c *fiber.Ctx) error {
+func (h *RBACHandler) CreateResource(c *fiber.Ctx) error {
 	var input Resource
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateResource: invalid input", logger.ErrorField(err))
@@ -586,7 +651,7 @@ func (h *RBACAdminHandler) CreateResource(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(res)
 }
 
-func (h *RBACAdminHandler) UpdateResource(c *fiber.Ctx) error {
+func (h *RBACHandler) UpdateResource(c *fiber.Ctx) error {
 	var input Resource
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateResource: invalid input", logger.ErrorField(err))
@@ -613,7 +678,7 @@ func (h *RBACAdminHandler) UpdateResource(c *fiber.Ctx) error {
 	return c.JSON(res)
 }
 
-func (h *RBACAdminHandler) DeleteResource(c *fiber.Ctx) error {
+func (h *RBACHandler) DeleteResource(c *fiber.Ctx) error {
 	var req IDRequest
 	if err := c.BodyParser(&req); err != nil {
 		logger.LogError("DeleteResource: invalid input", logger.ErrorField(err))
@@ -630,7 +695,7 @@ func (h *RBACAdminHandler) DeleteResource(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *RBACAdminHandler) GetResource(c *fiber.Ctx) error {
+func (h *RBACHandler) GetResource(c *fiber.Ctx) error {
 	var req IDRequest
 	if err := c.BodyParser(&req); err != nil {
 		logger.LogError("GetResource: invalid input", logger.ErrorField(err))
@@ -658,7 +723,7 @@ func (h *RBACAdminHandler) GetResource(c *fiber.Ctx) error {
 	return c.JSON(res)
 }
 
-func (h *RBACAdminHandler) ListResources(c *fiber.Ctx) error {
+func (h *RBACHandler) ListResources(c *fiber.Ctx) error {
 	var req ListResourceRequest
 	if err := c.BodyParser(&req); err != nil {
 		logger.LogError("ListResources: invalid input", logger.ErrorField(err))

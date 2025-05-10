@@ -14,7 +14,7 @@ type PostgresStore struct {
 	AuditLogger security_management.AuditLogger
 }
 
-type RBACAdminHandler struct {
+type RBACHandler struct {
 	RoleService          RoleService
 	PermissionService    PermissionService
 	RoleBindingService   RoleBindingService

@@ -1,7 +1,6 @@
 package security_management
 
 import (
-
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -9,10 +8,9 @@ import (
 )
 
 type PostgresStore struct {
-	db  *pgxpool.Pool
+	db     *pgxpool.Pool
 	logger *logger.Logger
 }
-
 
 type SecurityAdminHandler struct {
 	SecurityEventService    SecurityEventService

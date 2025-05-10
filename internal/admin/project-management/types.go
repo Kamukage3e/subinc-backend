@@ -9,7 +9,7 @@ import (
 	user_management "github.com/subinc/subinc-backend/internal/admin/user-management"
 )
 
-type ProjectAdminHandler struct {
+type ProjectHandler struct {
 	ProjectService         ProjectService
 	ProjectMemberService   ProjectMemberService
 	ProjectInviteService   ProjectInviteService

@@ -4,7 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACAdminHandler) {
+func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler) {
 	rbac := router.Group("/rbac-management")
 
 	rbac.Post("/roles/create", handler.CreateRole)

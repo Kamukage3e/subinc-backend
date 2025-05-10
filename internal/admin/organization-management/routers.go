@@ -4,7 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func RegisterAdminOrganizationRoutes(router fiber.Router, handler *OrganizationAdminHandler) {
+func RegisterAdminOrganizationRoutes(router fiber.Router, handler *OrganizationHandler) {
 	org := router.Group("/organization-management")
 
 	org.Post("/organizations/create", handler.CreateOrganization)

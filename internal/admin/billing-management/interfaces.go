@@ -41,6 +41,7 @@ type PaymentService interface {
 	UpdatePayment(input Payment) (Payment, error)
 	GetPayment(id string) (Payment, error)
 	ListPayments(invoiceID string, page, pageSize int) ([]Payment, error)
+	GetPaymentByIdempotencyKey(idempotencyKey string) (Payment, error)
 }
 
 type DiscountService interface {
@@ -135,8 +136,6 @@ type ManualRefundService interface {
 type AccountActionService interface {
 	PerformAccountAction(ctx context.Context, accountID, action string, params map[string]interface{}) (map[string]interface{}, error)
 }
-
-// var _ AccountActionService = (*PostgresStore)(nil) // TODO: pass ctx
 
 type WebhookSubscriptionService interface {
 	CreateWebhookSubscription(ctx context.Context, sub WebhookSubscription) (WebhookSubscription, error)
