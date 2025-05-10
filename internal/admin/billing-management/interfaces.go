@@ -2,7 +2,6 @@ package billing_management
 
 import (
 	"context"
-	"time"
 
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 )
@@ -42,12 +41,6 @@ type PaymentService interface {
 	UpdatePayment(input Payment) (Payment, error)
 	GetPayment(id string) (Payment, error)
 	ListPayments(invoiceID string, page, pageSize int) ([]Payment, error)
-}
-
-type AuditLogService interface {
-	CreateAuditLog(input AuditLog) (AuditLog, error)
-	ListAuditLogs(accountID, action string, page, pageSize int) ([]AuditLog, error)
-	SearchAuditLogs(accountID, action, startTime, endTime string, page, pageSize int) ([]AuditLog, error)
 }
 
 type DiscountService interface {
@@ -140,39 +133,10 @@ type ManualRefundService interface {
 // AccountActionService handles account-level actions (e.g., suspend, activate, custom ops)
 // All methods must be robust, user-friendly, and never leak sensitive info
 type AccountActionService interface {
-	PerformAccountAction(accountID, action string, params map[string]interface{}) (map[string]interface{}, error)
+	PerformAccountAction(ctx context.Context, accountID, action string, params map[string]interface{}) (map[string]interface{}, error)
 }
 
-var _ AccountActionService = (*PostgresStore)(nil)
-
-type APIUsageService interface {
-	CreateAPIUsage(ctx context.Context, usage APIUsage) (APIUsage, error)
-	ListAPIUsage(ctx context.Context, tenantID, apiKeyID, endpoint string, periodStart, periodEnd time.Time, page, pageSize int) ([]APIUsage, error)
-}
-
-type APIKeyService interface {
-	CreateAPIKey(ctx context.Context, key APIKey) (APIKey, error)
-	RotateAPIKey(ctx context.Context, apiKeyID, actorID string) (APIKeyRotation, error)
-	RevokeAPIKey(ctx context.Context, apiKeyID string) error
-	ListAPIKeys(ctx context.Context, tenantID string, page, pageSize int) ([]APIKey, error)
-}
-
-type RateLimitService interface {
-	SetRateLimit(ctx context.Context, rl RateLimit) (RateLimit, error)
-	GetRateLimit(ctx context.Context, tenantID, apiKeyID string) (RateLimit, error)
-}
-
-type SLAService interface {
-	SetSLA(ctx context.Context, sla SLA) (SLA, error)
-	GetSLA(ctx context.Context, tenantID string) (SLA, error)
-}
-
-type PluginService interface {
-	RegisterPlugin(ctx context.Context, plugin Plugin) (Plugin, error)
-	ListPlugins(ctx context.Context, tenantID string, page, pageSize int) ([]Plugin, error)
-	UpdatePlugin(ctx context.Context, plugin Plugin) (Plugin, error)
-	DeletePlugin(ctx context.Context, pluginID string) error
-}
+// var _ AccountActionService = (*PostgresStore)(nil) // TODO: pass ctx
 
 type WebhookSubscriptionService interface {
 	CreateWebhookSubscription(ctx context.Context, sub WebhookSubscription) (WebhookSubscription, error)

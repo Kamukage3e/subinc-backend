@@ -65,3 +65,11 @@ type AuditLogService interface {
 
 // All audit logging must use AuditLogger for decoupling and optionality.
 type RBACAuditLogger = security_management.AuditLogger
+
+// RBACService provides full RBAC enforcement for all modules.
+// All methods must be robust, user-friendly, and never leak sensitive info.
+// This interface is required for SaaS-grade RBAC integration.
+type RBACService interface {
+	CheckPermission(ctx context.Context, userID, resource, action string) (bool, error)
+	GetUserRoles(ctx context.Context, userID, resource string) ([]string, error)
+}

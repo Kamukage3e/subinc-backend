@@ -1,6 +1,80 @@
 package rbac_management
 
-import "time"
+import (
+	"time"
+
+	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	"github.com/subinc/subinc-backend/internal/pkg/logger"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type PostgresStore struct {
+	db  *pgxpool.Pool
+	logger      *logger.Logger
+	AuditLogger security_management.AuditLogger
+}
+
+type RBACAdminHandler struct {
+	RoleService          RoleService
+	PermissionService    PermissionService
+	RoleBindingService   RoleBindingService
+	PolicyService        PolicyService
+	APIPermissionService APIPermissionService
+	ResourceService      ResourceService
+	AuditLogService      AuditLogService
+	Store                *PostgresStore
+	AuditLogger          security_management.AuditLogger
+}
+
+// --- Request structs for body-only input ---
+type IDTenantRequest struct {
+	ID       string `json:"id"`
+	TenantID string `json:"tenant_id"`
+}
+type IDRequest struct {
+	ID string `json:"id"`
+}
+type TenantRequest struct {
+	TenantID string `json:"tenant_id"`
+}
+type ListRequest struct {
+	TenantID string `json:"tenant_id"`
+	Page     int    `json:"page"`
+	PageSize int    `json:"page_size"`
+}
+type ListPermissionRequest struct {
+	Resource string `json:"resource"`
+	Action   string `json:"action"`
+	Page     int    `json:"page"`
+	PageSize int    `json:"page_size"`
+}
+type ListRoleBindingRequest struct {
+	TenantID string `json:"tenant_id"`
+	UserID   string `json:"user_id"`
+	Page     int    `json:"page"`
+	PageSize int    `json:"page_size"`
+}
+type ListAPIPermissionRequest struct {
+	TenantID string `json:"tenant_id"`
+	API      string `json:"api"`
+	Method   string `json:"method"`
+	Page     int    `json:"page"`
+	PageSize int    `json:"page_size"`
+}
+type ListResourceRequest struct {
+	TenantID string `json:"tenant_id"`
+	Type     string `json:"type"`
+	Page     int    `json:"page"`
+	PageSize int    `json:"page_size"`
+}
+type ListAuditLogRequest struct {
+	TenantID string `json:"tenant_id"`
+	ActorID  string `json:"actor_id"`
+	Action   string `json:"action"`
+	Resource string `json:"resource"`
+	Page     int    `json:"page"`
+	PageSize int    `json:"page_size"`
+}
 
 // Role defines a named set of permissions for a tenant or system
 // ID is UUID, TenantID is required for tenant roles, Name is unique per tenant

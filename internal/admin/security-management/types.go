@@ -1,6 +1,31 @@
 package security_management
 
-import "time"
+import (
+
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/subinc/subinc-backend/internal/pkg/logger"
+)
+
+type PostgresStore struct {
+	db  *pgxpool.Pool
+	logger *logger.Logger
+}
+
+
+type SecurityAdminHandler struct {
+	SecurityEventService    SecurityEventService
+	LoginHistoryService     LoginHistoryService
+	MFAService              MFAService
+	PasswordService         PasswordService
+	SessionService          SessionService
+	SecurityAuditLogService SecurityAuditLogService
+	APIKeyService           APIKeyService
+	DeviceService           DeviceService
+	BreachService           BreachService
+	SecurityPolicyService   SecurityPolicyService
+}
 
 type SecurityEvent struct {
 	ID        string    `json:"id"`
@@ -70,4 +95,9 @@ type SecurityPolicy struct {
 	Rules     string    `json:"rules"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type DBError struct {
+	Op  string
+	Err error
 }

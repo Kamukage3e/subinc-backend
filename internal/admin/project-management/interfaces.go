@@ -2,7 +2,6 @@ package project_management
 
 import (
 	"context"
-	"database/sql"
 
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 )
@@ -40,9 +39,4 @@ type ProjectAuditLogger = security_management.AuditLogger
 type ProjectAuditLogService interface {
 	CreateAuditLog(ctx context.Context, log ProjectAuditLog) (ProjectAuditLog, error)
 	ListAuditLogs(ctx context.Context, projectID, actorID, action string, page, pageSize int) ([]ProjectAuditLog, error)
-}
-
-type PostgresStore struct {
-	db        *sql.DB
-	AuditLogger security_management.AuditLogger
 }

@@ -3,6 +3,9 @@ package billing_management
 import (
 	"fmt"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
 // Account represents a billing account
@@ -591,4 +594,9 @@ type TaxInfo struct {
 	Currency  string    `json:"currency"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type PostgresStore struct {
+	db     *pgxpool.Pool
+	logger *logger.Logger
 }

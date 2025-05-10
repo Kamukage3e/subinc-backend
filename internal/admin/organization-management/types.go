@@ -1,6 +1,12 @@
 package organization_management
 
-import "time"
+import (
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	"github.com/subinc/subinc-backend/internal/pkg/logger"
+)
 
 type Organization struct {
 	ID        string    `json:"id"`
@@ -56,4 +62,16 @@ type OrgAuditLog struct {
 	TargetID  string    `json:"target_id"`
 	Details   string    `json:"details"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type User struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
+	Name  string `json:"name"`
+}
+
+type PostgresStore struct {
+	db          *pgxpool.Pool
+	logger      *logger.Logger
+	AuditLogger security_management.AuditLogger
 }

@@ -1,6 +1,25 @@
 package project_management
 
-import "time"
+import (
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
+	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	user_management "github.com/subinc/subinc-backend/internal/admin/user-management"
+)
+
+type ProjectAdminHandler struct {
+	ProjectService         ProjectService
+	ProjectMemberService   ProjectMemberService
+	ProjectInviteService   ProjectInviteService
+	ProjectSettingsService ProjectSettingsService
+	ProjectAuditLogService ProjectAuditLogService
+	SecurityAuditLogger    security_management.AuditLogger // optional, may be nil
+	RBACService            rbac_management.RBACService     // optional, may be nil
+	UserService            user_management.UserService     // optional, may be nil
+	Store                  *PostgresStore
+}
 
 type Project struct {
 	ID          string            `json:"id"`
@@ -49,4 +68,14 @@ type ProjectAuditLog struct {
 	TargetID  string    `json:"target_id"`
 	Details   string    `json:"details"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type DBError struct {
+	Op  string
+	Err error
+}
+
+type PostgresStore struct {
+	db          *pgxpool.Pool
+	AuditLogger security_management.AuditLogger
 }

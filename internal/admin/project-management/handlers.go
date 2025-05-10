@@ -1,20 +1,24 @@
 package project_management
 
 import (
+	"time"
+
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
+	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-type ProjectAdminHandler struct {
-	ProjectService         ProjectService
-	ProjectMemberService   ProjectMemberService
-	ProjectInviteService   ProjectInviteService
-	ProjectSettingsService ProjectSettingsService
-	ProjectAuditLogService ProjectAuditLogService
-	Store                  *PostgresStore
-}
+
 
 func (h *ProjectAdminHandler) CreateProject(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "create")
+		if err != nil || !permitted {
+			logger.LogError("RBAC permission denied", logger.ErrorField(err))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
 	var input Project
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateProject: invalid input", logger.ErrorField(err))
@@ -25,141 +29,144 @@ func (h *ProjectAdminHandler) CreateProject(c *fiber.Ctx) error {
 		logger.LogError("CreateProject: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	if h.SecurityAuditLogger != nil {
+		_, _ = h.SecurityAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "create_project",
+			TargetID:  proj.ID,
+			Details:   "Project created successfully",
+			CreatedAt: time.Now(),
+		})
+	}
 	return c.Status(fiber.StatusCreated).JSON(proj)
 }
 
 func (h *ProjectAdminHandler) UpdateProject(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "update")
+		if err != nil || !permitted {
+			logger.LogError("RBAC permission denied", logger.ErrorField(err))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
 	var input Project
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateProject: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	input.ID = c.Params("id")
 	proj, err := h.ProjectService.UpdateProject(c.Context(), input)
 	if err != nil {
 		logger.LogError("UpdateProject: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	if h.SecurityAuditLogger != nil {
+		_, _ = h.SecurityAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "update_project",
+			TargetID:  proj.ID,
+			Details:   "Project updated successfully",
+			CreatedAt: time.Now(),
+		})
+	}
 	return c.JSON(proj)
 }
 
 func (h *ProjectAdminHandler) DeleteProject(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
-		logger.LogError("DeleteProject: id required", logger.String("id", id))
+	if h.RBACService != nil {
+		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "delete")
+		if err != nil || !permitted {
+			logger.LogError("RBAC permission denied", logger.ErrorField(err))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		ID string `json:"id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.ID == "" {
+		logger.LogError("DeleteProject: id required", logger.String("id", input.ID))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	if err := h.ProjectService.DeleteProject(c.Context(), id); err != nil {
-		logger.LogError("DeleteProject: failed", logger.ErrorField(err), logger.String("id", id))
+	if err := h.ProjectService.DeleteProject(c.Context(), input.ID); err != nil {
+		logger.LogError("DeleteProject: failed", logger.ErrorField(err), logger.String("id", input.ID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.SecurityAuditLogger != nil {
+		_, _ = h.SecurityAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "delete_project",
+			TargetID:  input.ID,
+			Details:   "Project deleted successfully",
+			CreatedAt: time.Now(),
+		})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (h *ProjectAdminHandler) GetProject(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
-		logger.LogError("GetProject: id required", logger.String("id", id))
+	if h.RBACService != nil {
+		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "read")
+		if err != nil || !permitted {
+			logger.LogError("RBAC permission denied", logger.ErrorField(err))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		ID string `json:"id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.ID == "" {
+		logger.LogError("GetProject: id required", logger.String("id", input.ID))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	proj, err := h.ProjectService.GetProject(c.Context(), id)
+	proj, err := h.ProjectService.GetProject(c.Context(), input.ID)
 	if err != nil {
-		logger.LogError("GetProject: not found", logger.ErrorField(err), logger.String("id", id))
+		logger.LogError("GetProject: not found", logger.ErrorField(err), logger.String("id", input.ID))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(proj)
 }
 
 func (h *ProjectAdminHandler) ListProjects(c *fiber.Ctx) error {
-	orgID := c.Query("org_id")
-	page := c.QueryInt("page", 1)
-	pageSize := c.QueryInt("page_size", 100)
-	projs, err := h.ProjectService.ListProjects(c.Context(), orgID, page, pageSize)
-	if err != nil {
-		logger.LogError("ListProjects: failed", logger.ErrorField(err), logger.String("org_id", orgID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	if h.RBACService != nil {
+		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "list")
+		if err != nil || !permitted {
+			logger.LogError("RBAC permission denied", logger.ErrorField(err))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
 	}
-	return c.JSON(fiber.Map{"projects": projs, "page": page, "page_size": pageSize})
-}
-
-func (h *ProjectAdminHandler) AddMember(c *fiber.Ctx) error {
-	var input ProjectMember
+	var input struct {
+		OrgID    string `json:"org_id"`
+		Page     int    `json:"page"`
+		PageSize int    `json:"page_size"`
+	}
 	if err := c.BodyParser(&input); err != nil {
-		logger.LogError("AddMember: invalid input", logger.ErrorField(err))
+		logger.LogError("ListProjects: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	if input.ProjectID == "" || input.UserID == "" || input.Role == "" {
-		logger.LogError("AddMember: missing required fields", logger.Any("input", input))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project_id, user_id, and role required"})
+	if input.Page == 0 {
+		input.Page = 1
 	}
-	member, err := h.ProjectMemberService.AddMember(c.Context(), input)
+	if input.PageSize == 0 {
+		input.PageSize = 100
+	}
+	projs, err := h.ProjectService.ListProjects(c.Context(), input.OrgID, input.Page, input.PageSize)
 	if err != nil {
-		logger.LogError("AddMember: failed", logger.ErrorField(err), logger.Any("input", input))
+		logger.LogError("ListProjects: failed", logger.ErrorField(err), logger.String("org_id", input.OrgID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.Status(fiber.StatusCreated).JSON(member)
-}
-
-func (h *ProjectAdminHandler) RemoveMember(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
-		logger.LogError("RemoveMember: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
-	}
-	if err := h.ProjectMemberService.RemoveMember(c.Context(), id); err != nil {
-		logger.LogError("RemoveMember: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.SendStatus(fiber.StatusNoContent)
-}
-
-func (h *ProjectAdminHandler) UpdateMember(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
-		logger.LogError("UpdateMember: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
-	}
-	var input ProjectMember
-	if err := c.BodyParser(&input); err != nil {
-		logger.LogError("UpdateMember: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	input.ID = id
-	member, err := h.ProjectMemberService.UpdateMember(c.Context(), input)
-	if err != nil {
-		logger.LogError("UpdateMember: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(member)
-}
-
-func (h *ProjectAdminHandler) GetMember(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
-		logger.LogError("GetMember: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
-	}
-	member, err := h.ProjectMemberService.GetMember(c.Context(), id)
-	if err != nil {
-		logger.LogError("GetMember: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(member)
-}
-
-func (h *ProjectAdminHandler) ListMembers(c *fiber.Ctx) error {
-	projectID := c.Query("project_id")
-	page := c.QueryInt("page", 1)
-	pageSize := c.QueryInt("page_size", 100)
-	members, err := h.ProjectMemberService.ListMembers(c.Context(), projectID, page, pageSize)
-	if err != nil {
-		logger.LogError("ListMembers: failed", logger.ErrorField(err), logger.String("project_id", projectID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(fiber.Map{"members": members, "page": page, "page_size": pageSize})
+	return c.JSON(fiber.Map{"projects": projs, "page": input.Page, "page_size": input.PageSize})
 }
 
 func (h *ProjectAdminHandler) CreateInvite(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "invite")
+		if err != nil || !permitted {
+			logger.LogError("RBAC permission denied", logger.ErrorField(err))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
 	var input ProjectInvite
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateInvite: invalid input", logger.ErrorField(err))
@@ -174,105 +181,179 @@ func (h *ProjectAdminHandler) CreateInvite(c *fiber.Ctx) error {
 		logger.LogError("CreateInvite: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	if h.SecurityAuditLogger != nil {
+		_, _ = h.SecurityAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "create_invite",
+			TargetID:  input.ProjectID,
+			Details:   "Invite created successfully",
+			CreatedAt: time.Now(),
+		})
+	}
 	return c.Status(fiber.StatusCreated).JSON(invite)
 }
 
 func (h *ProjectAdminHandler) AcceptInvite(c *fiber.Ctx) error {
-	token := c.Query("token")
-	if token == "" {
-		logger.LogError("AcceptInvite: token required", logger.String("token", token))
+	if h.RBACService != nil {
+		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "accept_invite")
+		if err != nil || !permitted {
+			logger.LogError("RBAC permission denied", logger.ErrorField(err))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		Token string `json:"token"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.Token == "" {
+		logger.LogError("AcceptInvite: token required", logger.String("token", input.Token))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "token required"})
 	}
-	if err := h.ProjectInviteService.AcceptInvite(c.Context(), token); err != nil {
-		logger.LogError("AcceptInvite: failed", logger.ErrorField(err), logger.String("token", token))
+	if err := h.ProjectInviteService.AcceptInvite(c.Context(), input.Token); err != nil {
+		logger.LogError("AcceptInvite: failed", logger.ErrorField(err), logger.String("token", input.Token))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.SecurityAuditLogger != nil {
+		_, _ = h.SecurityAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "accept_invite",
+			TargetID:  "",
+			Details:   "Invite accepted successfully",
+			CreatedAt: time.Now(),
+		})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (h *ProjectAdminHandler) RevokeInvite(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
-		logger.LogError("RevokeInvite: id required", logger.String("id", id))
+	if h.RBACService != nil {
+		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "revoke_invite")
+		if err != nil || !permitted {
+			logger.LogError("RBAC permission denied", logger.ErrorField(err))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		ID string `json:"id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.ID == "" {
+		logger.LogError("RevokeInvite: id required", logger.String("id", input.ID))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	if err := h.ProjectInviteService.RevokeInvite(c.Context(), id); err != nil {
-		logger.LogError("RevokeInvite: failed", logger.ErrorField(err), logger.String("id", id))
+	if err := h.ProjectInviteService.RevokeInvite(c.Context(), input.ID); err != nil {
+		logger.LogError("RevokeInvite: failed", logger.ErrorField(err), logger.String("id", input.ID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.SecurityAuditLogger != nil {
+		_, _ = h.SecurityAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "revoke_invite",
+			TargetID:  input.ID,
+			Details:   "Invite revoked successfully",
+			CreatedAt: time.Now(),
+		})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (h *ProjectAdminHandler) ListInvites(c *fiber.Ctx) error {
-	projectID := c.Query("project_id")
-	page := c.QueryInt("page", 1)
-	pageSize := c.QueryInt("page_size", 100)
-	invites, err := h.ProjectInviteService.ListInvites(c.Context(), projectID, page, pageSize)
+	if h.RBACService != nil {
+		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "list_invites")
+		if err != nil || !permitted {
+			logger.LogError("RBAC permission denied", logger.ErrorField(err))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		ProjectID string `json:"project_id"`
+		Page      int    `json:"page"`
+		PageSize  int    `json:"page_size"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("ListInvites: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.Page == 0 {
+		input.Page = 1
+	}
+	if input.PageSize == 0 {
+		input.PageSize = 100
+	}
+	invites, err := h.ProjectInviteService.ListInvites(c.Context(), input.ProjectID, input.Page, input.PageSize)
 	if err != nil {
-		logger.LogError("ListInvites: failed", logger.ErrorField(err), logger.String("project_id", projectID))
+		logger.LogError("ListInvites: failed", logger.ErrorField(err), logger.String("project_id", input.ProjectID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"invites": invites, "page": page, "page_size": pageSize})
+	return c.JSON(fiber.Map{"invites": invites, "page": input.Page, "page_size": input.PageSize})
 }
 
 func (h *ProjectAdminHandler) GetSettings(c *fiber.Ctx) error {
-	projectID := c.Query("project_id")
-	if projectID == "" {
-		logger.LogError("GetSettings: project_id required", logger.String("project_id", projectID))
+	if h.RBACService != nil {
+		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "read")
+		if err != nil || !permitted {
+			logger.LogError("RBAC permission denied", logger.ErrorField(err))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		ProjectID string `json:"project_id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.ProjectID == "" {
+		logger.LogError("GetSettings: project_id required", logger.String("project_id", input.ProjectID))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project_id required"})
 	}
-	settings, err := h.ProjectSettingsService.GetSettings(c.Context(), projectID)
+	settings, err := h.ProjectSettingsService.GetSettings(c.Context(), input.ProjectID)
 	if err != nil {
-		logger.LogError("GetSettings: failed", logger.ErrorField(err), logger.String("project_id", projectID))
+		logger.LogError("GetSettings: failed", logger.ErrorField(err), logger.String("project_id", input.ProjectID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(settings)
 }
 
 func (h *ProjectAdminHandler) UpdateSettings(c *fiber.Ctx) error {
-	projectID := c.Query("project_id")
+	if h.RBACService != nil {
+		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "update")
+		if err != nil || !permitted {
+			logger.LogError("RBAC permission denied", logger.ErrorField(err))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
 	var input struct {
-		Settings string `json:"settings"`
+		ProjectID string `json:"project_id"`
+		Settings  string `json:"settings"`
 	}
-	if err := c.BodyParser(&input); err != nil {
-		logger.LogError("UpdateSettings: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if projectID == "" || input.Settings == "" {
-		logger.LogError("UpdateSettings: missing required fields", logger.String("project_id", projectID))
+	if err := c.BodyParser(&input); err != nil || input.ProjectID == "" || input.Settings == "" {
+		logger.LogError("UpdateSettings: missing required fields", logger.String("project_id", input.ProjectID))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project_id and settings required"})
 	}
-	if err := h.ProjectSettingsService.UpdateSettings(c.Context(), projectID, input.Settings); err != nil {
-		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.String("project_id", projectID))
+	if err := h.ProjectSettingsService.UpdateSettings(c.Context(), input.ProjectID, input.Settings); err != nil {
+		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.String("project_id", input.ProjectID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.SecurityAuditLogger != nil {
+		_, _ = h.SecurityAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "update_settings",
+			TargetID:  input.ProjectID,
+			Details:   "Settings updated successfully",
+			CreatedAt: time.Now(),
+		})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *ProjectAdminHandler) CreateAuditLog(c *fiber.Ctx) error {
-	var input ProjectAuditLog
-	if err := c.BodyParser(&input); err != nil {
-		logger.LogError("CreateAuditLog: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+// getActorID extracts the actor/user id from the request context or headers for audit logging
+func getActorID(c *fiber.Ctx) string {
+	id := c.Get("X-Actor-ID")
+	if id != "" {
+		return id
 	}
-	logEntry, err := h.ProjectAuditLogService.CreateAuditLog(c.Context(), input)
-	if err != nil {
-		logger.LogError("CreateAuditLog: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	id = c.Get("X-User-ID")
+	if id != "" {
+		return id
 	}
-	return c.Status(fiber.StatusCreated).JSON(logEntry)
-}
-
-func (h *ProjectAdminHandler) ListAuditLogs(c *fiber.Ctx) error {
-	projectID := c.Query("project_id")
-	actorID := c.Query("actor_id")
-	action := c.Query("action")
-	page := c.QueryInt("page", 1)
-	pageSize := c.QueryInt("page_size", 100)
-	logs, err := h.ProjectAuditLogService.ListAuditLogs(c.Context(), projectID, actorID, action, page, pageSize)
-	if err != nil {
-		logger.LogError("ListAuditLogs: failed", logger.ErrorField(err), logger.String("project_id", projectID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(fiber.Map{"audit_logs": logs, "page": page, "page_size": pageSize})
+	return ""
 }
