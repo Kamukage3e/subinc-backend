@@ -5,19 +5,41 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
 type UserHandler struct {
-	Store *PostgresStore
+	Store       *PostgresStore
+	RBACService rbac_management.RBACService // optional, may be nil
 }
 
 func NewUserHandler(store *PostgresStore) *UserHandler {
 	return &UserHandler{Store: store}
 }
 
+// getActorID extracts the user_id from fiber context or returns "system" if not present
+func getActorID(c *fiber.Ctx) string {
+	id := c.Get("X-Actor-ID")
+	if id != "" {
+		return id
+	}
+	id = c.Get("X-User-ID")
+	if id != "" {
+		return id
+	}
+	return ""
+}
+
 // --- User Handlers ---
 func (h *UserHandler) CreateUser(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "user", "create")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
 	var user User
 	if err := c.BodyParser(&user); err != nil {
 		logger.LogError("invalid user input", logger.ErrorField(err))

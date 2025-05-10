@@ -4,6 +4,9 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+
+
+// RegisterAdminRBACRoutes allows optional RBAC middleware as a plugin.
 func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler) {
 	rbac := router.Group("/rbac-management")
 
@@ -38,5 +41,4 @@ func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler) {
 	rbac.Delete("/resources/delete", handler.DeleteResource)
 	rbac.Get("/resources/get", handler.GetResource)
 	rbac.Get("/resources/list", handler.ListResources)
-
 }

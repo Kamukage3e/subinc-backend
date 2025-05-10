@@ -1,13 +1,10 @@
 package security_management
 
 import (
-
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
-
-
 
 // Architectural decision: All security-management endpoints use in-memory rate limiting and strict security headers.
 // Sensitive endpoints have stricter limits.

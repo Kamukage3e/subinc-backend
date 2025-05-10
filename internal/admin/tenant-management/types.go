@@ -45,8 +45,8 @@ type TenantAdminHandler struct {
 	TenantSettingsStore *TenantSettingsStore // optional
 	// AuditLogger is optional for deployments that do not require audit logging.
 	AuditLogger security_management.AuditLogger // optional
-	// RBACHandler is optional and only required if tenant management needs to delegate to RBAC.
-	RBACHandler *rbac_management.RBACHandler // optional
+	// RBACService is optional and only required if tenant management needs to delegate to RBAC.
+	RBACService rbac_management.RBACService // optional, may be nil
 	// UserHandler is optional and only required if tenant management needs to delegate to user management.
 	UserHandler *user_management.UserHandler // optional
 }
