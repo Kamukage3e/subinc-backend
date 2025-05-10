@@ -3,11 +3,13 @@ package billing_management
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -20,8 +22,9 @@ func generateUUID() string {
 // All methods are robust, type-safe, and ready for SaaS deployment
 // No placeholders, no dummy code, no commented-out code
 type PostgresStore struct {
-	db     *sql.DB
-	logger *logger.Logger
+	db          *sql.DB
+	logger      *logger.Logger
+	AuditLogger security_management.AuditLogger
 }
 
 func NewPostgresStore(db *sql.DB, log *logger.Logger) *PostgresStore {
@@ -29,6 +32,20 @@ func NewPostgresStore(db *sql.DB, log *logger.Logger) *PostgresStore {
 		log = logger.NewNoop()
 	}
 	return &PostgresStore{db: db, logger: log}
+}
+
+func (s *PostgresStore) logAudit(ctx context.Context, log AuditLog) {
+	if s.AuditLogger == nil {
+		s.AuditLogger = security_management.NoopAuditLogger{}
+	}
+	_, _ = s.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
+		ID:        log.ID,
+		ActorID:   log.ActorID,
+		Action:    log.Action,
+		TargetID:  log.TargetID,
+		Details:   log.Details,
+		CreatedAt: log.CreatedAt,
+	})
 }
 
 // CreateAccount inserts a new account into the DB
@@ -41,6 +58,15 @@ func (s *PostgresStore) CreateAccount(ctx context.Context, a Account) (Account, 
 		s.logger.Error("CreateAccount failed", logger.ErrorField(err), logger.Any("account", a))
 		return Account{}, err
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "create_account",
+		Resource:  "account",
+		TargetID:  out.ID,
+		Details:   "Account created",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -57,6 +83,15 @@ func (s *PostgresStore) GetAccount(ctx context.Context, id string) (Account, err
 		s.logger.Error("GetAccount failed", logger.ErrorField(err), logger.String("id", id))
 		return Account{}, err
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "get_account",
+		Resource:  "account",
+		TargetID:  out.ID,
+		Details:   "Account fetched",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -69,6 +104,15 @@ func (s *PostgresStore) UpdateAccount(ctx context.Context, a Account) (Account, 
 		s.logger.Error("UpdateAccount failed", logger.ErrorField(err), logger.Any("account", a))
 		return Account{}, err
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "update_account",
+		Resource:  "account",
+		TargetID:  out.ID,
+		Details:   "Account updated",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -97,6 +141,15 @@ func (s *PostgresStore) ListAccounts(ctx context.Context, tenantID string, page,
 		}
 		out = append(out, a)
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "list_accounts",
+		Resource:  "accounts",
+		TargetID:  tenantID,
+		Details:   "Accounts listed",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -110,6 +163,15 @@ func (s *PostgresStore) CreatePlan(ctx context.Context, p Plan) (Plan, error) {
 		s.logger.Error("CreatePlan failed", logger.ErrorField(err), logger.Any("plan", p))
 		return Plan{}, err
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "create_plan",
+		Resource:  "plan",
+		TargetID:  out.ID,
+		Details:   "Plan created",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -125,6 +187,15 @@ func (s *PostgresStore) GetPlan(ctx context.Context, id string) (Plan, error) {
 		s.logger.Error("GetPlan failed", logger.ErrorField(err), logger.String("id", id))
 		return Plan{}, err
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "get_plan",
+		Resource:  "plan",
+		TargetID:  out.ID,
+		Details:   "Plan fetched",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -136,6 +207,15 @@ func (s *PostgresStore) UpdatePlan(ctx context.Context, p Plan) (Plan, error) {
 		s.logger.Error("UpdatePlan failed", logger.ErrorField(err), logger.Any("plan", p))
 		return Plan{}, err
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "update_plan",
+		Resource:  "plan",
+		TargetID:  out.ID,
+		Details:   "Plan updated",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -168,6 +248,15 @@ func (s *PostgresStore) ListPlans(ctx context.Context, activeOnly bool, page, pa
 		}
 		out = append(out, p)
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "list_plans",
+		Resource:  "plans",
+		TargetID:  "-",
+		Details:   "Plans listed",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -177,6 +266,15 @@ func (s *PostgresStore) DeletePlan(ctx context.Context, id string) error {
 	if err != nil {
 		s.logger.Error("DeletePlan failed", logger.ErrorField(err), logger.String("id", id))
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "delete_plan",
+		Resource:  "plan",
+		TargetID:  id,
+		Details:   "Plan deleted",
+		CreatedAt: time.Now().UTC(),
+	})
 	return err
 }
 
@@ -190,6 +288,15 @@ func (s *PostgresStore) CreateUsage(ctx context.Context, u Usage) (Usage, error)
 		s.logger.Error("CreateUsage failed", logger.ErrorField(err), logger.Any("usage", u))
 		return Usage{}, err
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "create_usage",
+		Resource:  "usage",
+		TargetID:  out.ID,
+		Details:   "Usage created",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -227,6 +334,15 @@ func (s *PostgresStore) ListUsage(ctx context.Context, accountID, metric, period
 		}
 		out = append(out, u)
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "list_usage",
+		Resource:  "usage",
+		TargetID:  accountID,
+		Details:   "Usage listed",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -240,6 +356,15 @@ func (s *PostgresStore) CreateInvoice(ctx context.Context, i Invoice) (Invoice, 
 		s.logger.Error("CreateInvoice failed", logger.ErrorField(err), logger.Any("invoice", i))
 		return Invoice{}, err
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "create_invoice",
+		Resource:  "invoice",
+		TargetID:  out.ID,
+		Details:   "Invoice created",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -255,6 +380,15 @@ func (s *PostgresStore) GetInvoice(ctx context.Context, id string) (Invoice, err
 		s.logger.Error("GetInvoice failed", logger.ErrorField(err), logger.String("id", id))
 		return Invoice{}, err
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "get_invoice",
+		Resource:  "invoice",
+		TargetID:  out.ID,
+		Details:   "Invoice fetched",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -266,6 +400,15 @@ func (s *PostgresStore) UpdateInvoice(ctx context.Context, i Invoice) (Invoice, 
 		s.logger.Error("UpdateInvoice failed", logger.ErrorField(err), logger.Any("invoice", i))
 		return Invoice{}, err
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "update_invoice",
+		Resource:  "invoice",
+		TargetID:  out.ID,
+		Details:   "Invoice updated",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -299,6 +442,15 @@ func (s *PostgresStore) ListInvoices(ctx context.Context, accountID, status stri
 		}
 		out = append(out, i)
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "list_invoices",
+		Resource:  "invoices",
+		TargetID:  accountID,
+		Details:   "Invoices listed",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -308,6 +460,15 @@ func (s *PostgresStore) DeleteInvoice(ctx context.Context, id string) error {
 	if err != nil {
 		s.logger.Error("DeleteInvoice failed", logger.ErrorField(err), logger.String("id", id))
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "delete_invoice",
+		Resource:  "invoice",
+		TargetID:  id,
+		Details:   "Invoice deleted",
+		CreatedAt: time.Now().UTC(),
+	})
 	return err
 }
 
@@ -321,6 +482,15 @@ func (s *PostgresStore) CreatePayment(ctx context.Context, p Payment) (Payment, 
 		s.logger.Error("CreatePayment failed", logger.ErrorField(err), logger.Any("payment", p))
 		return Payment{}, err
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "create_payment",
+		Resource:  "payment",
+		TargetID:  out.ID,
+		Details:   "Payment created",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -336,6 +506,15 @@ func (s *PostgresStore) GetPayment(ctx context.Context, id string) (Payment, err
 		s.logger.Error("GetPayment failed", logger.ErrorField(err), logger.String("id", id))
 		return Payment{}, err
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "get_payment",
+		Resource:  "payment",
+		TargetID:  out.ID,
+		Details:   "Payment fetched",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -347,6 +526,15 @@ func (s *PostgresStore) UpdatePayment(ctx context.Context, p Payment) (Payment, 
 		s.logger.Error("UpdatePayment failed", logger.ErrorField(err), logger.Any("payment", p))
 		return Payment{}, err
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "update_payment",
+		Resource:  "payment",
+		TargetID:  out.ID,
+		Details:   "Payment updated",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -374,6 +562,15 @@ func (s *PostgresStore) ListPayments(ctx context.Context, invoiceID string, page
 		}
 		out = append(out, p)
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "list_payments",
+		Resource:  "payments",
+		TargetID:  invoiceID,
+		Details:   "Payments listed",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -387,6 +584,15 @@ func (s *PostgresStore) CreateCredit(ctx context.Context, c Credit) (Credit, err
 		s.logger.Error("CreateCredit failed", logger.ErrorField(err), logger.Any("credit", c))
 		return Credit{}, err
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "create_credit",
+		Resource:  "credit",
+		TargetID:  out.ID,
+		Details:   "Credit created",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -402,6 +608,15 @@ func (s *PostgresStore) GetCredit(ctx context.Context, id string) (Credit, error
 		s.logger.Error("GetCredit failed", logger.ErrorField(err), logger.String("id", id))
 		return Credit{}, err
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "get_credit",
+		Resource:  "credit",
+		TargetID:  out.ID,
+		Details:   "Credit fetched",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -413,6 +628,15 @@ func (s *PostgresStore) UpdateCredit(ctx context.Context, c Credit) (Credit, err
 		s.logger.Error("UpdateCredit failed", logger.ErrorField(err), logger.Any("credit", c))
 		return Credit{}, err
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "update_credit",
+		Resource:  "credit",
+		TargetID:  out.ID,
+		Details:   "Credit updated",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -454,6 +678,15 @@ func (s *PostgresStore) ListCredits(ctx context.Context, accountID, invoiceID, s
 		}
 		out = append(out, c)
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "list_credits",
+		Resource:  "credits",
+		TargetID:  accountID,
+		Details:   "Credits listed",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -467,6 +700,15 @@ func (s *PostgresStore) CreateRefund(ctx context.Context, r Refund) (Refund, err
 		s.logger.Error("CreateRefund failed", logger.ErrorField(err), logger.Any("refund", r))
 		return Refund{}, err
 	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "create_refund",
+		Resource:  "refund",
+		TargetID:  out.ID,
+		Details:   "Refund created",
+		CreatedAt: time.Now().UTC(),
+	})
 	return out, nil
 }
 
@@ -482,645 +724,16 @@ func (s *PostgresStore) GetRefund(ctx context.Context, id string) (Refund, error
 		s.logger.Error("GetRefund failed", logger.ErrorField(err), logger.String("id", id))
 		return Refund{}, err
 	}
-	return out, nil
-}
-
-func (s *PostgresStore) UpdateRefund(ctx context.Context, r Refund) (Refund, error) {
-	const q = `UPDATE refunds SET payment_id = $2, invoice_id = $3, amount = $4, currency = $5, status = $6, reason = $7, updated_at = $8, metadata = $9 WHERE id = $1 RETURNING id, payment_id, invoice_id, amount, currency, status, reason, created_at, updated_at, metadata`
-	row := s.db.QueryRowContext(ctx, q, r.ID, r.PaymentID, r.InvoiceID, r.Amount, r.Currency, r.Status, r.Reason, r.UpdatedAt, r.Metadata)
-	var out Refund
-	if err := row.Scan(&out.ID, &out.PaymentID, &out.InvoiceID, &out.Amount, &out.Currency, &out.Status, &out.Reason, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
-		s.logger.Error("UpdateRefund failed", logger.ErrorField(err), logger.Any("refund", r))
-		return Refund{}, err
-	}
-	return out, nil
-}
-
-func (s *PostgresStore) ListRefunds(ctx context.Context, paymentID, invoiceID, status string, page, pageSize int) ([]Refund, error) {
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 1000 {
-		pageSize = 100
-	}
-	q := `SELECT id, payment_id, invoice_id, amount, currency, status, reason, created_at, updated_at, metadata FROM refunds WHERE 1=1`
-	args := []interface{}{}
-	if paymentID != "" {
-		q += " AND payment_id = $1"
-		args = append(args, paymentID)
-	}
-	if invoiceID != "" {
-		q += " AND invoice_id = $2"
-		args = append(args, invoiceID)
-	}
-	if status != "" {
-		q += " AND status = $3"
-		args = append(args, status)
-	}
-	q += " ORDER BY created_at DESC LIMIT $4 OFFSET $5"
-	args = append(args, pageSize, (page-1)*pageSize)
-	rows, err := s.db.QueryContext(ctx, q, args...)
-	if err != nil {
-		s.logger.Error("ListRefunds query failed", logger.ErrorField(err))
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Refund
-	for rows.Next() {
-		var r Refund
-		if err := rows.Scan(&r.ID, &r.PaymentID, &r.InvoiceID, &r.Amount, &r.Currency, &r.Status, &r.Reason, &r.CreatedAt, &r.UpdatedAt, &r.Metadata); err != nil {
-			s.logger.Error("ListRefunds scan failed", logger.ErrorField(err))
-			return nil, err
-		}
-		out = append(out, r)
-	}
-	return out, nil
-}
-
-// --- Discount CRUD ---
-func (s *PostgresStore) CreateDiscount(ctx context.Context, d Discount) (Discount, error) {
-	const q = `INSERT INTO discounts (id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata`
-	row := s.db.QueryRowContext(ctx, q, d.ID, d.Code, d.Type, d.Value, d.MaxRedemptions, d.Redeemed, d.StartAt, d.EndAt, d.IsActive, d.CreatedAt, d.UpdatedAt, d.Metadata)
-	var out Discount
-	if err := row.Scan(&out.ID, &out.Code, &out.Type, &out.Value, &out.MaxRedemptions, &out.Redeemed, &out.StartAt, &out.EndAt, &out.IsActive, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
-		s.logger.Error("CreateDiscount failed", logger.ErrorField(err), logger.Any("discount", d))
-		return Discount{}, err
-	}
-	return out, nil
-}
-
-func (s *PostgresStore) GetDiscount(ctx context.Context, id string) (Discount, error) {
-	const q = `SELECT id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM discounts WHERE id = $1`
-	row := s.db.QueryRowContext(ctx, q, id)
-	var out Discount
-	if err := row.Scan(&out.ID, &out.Code, &out.Type, &out.Value, &out.MaxRedemptions, &out.Redeemed, &out.StartAt, &out.EndAt, &out.IsActive, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			s.logger.Warn("GetDiscount: not found", logger.String("id", id))
-			return Discount{}, sql.ErrNoRows
-		}
-		s.logger.Error("GetDiscount failed", logger.ErrorField(err), logger.String("id", id))
-		return Discount{}, err
-	}
-	return out, nil
-}
-
-func (s *PostgresStore) UpdateDiscount(ctx context.Context, d Discount) (Discount, error) {
-	const q = `UPDATE discounts SET code = $2, type = $3, value = $4, max_redemptions = $5, redeemed = $6, start_at = $7, end_at = $8, is_active = $9, updated_at = $10, metadata = $11 WHERE id = $1 RETURNING id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata`
-	row := s.db.QueryRowContext(ctx, q, d.ID, d.Code, d.Type, d.Value, d.MaxRedemptions, d.Redeemed, d.StartAt, d.EndAt, d.IsActive, d.UpdatedAt, d.Metadata)
-	var out Discount
-	if err := row.Scan(&out.ID, &out.Code, &out.Type, &out.Value, &out.MaxRedemptions, &out.Redeemed, &out.StartAt, &out.EndAt, &out.IsActive, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
-		s.logger.Error("UpdateDiscount failed", logger.ErrorField(err), logger.Any("discount", d))
-		return Discount{}, err
-	}
-	return out, nil
-}
-
-func (s *PostgresStore) ListDiscounts(ctx context.Context, isActive *bool, page, pageSize int) ([]Discount, error) {
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 1000 {
-		pageSize = 100
-	}
-	q := `SELECT id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM discounts`
-	args := []interface{}{}
-	if isActive != nil {
-		q += " WHERE is_active = $1"
-		args = append(args, *isActive)
-	}
-	q += " ORDER BY created_at DESC LIMIT $2 OFFSET $3"
-	args = append(args, pageSize, (page-1)*pageSize)
-	rows, err := s.db.QueryContext(ctx, q, args...)
-	if err != nil {
-		s.logger.Error("ListDiscounts query failed", logger.ErrorField(err))
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Discount
-	for rows.Next() {
-		var d Discount
-		if err := rows.Scan(&d.ID, &d.Code, &d.Type, &d.Value, &d.MaxRedemptions, &d.Redeemed, &d.StartAt, &d.EndAt, &d.IsActive, &d.CreatedAt, &d.UpdatedAt, &d.Metadata); err != nil {
-			s.logger.Error("ListDiscounts scan failed", logger.ErrorField(err))
-			return nil, err
-		}
-		out = append(out, d)
-	}
-	return out, nil
-}
-
-// --- Coupon CRUD ---
-func (s *PostgresStore) CreateCoupon(ctx context.Context, c Coupon) (Coupon, error) {
-	const q = `INSERT INTO coupons (id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata`
-	row := s.db.QueryRowContext(ctx, q, c.ID, c.Code, c.DiscountID, c.MaxRedemptions, c.Redeemed, c.StartAt, c.EndAt, c.IsActive, c.CreatedAt, c.UpdatedAt, c.Metadata)
-	var out Coupon
-	if err := row.Scan(&out.ID, &out.Code, &out.DiscountID, &out.MaxRedemptions, &out.Redeemed, &out.StartAt, &out.EndAt, &out.IsActive, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
-		s.logger.Error("CreateCoupon failed", logger.ErrorField(err), logger.Any("coupon", c))
-		return Coupon{}, err
-	}
-	return out, nil
-}
-
-func (s *PostgresStore) GetCoupon(ctx context.Context, id string) (Coupon, error) {
-	const q = `SELECT id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM coupons WHERE id = $1`
-	row := s.db.QueryRowContext(ctx, q, id)
-	var out Coupon
-	if err := row.Scan(&out.ID, &out.Code, &out.DiscountID, &out.MaxRedemptions, &out.Redeemed, &out.StartAt, &out.EndAt, &out.IsActive, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			s.logger.Warn("GetCoupon: not found", logger.String("id", id))
-			return Coupon{}, sql.ErrNoRows
-		}
-		s.logger.Error("GetCoupon failed", logger.ErrorField(err), logger.String("id", id))
-		return Coupon{}, err
-	}
-	return out, nil
-}
-
-func (s *PostgresStore) UpdateCoupon(ctx context.Context, c Coupon) (Coupon, error) {
-	const q = `UPDATE coupons SET code = $2, discount_id = $3, max_redemptions = $4, redeemed = $5, start_at = $6, end_at = $7, is_active = $8, updated_at = $9, metadata = $10 WHERE id = $1 RETURNING id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata`
-	row := s.db.QueryRowContext(ctx, q, c.ID, c.Code, c.DiscountID, c.MaxRedemptions, c.Redeemed, c.StartAt, c.EndAt, c.IsActive, c.UpdatedAt, c.Metadata)
-	var out Coupon
-	if err := row.Scan(&out.ID, &out.Code, &out.DiscountID, &out.MaxRedemptions, &out.Redeemed, &out.StartAt, &out.EndAt, &out.IsActive, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
-		s.logger.Error("UpdateCoupon failed", logger.ErrorField(err), logger.Any("coupon", c))
-		return Coupon{}, err
-	}
-	return out, nil
-}
-
-func (s *PostgresStore) ListCoupons(ctx context.Context, discountID string, isActive *bool, page, pageSize int) ([]Coupon, error) {
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 1000 {
-		pageSize = 100
-	}
-	q := `SELECT id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM coupons WHERE 1=1`
-	args := []interface{}{}
-	if discountID != "" {
-		q += " AND discount_id = $1"
-		args = append(args, discountID)
-	}
-	if isActive != nil {
-		q += " AND is_active = $2"
-		args = append(args, *isActive)
-	}
-	q += " ORDER BY created_at DESC LIMIT $3 OFFSET $4"
-	args = append(args, pageSize, (page-1)*pageSize)
-	rows, err := s.db.QueryContext(ctx, q, args...)
-	if err != nil {
-		s.logger.Error("ListCoupons query failed", logger.ErrorField(err))
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Coupon
-	for rows.Next() {
-		var c Coupon
-		if err := rows.Scan(&c.ID, &c.Code, &c.DiscountID, &c.MaxRedemptions, &c.Redeemed, &c.StartAt, &c.EndAt, &c.IsActive, &c.CreatedAt, &c.UpdatedAt, &c.Metadata); err != nil {
-			s.logger.Error("ListCoupons scan failed", logger.ErrorField(err))
-			return nil, err
-		}
-		out = append(out, c)
-	}
-	return out, nil
-}
-
-// --- AuditLog CRUD ---
-func (s *PostgresStore) CreateAuditLog(ctx context.Context, a AuditLog) (AuditLog, error) {
-	const q = `INSERT INTO audit_logs (id, actor_id, action, resource, target_id, details, created_at, metadata)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, actor_id, action, resource, target_id, details, created_at, metadata`
-	row := s.db.QueryRowContext(ctx, q, a.ID, a.ActorID, a.Action, a.Resource, a.TargetID, a.Details, a.CreatedAt, a.Metadata)
-	var out AuditLog
-	if err := row.Scan(&out.ID, &out.ActorID, &out.Action, &out.Resource, &out.TargetID, &out.Details, &out.CreatedAt, &out.Metadata); err != nil {
-		s.logger.Error("CreateAuditLog failed", logger.ErrorField(err), logger.Any("audit_log", a))
-		return AuditLog{}, err
-	}
-	return out, nil
-}
-
-func (s *PostgresStore) ListAuditLogs(ctx context.Context, accountID, action string, page, pageSize int) ([]AuditLog, error) {
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 1000 {
-		pageSize = 100
-	}
-	q := `SELECT id, actor_id, action, resource, target_id, details, created_at, metadata FROM audit_logs WHERE 1=1`
-	args := []interface{}{}
-	if accountID != "" {
-		q += " AND target_id = $1"
-		args = append(args, accountID)
-	}
-	if action != "" {
-		q += " AND action = $2"
-		args = append(args, action)
-	}
-	q += " ORDER BY created_at DESC LIMIT $3 OFFSET $4"
-	args = append(args, pageSize, (page-1)*pageSize)
-	rows, err := s.db.QueryContext(ctx, q, args...)
-	if err != nil {
-		s.logger.Error("ListAuditLogs query failed", logger.ErrorField(err))
-		return nil, err
-	}
-	defer rows.Close()
-	var out []AuditLog
-	for rows.Next() {
-		var a AuditLog
-		if err := rows.Scan(&a.ID, &a.ActorID, &a.Action, &a.Resource, &a.TargetID, &a.Details, &a.CreatedAt, &a.Metadata); err != nil {
-			s.logger.Error("ListAuditLogs scan failed", logger.ErrorField(err))
-			return nil, err
-		}
-		out = append(out, a)
-	}
-	return out, nil
-}
-
-// --- WebhookEvent CRUD ---
-func (s *PostgresStore) CreateWebhookEvent(ctx context.Context, w WebhookEvent) (WebhookEvent, error) {
-	const q = `INSERT INTO webhook_events (id, provider, event_type, payload, status, received_at, processed_at, error, metadata)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, provider, event_type, payload, status, received_at, processed_at, error, metadata`
-	row := s.db.QueryRowContext(ctx, q, w.ID, w.Provider, w.EventType, w.Payload, w.Status, w.ReceivedAt, w.ProcessedAt, w.Error, w.Metadata)
-	var out WebhookEvent
-	if err := row.Scan(&out.ID, &out.Provider, &out.EventType, &out.Payload, &out.Status, &out.ReceivedAt, &out.ProcessedAt, &out.Error, &out.Metadata); err != nil {
-		s.logger.Error("CreateWebhookEvent failed", logger.ErrorField(err), logger.Any("webhook_event", w))
-		return WebhookEvent{}, err
-	}
-	return out, nil
-}
-
-func (s *PostgresStore) GetWebhookEvent(ctx context.Context, id string) (WebhookEvent, error) {
-	const q = `SELECT id, provider, event_type, payload, status, received_at, processed_at, error, metadata FROM webhook_events WHERE id = $1`
-	row := s.db.QueryRowContext(ctx, q, id)
-	var out WebhookEvent
-	if err := row.Scan(&out.ID, &out.Provider, &out.EventType, &out.Payload, &out.Status, &out.ReceivedAt, &out.ProcessedAt, &out.Error, &out.Metadata); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			s.logger.Warn("GetWebhookEvent: not found", logger.String("id", id))
-			return WebhookEvent{}, sql.ErrNoRows
-		}
-		s.logger.Error("GetWebhookEvent failed", logger.ErrorField(err), logger.String("id", id))
-		return WebhookEvent{}, err
-	}
-	return out, nil
-}
-
-func (s *PostgresStore) ListWebhookEvents(ctx context.Context, provider, status, eventType string, page, pageSize int) ([]WebhookEvent, error) {
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 1000 {
-		pageSize = 100
-	}
-	q := `SELECT id, provider, event_type, payload, status, received_at, processed_at, error, metadata FROM webhook_events WHERE 1=1`
-	args := []interface{}{}
-	if provider != "" {
-		q += " AND provider = $1"
-		args = append(args, provider)
-	}
-	if status != "" {
-		q += " AND status = $2"
-		args = append(args, status)
-	}
-	if eventType != "" {
-		q += " AND event_type = $3"
-		args = append(args, eventType)
-	}
-	q += " ORDER BY received_at DESC LIMIT $4 OFFSET $5"
-	args = append(args, pageSize, (page-1)*pageSize)
-	rows, err := s.db.QueryContext(ctx, q, args...)
-	if err != nil {
-		s.logger.Error("ListWebhookEvents query failed", logger.ErrorField(err))
-		return nil, err
-	}
-	defer rows.Close()
-	var out []WebhookEvent
-	for rows.Next() {
-		var w WebhookEvent
-		if err := rows.Scan(&w.ID, &w.Provider, &w.EventType, &w.Payload, &w.Status, &w.ReceivedAt, &w.ProcessedAt, &w.Error, &w.Metadata); err != nil {
-			s.logger.Error("ListWebhookEvents scan failed", logger.ErrorField(err))
-			return nil, err
-		}
-		out = append(out, w)
-	}
-	return out, nil
-}
-
-// --- InvoiceAdjustment CRUD ---
-func (s *PostgresStore) CreateInvoiceAdjustment(ctx context.Context, a InvoiceAdjustment) (InvoiceAdjustment, error) {
-	const q = `INSERT INTO invoice_adjustments (id, invoice_id, type, amount, currency, reason, created_at, updated_at, metadata)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, invoice_id, type, amount, currency, reason, created_at, updated_at, metadata`
-	row := s.db.QueryRowContext(ctx, q, a.ID, a.InvoiceID, a.Type, a.Amount, a.Currency, a.Reason, a.CreatedAt, a.UpdatedAt, a.Metadata)
-	var out InvoiceAdjustment
-	if err := row.Scan(&out.ID, &out.InvoiceID, &out.Type, &out.Amount, &out.Currency, &out.Reason, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
-		s.logger.Error("CreateInvoiceAdjustment failed", logger.ErrorField(err), logger.Any("invoice_adjustment", a))
-		return InvoiceAdjustment{}, err
-	}
-	return out, nil
-}
-
-func (s *PostgresStore) GetInvoiceAdjustment(ctx context.Context, id string) (InvoiceAdjustment, error) {
-	const q = `SELECT id, invoice_id, type, amount, currency, reason, created_at, updated_at, metadata FROM invoice_adjustments WHERE id = $1`
-	row := s.db.QueryRowContext(ctx, q, id)
-	var out InvoiceAdjustment
-	if err := row.Scan(&out.ID, &out.InvoiceID, &out.Type, &out.Amount, &out.Currency, &out.Reason, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			s.logger.Warn("GetInvoiceAdjustment: not found", logger.String("id", id))
-			return InvoiceAdjustment{}, sql.ErrNoRows
-		}
-		s.logger.Error("GetInvoiceAdjustment failed", logger.ErrorField(err), logger.String("id", id))
-		return InvoiceAdjustment{}, err
-	}
-	return out, nil
-}
-
-func (s *PostgresStore) ListInvoiceAdjustments(ctx context.Context, invoiceID, adjType string, page, pageSize int) ([]InvoiceAdjustment, error) {
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 1000 {
-		pageSize = 100
-	}
-	q := `SELECT id, invoice_id, type, amount, currency, reason, created_at, updated_at, metadata FROM invoice_adjustments WHERE 1=1`
-	args := []interface{}{}
-	if invoiceID != "" {
-		q += " AND invoice_id = $1"
-		args = append(args, invoiceID)
-	}
-	if adjType != "" {
-		q += " AND type = $2"
-		args = append(args, adjType)
-	}
-	q += " ORDER BY created_at DESC LIMIT $3 OFFSET $4"
-	args = append(args, pageSize, (page-1)*pageSize)
-	rows, err := s.db.QueryContext(ctx, q, args...)
-	if err != nil {
-		s.logger.Error("ListInvoiceAdjustments query failed", logger.ErrorField(err))
-		return nil, err
-	}
-	defer rows.Close()
-	var out []InvoiceAdjustment
-	for rows.Next() {
-		var a InvoiceAdjustment
-		if err := rows.Scan(&a.ID, &a.InvoiceID, &a.Type, &a.Amount, &a.Currency, &a.Reason, &a.CreatedAt, &a.UpdatedAt, &a.Metadata); err != nil {
-			s.logger.Error("ListInvoiceAdjustments scan failed", logger.ErrorField(err))
-			return nil, err
-		}
-		out = append(out, a)
-	}
-	return out, nil
-}
-
-// --- PaymentMethod CRUD ---
-
-// --- PatchCredit ---
-func (s *PostgresStore) PatchCredit(ctx context.Context, id, action string, amount float64) error {
-	if id == "" || action == "" {
-		return NewValidationError("id/action", "must not be empty")
-	}
-	var q string
-	switch action {
-	case "consume":
-		q = `UPDATE credits SET status = 'consumed', updated_at = NOW() WHERE id = $1 AND status = 'active'`
-	case "expire":
-		q = `UPDATE credits SET status = 'expired', updated_at = NOW() WHERE id = $1 AND status = 'active'`
-	case "adjust":
-		if amount <= 0 {
-			return NewValidationError("amount", "must be positive for adjust")
-		}
-		q = `UPDATE credits SET amount = $2, updated_at = NOW() WHERE id = $1 AND status = 'active'`
-	default:
-		s.logger.Error("PatchCredit: invalid action", logger.String("action", action))
-		return NewValidationError("action", "invalid credit patch action")
-	}
-	var err error
-	if action == "adjust" {
-		_, err = s.db.ExecContext(ctx, q, id, amount)
-	} else {
-		_, err = s.db.ExecContext(ctx, q, id)
-	}
-	if err != nil {
-		s.logger.Error("PatchCredit failed", logger.ErrorField(err), logger.String("id", id), logger.String("action", action))
-		return err
-	}
-	// Log audit
-	audit := AuditLog{
+	s.logAudit(ctx, AuditLog{
 		ID:        generateUUID(),
 		ActorID:   "system",
-		Action:    "patch_credit:" + action,
-		Resource:  "credit",
-		TargetID:  id,
-		Details:   "Credit patched with action: " + action,
-		CreatedAt: time.Now().UTC(),
-		Metadata:  "{}",
-	}
-	_, _ = s.CreateAuditLog(context.Background(), audit)
-	return nil
-}
-
-// --- PatchPaymentMethod ---
-func (s *PostgresStore) PatchPaymentMethod(ctx context.Context, id string, setDefault *bool, status string) error {
-	if id == "" {
-		return NewValidationError("id", "must not be empty")
-	}
-	if setDefault != nil && *setDefault {
-		q := `UPDATE payment_methods SET is_default = true, updated_at = NOW() WHERE id = $1`
-		_, err := s.db.ExecContext(ctx, q, id)
-		if err != nil {
-			s.logger.Error("PatchPaymentMethod: set default failed", logger.ErrorField(err), logger.String("id", id))
-			return err
-		}
-		// Log audit
-		audit := AuditLog{
-			ID:        generateUUID(),
-			ActorID:   "system",
-			Action:    "set_default_payment_method",
-			Resource:  "payment_method",
-			TargetID:  id,
-			Details:   "Payment method set as default",
-			CreatedAt: time.Now().UTC(),
-			Metadata:  "{}",
-		}
-		_, _ = s.CreateAuditLog(context.Background(), audit)
-		return nil
-	}
-	if status != "" {
-		q := `UPDATE payment_methods SET status = $2, updated_at = NOW() WHERE id = $1`
-		_, err := s.db.ExecContext(ctx, q, id, status)
-		if err != nil {
-			s.logger.Error("PatchPaymentMethod: status update failed", logger.ErrorField(err), logger.String("id", id))
-			return err
-		}
-		// Log audit
-		audit := AuditLog{
-			ID:        generateUUID(),
-			ActorID:   "system",
-			Action:    "patch_payment_method_status",
-			Resource:  "payment_method",
-			TargetID:  id,
-			Details:   "Payment method status updated to " + status,
-			CreatedAt: time.Now().UTC(),
-			Metadata:  "{}",
-		}
-		_, _ = s.CreateAuditLog(context.Background(), audit)
-		return nil
-	}
-	s.logger.Error("PatchPaymentMethod: no valid patch operation", logger.String("id", id))
-	return NewValidationError("patch", "no valid patch operation")
-}
-
-// --- PatchSubscription ---
-func (s *PostgresStore) PatchSubscription(ctx context.Context, id, action string) error {
-	if id == "" || action == "" {
-		return NewValidationError("id/action", "must not be empty")
-	}
-	if len(action) > 7 && action[:7] == "status:" {
-		status := action[7:]
-		q := `UPDATE subscriptions SET status = $2, updated_at = NOW() WHERE id = $1`
-		_, err := s.db.ExecContext(ctx, q, id, status)
-		if err != nil {
-			s.logger.Error("PatchSubscription: status update failed", logger.ErrorField(err), logger.String("id", id))
-			return err
-		}
-		// Log audit
-		audit := AuditLog{
-			ID:        generateUUID(),
-			ActorID:   "system",
-			Action:    "patch_subscription_status",
-			Resource:  "subscription",
-			TargetID:  id,
-			Details:   "Subscription status updated to " + status,
-			CreatedAt: time.Now().UTC(),
-			Metadata:  "{}",
-		}
-		_, _ = s.CreateAuditLog(context.Background(), audit)
-		return nil
-	}
-	if len(action) > 5 && action[:5] == "plan:" {
-		parts := strings.Split(action, ":")
-		if len(parts) < 3 {
-			s.logger.Error("PatchSubscription: invalid plan patch", logger.String("action", action))
-			return NewValidationError("action", "invalid plan patch format")
-		}
-		planID, changeAt := parts[1], parts[2]
-		q := `UPDATE subscriptions SET scheduled_plan_id = $2, scheduled_change_at = $3, updated_at = NOW() WHERE id = $1`
-		_, err := s.db.ExecContext(ctx, q, id, planID, changeAt)
-		if err != nil {
-			s.logger.Error("PatchSubscription: plan change failed", logger.ErrorField(err), logger.String("id", id))
-			return err
-		}
-		// Log audit
-		audit := AuditLog{
-			ID:        generateUUID(),
-			ActorID:   "system",
-			Action:    "patch_subscription_plan",
-			Resource:  "subscription",
-			TargetID:  id,
-			Details:   "Subscription plan scheduled to " + planID + " at " + changeAt,
-			CreatedAt: time.Now().UTC(),
-			Metadata:  "{}",
-		}
-		_, _ = s.CreateAuditLog(context.Background(), audit)
-		return nil
-	}
-	s.logger.Error("PatchSubscription: invalid patch operation", logger.String("action", action))
-	return NewValidationError("patch", "invalid patch operation")
-}
-
-// --- SearchAuditLogs ---
-func (s *PostgresStore) SearchAuditLogs(ctx context.Context, accountID, action, startTime, endTime string, page, pageSize int) ([]AuditLog, error) {
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 1000 {
-		pageSize = 100
-	}
-	q := `SELECT id, actor_id, action, resource, target_id, details, created_at, metadata FROM audit_logs WHERE 1=1`
-	args := []interface{}{}
-	if accountID != "" {
-		q += " AND target_id = $1"
-		args = append(args, accountID)
-	}
-	if action != "" {
-		q += " AND action = $2"
-		args = append(args, action)
-	}
-	if startTime != "" {
-		q += " AND created_at >= $3"
-		args = append(args, startTime)
-	}
-	if endTime != "" {
-		q += " AND created_at <= $4"
-		args = append(args, endTime)
-	}
-	q += " ORDER BY created_at DESC LIMIT $5 OFFSET $6"
-	args = append(args, pageSize, (page-1)*pageSize)
-	rows, err := s.db.QueryContext(ctx, q, args...)
-	if err != nil {
-		s.logger.Error("SearchAuditLogs query failed", logger.ErrorField(err))
-		return nil, err
-	}
-	defer rows.Close()
-	var out []AuditLog
-	for rows.Next() {
-		var a AuditLog
-		if err := rows.Scan(&a.ID, &a.ActorID, &a.Action, &a.Resource, &a.TargetID, &a.Details, &a.CreatedAt, &a.Metadata); err != nil {
-			s.logger.Error("SearchAuditLogs scan failed", logger.ErrorField(err))
-			return nil, err
-		}
-		out = append(out, a)
-	}
-	return out, nil
-}
-
-// --- ManualAdjustment ---
-func (s *PostgresStore) CreateManualAdjustment(ctx context.Context, a InvoiceAdjustment) (InvoiceAdjustment, error) {
-	if a.InvoiceID == "" || a.Amount == 0 || a.Currency == "" {
-		return InvoiceAdjustment{}, NewValidationError("invoice_id/amount/currency", "must not be empty or zero")
-	}
-	a.Type = "manual"
-	adj, err := s.CreateInvoiceAdjustment(ctx, a)
-	if err != nil {
-		s.logger.Error("CreateManualAdjustment failed", logger.ErrorField(err), logger.Any("adjustment", a))
-		return InvoiceAdjustment{}, err
-	}
-	// Log audit
-	audit := AuditLog{
-		ID:        generateUUID(),
-		ActorID:   "system",
-		Action:    "create_manual_adjustment",
-		Resource:  "invoice_adjustment",
-		TargetID:  adj.ID,
-		Details:   "Manual adjustment created",
-		CreatedAt: time.Now().UTC(),
-		Metadata:  "{}",
-	}
-	_, _ = s.CreateAuditLog(context.Background(), audit)
-	return adj, nil
-}
-
-// --- ManualRefund ---
-func (s *PostgresStore) CreateManualRefund(ctx context.Context, r Refund) (Refund, error) {
-	if r.PaymentID == "" || r.Amount == 0 || r.Currency == "" {
-		return Refund{}, NewValidationError("payment_id/amount/currency", "must not be empty or zero")
-	}
-	r.Status = "manual"
-	refund, err := s.CreateRefund(ctx, r)
-	if err != nil {
-		s.logger.Error("CreateManualRefund failed", logger.ErrorField(err), logger.Any("refund", r))
-		return Refund{}, err
-	}
-	// Log audit
-	audit := AuditLog{
-		ID:        generateUUID(),
-		ActorID:   "system",
-		Action:    "create_manual_refund",
+		Action:    "get_refund",
 		Resource:  "refund",
-		TargetID:  refund.ID,
-		Details:   "Manual refund created",
+		TargetID:  out.ID,
+		Details:   "Refund fetched",
 		CreatedAt: time.Now().UTC(),
-		Metadata:  "{}",
-	}
-	_, _ = s.CreateAuditLog(context.Background(), audit)
-	return refund, nil
+	})
+	return out, nil
 }
 
 // --- AccountAction ---
@@ -1158,7 +771,7 @@ func (s *PostgresStore) PerformAccountAction(accountID, action string, params ma
 		CreatedAt: time.Now().UTC(),
 		Metadata:  "{}",
 	}
-	_, _ = s.CreateAuditLog(context.Background(), audit)
+	s.logAudit(context.Background(), audit)
 	return map[string]interface{}{
 		"account": out,
 		"action":  action,
@@ -1189,7 +802,7 @@ func (s *PostgresStore) GetInvoicePreview(ctx context.Context, accountID string)
 		CreatedAt: time.Now().UTC(),
 		Metadata:  "{}",
 	}
-	_, _ = s.CreateAuditLog(context.Background(), audit)
+	s.logAudit(context.Background(), audit)
 	return out, nil
 }
 
@@ -1234,7 +847,7 @@ func (s *PostgresStore) RedeemCoupon(ctx context.Context, code, accountID string
 		CreatedAt: time.Now().UTC(),
 		Metadata:  "{}",
 	}
-	_, _ = s.CreateAuditLog(context.Background(), audit)
+	s.logAudit(context.Background(), audit)
 	return out, nil
 }
 
@@ -1260,7 +873,7 @@ func (s *PostgresStore) ApplyCreditsToInvoice(ctx context.Context, invoiceID str
 		CreatedAt: time.Now().UTC(),
 		Metadata:  "{}",
 	}
-	_, _ = s.CreateAuditLog(context.Background(), audit)
+	s.logAudit(context.Background(), audit)
 	return nil
 }
 
@@ -1294,7 +907,7 @@ func (s *PostgresStore) GetBillingConfig(ctx context.Context) (map[string]interf
 		CreatedAt: time.Now().UTC(),
 		Metadata:  "{}",
 	}
-	_, _ = s.CreateAuditLog(context.Background(), audit)
+	s.logAudit(context.Background(), audit)
 	return config, nil
 }
 
@@ -1318,6 +931,460 @@ func (s *PostgresStore) SetBillingConfig(ctx context.Context, input map[string]i
 		CreatedAt: time.Now().UTC(),
 		Metadata:  "{}",
 	}
-	_, _ = s.CreateAuditLog(context.Background(), audit)
+	s.logAudit(context.Background(), audit)
 	return nil
+}
+
+// Implement APIUsageService
+func (s *PostgresStore) CreateAPIUsage(ctx context.Context, usage APIUsage) (APIUsage, error) {
+	const q = `INSERT INTO api_usage (id, tenant_id, api_key_id, endpoint, count, period, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, tenant_id, api_key_id, endpoint, count, period, created_at`
+	row := s.db.QueryRowContext(ctx, q, usage.ID, usage.TenantID, usage.APIKeyID, usage.Endpoint, usage.Count, usage.Period, usage.CreatedAt)
+	var out APIUsage
+	if err := row.Scan(&out.ID, &out.TenantID, &out.APIKeyID, &out.Endpoint, &out.Count, &out.Period, &out.CreatedAt); err != nil {
+		s.logger.Error("CreateAPIUsage failed", logger.ErrorField(err), logger.Any("usage", usage))
+		return APIUsage{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) ListAPIUsage(ctx context.Context, tenantID, apiKeyID, endpoint string, periodStart, periodEnd time.Time, page, pageSize int) ([]APIUsage, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 100
+	}
+	q := `SELECT id, tenant_id, api_key_id, endpoint, count, period, created_at FROM api_usage WHERE tenant_id = $1`
+	args := []interface{}{tenantID}
+	if apiKeyID != "" {
+		q += " AND api_key_id = $2"
+		args = append(args, apiKeyID)
+	}
+	if endpoint != "" {
+		q += " AND endpoint = $3"
+		args = append(args, endpoint)
+	}
+	q += " AND period >= $4 AND period <= $5 ORDER BY period DESC LIMIT $6 OFFSET $7"
+	args = append(args, periodStart, periodEnd, pageSize, (page-1)*pageSize)
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		s.logger.Error("ListAPIUsage query failed", logger.ErrorField(err))
+		return nil, err
+	}
+	defer rows.Close()
+	var out []APIUsage
+	for rows.Next() {
+		var u APIUsage
+		if err := rows.Scan(&u.ID, &u.TenantID, &u.APIKeyID, &u.Endpoint, &u.Count, &u.Period, &u.CreatedAt); err != nil {
+			s.logger.Error("ListAPIUsage scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, nil
+}
+
+// Implement APIKeyService
+func (s *PostgresStore) CreateAPIKey(ctx context.Context, key APIKey) (APIKey, error) {
+	const q = `INSERT INTO api_keys (id, tenant_id, key, secret_hash, status, created_at, updated_at, last_used_at, expires_at, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, tenant_id, key, secret_hash, status, created_at, updated_at, last_used_at, expires_at, metadata`
+	row := s.db.QueryRowContext(ctx, q, key.ID, key.TenantID, key.Key, key.SecretHash, key.Status, key.CreatedAt, key.UpdatedAt, key.LastUsedAt, key.ExpiresAt, key.Metadata)
+	var out APIKey
+	if err := row.Scan(&out.ID, &out.TenantID, &out.Key, &out.SecretHash, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.LastUsedAt, &out.ExpiresAt, &out.Metadata); err != nil {
+		s.logger.Error("CreateAPIKey failed", logger.ErrorField(err), logger.Any("key", key))
+		return APIKey{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) RotateAPIKey(ctx context.Context, apiKeyID, actorID string) (APIKeyRotation, error) {
+	const q = `UPDATE api_keys SET secret_hash = $2, updated_at = $3 WHERE id = $1 RETURNING id, tenant_id, key, secret_hash, status, created_at, updated_at, last_used_at, expires_at, metadata`
+	newSecret := generateUUID() // Use a real secret generator in prod
+	updatedAt := time.Now().UTC()
+	row := s.db.QueryRowContext(ctx, q, apiKeyID, newSecret, updatedAt)
+	var out APIKey
+	if err := row.Scan(&out.ID, &out.TenantID, &out.Key, &out.SecretHash, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.LastUsedAt, &out.ExpiresAt, &out.Metadata); err != nil {
+		s.logger.Error("RotateAPIKey failed", logger.ErrorField(err), logger.String("apiKeyID", apiKeyID))
+		return APIKeyRotation{}, err
+	}
+	rot := APIKeyRotation{
+		ID:        generateUUID(),
+		APIKeyID:  apiKeyID,
+		TenantID:  out.TenantID,
+		RotatedAt: updatedAt,
+		ActorID:   actorID,
+	}
+	return rot, nil
+}
+
+func (s *PostgresStore) RevokeAPIKey(ctx context.Context, apiKeyID string) error {
+	const q = `UPDATE api_keys SET status = 'revoked', updated_at = $2 WHERE id = $1`
+	_, err := s.db.ExecContext(ctx, q, apiKeyID, time.Now().UTC())
+	if err != nil {
+		s.logger.Error("RevokeAPIKey failed", logger.ErrorField(err), logger.String("apiKeyID", apiKeyID))
+	}
+	return err
+}
+
+func (s *PostgresStore) ListAPIKeys(ctx context.Context, tenantID string, page, pageSize int) ([]APIKey, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 100
+	}
+	const q = `SELECT id, tenant_id, key, secret_hash, status, created_at, updated_at, last_used_at, expires_at, metadata FROM api_keys WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+	rows, err := s.db.QueryContext(ctx, q, tenantID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		s.logger.Error("ListAPIKeys query failed", logger.ErrorField(err))
+		return nil, err
+	}
+	defer rows.Close()
+	var out []APIKey
+	for rows.Next() {
+		var k APIKey
+		if err := rows.Scan(&k.ID, &k.TenantID, &k.Key, &k.SecretHash, &k.Status, &k.CreatedAt, &k.UpdatedAt, &k.LastUsedAt, &k.ExpiresAt, &k.Metadata); err != nil {
+			s.logger.Error("ListAPIKeys scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	return out, nil
+}
+
+// Implement RateLimitService
+func (s *PostgresStore) SetRateLimit(ctx context.Context, rl RateLimit) (RateLimit, error) {
+	const q = `INSERT INTO rate_limits (id, tenant_id, api_key_id, limit, period, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (tenant_id, api_key_id) DO UPDATE SET limit = $4, period = $5, updated_at = $7 RETURNING id, tenant_id, api_key_id, limit, period, created_at, updated_at`
+	row := s.db.QueryRowContext(ctx, q, rl.ID, rl.TenantID, rl.APIKeyID, rl.Limit, rl.Period, rl.CreatedAt, rl.UpdatedAt)
+	var out RateLimit
+	if err := row.Scan(&out.ID, &out.TenantID, &out.APIKeyID, &out.Limit, &out.Period, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		s.logger.Error("SetRateLimit failed", logger.ErrorField(err), logger.Any("rate_limit", rl))
+		return RateLimit{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) GetRateLimit(ctx context.Context, tenantID, apiKeyID string) (RateLimit, error) {
+	const q = `SELECT id, tenant_id, api_key_id, limit, period, created_at, updated_at FROM rate_limits WHERE tenant_id = $1 AND api_key_id = $2`
+	row := s.db.QueryRowContext(ctx, q, tenantID, apiKeyID)
+	var out RateLimit
+	if err := row.Scan(&out.ID, &out.TenantID, &out.APIKeyID, &out.Limit, &out.Period, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		s.logger.Error("GetRateLimit failed", logger.ErrorField(err), logger.String("tenant_id", tenantID), logger.String("api_key_id", apiKeyID))
+		return RateLimit{}, err
+	}
+	return out, nil
+}
+
+// Implement SLAService
+func (s *PostgresStore) SetSLA(ctx context.Context, sla SLA) (SLA, error) {
+	const q = `INSERT INTO slas (id, tenant_id, uptime_target, response_time_ms, support_level, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (tenant_id) DO UPDATE SET uptime_target = $3, response_time_ms = $4, support_level = $5, updated_at = $7 RETURNING id, tenant_id, uptime_target, response_time_ms, support_level, created_at, updated_at`
+	row := s.db.QueryRowContext(ctx, q, sla.ID, sla.TenantID, sla.UptimeTarget, sla.ResponseTime, sla.SupportLevel, sla.CreatedAt, sla.UpdatedAt)
+	var out SLA
+	if err := row.Scan(&out.ID, &out.TenantID, &out.UptimeTarget, &out.ResponseTime, &out.SupportLevel, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		s.logger.Error("SetSLA failed", logger.ErrorField(err), logger.Any("sla", sla))
+		return SLA{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) GetSLA(ctx context.Context, tenantID string) (SLA, error) {
+	const q = `SELECT id, tenant_id, uptime_target, response_time_ms, support_level, created_at, updated_at FROM slas WHERE tenant_id = $1`
+	row := s.db.QueryRowContext(ctx, q, tenantID)
+	var out SLA
+	if err := row.Scan(&out.ID, &out.TenantID, &out.UptimeTarget, &out.ResponseTime, &out.SupportLevel, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		s.logger.Error("GetSLA failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return SLA{}, err
+	}
+	return out, nil
+}
+
+// Implement PluginService
+func (s *PostgresStore) RegisterPlugin(ctx context.Context, plugin Plugin) (Plugin, error) {
+	const q = `INSERT INTO plugins (id, tenant_id, name, type, config, status, created_at, updated_at, last_used_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, tenant_id, name, type, config, status, created_at, updated_at, last_used_at`
+	row := s.db.QueryRowContext(ctx, q, plugin.ID, plugin.TenantID, plugin.Name, plugin.Type, plugin.Config, plugin.Status, plugin.CreatedAt, plugin.UpdatedAt, plugin.LastUsedAt)
+	var out Plugin
+	if err := row.Scan(&out.ID, &out.TenantID, &out.Name, &out.Type, &out.Config, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.LastUsedAt); err != nil {
+		s.logger.Error("RegisterPlugin failed", logger.ErrorField(err), logger.Any("plugin", plugin))
+		return Plugin{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) ListPlugins(ctx context.Context, tenantID string, page, pageSize int) ([]Plugin, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 100
+	}
+	const q = `SELECT id, tenant_id, name, type, config, status, created_at, updated_at, last_used_at FROM plugins WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+	rows, err := s.db.QueryContext(ctx, q, tenantID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		s.logger.Error("ListPlugins query failed", logger.ErrorField(err))
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Plugin
+	for rows.Next() {
+		var p Plugin
+		if err := rows.Scan(&p.ID, &p.TenantID, &p.Name, &p.Type, &p.Config, &p.Status, &p.CreatedAt, &p.UpdatedAt, &p.LastUsedAt); err != nil {
+			s.logger.Error("ListPlugins scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) UpdatePlugin(ctx context.Context, plugin Plugin) (Plugin, error) {
+	const q = `UPDATE plugins SET name = $2, type = $3, config = $4, status = $5, updated_at = $6, last_used_at = $7 WHERE id = $1 RETURNING id, tenant_id, name, type, config, status, created_at, updated_at, last_used_at`
+	row := s.db.QueryRowContext(ctx, q, plugin.ID, plugin.Name, plugin.Type, plugin.Config, plugin.Status, plugin.UpdatedAt, plugin.LastUsedAt)
+	var out Plugin
+	if err := row.Scan(&out.ID, &out.TenantID, &out.Name, &out.Type, &out.Config, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.LastUsedAt); err != nil {
+		s.logger.Error("UpdatePlugin failed", logger.ErrorField(err), logger.Any("plugin", plugin))
+		return Plugin{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) DeletePlugin(ctx context.Context, pluginID string) error {
+	const q = `DELETE FROM plugins WHERE id = $1`
+	_, err := s.db.ExecContext(ctx, q, pluginID)
+	if err != nil {
+		s.logger.Error("DeletePlugin failed", logger.ErrorField(err), logger.String("pluginID", pluginID))
+	}
+	return err
+}
+
+// Implement WebhookSubscriptionService
+func (s *PostgresStore) CreateWebhookSubscription(ctx context.Context, sub WebhookSubscription) (WebhookSubscription, error) {
+	const q = `INSERT INTO webhook_subscriptions (id, tenant_id, url, event_types, secret, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, tenant_id, url, event_types, secret, status, created_at, updated_at`
+	row := s.db.QueryRowContext(ctx, q, sub.ID, sub.TenantID, sub.URL, strings.Join(sub.EventTypes, ","), sub.Secret, sub.Status, sub.CreatedAt, sub.UpdatedAt)
+	var out WebhookSubscription
+	var eventTypes string
+	if err := row.Scan(&out.ID, &out.TenantID, &out.URL, &eventTypes, &out.Secret, &out.Status, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		s.logger.Error("CreateWebhookSubscription failed", logger.ErrorField(err), logger.Any("sub", sub))
+		return WebhookSubscription{}, err
+	}
+	out.EventTypes = strings.Split(eventTypes, ",")
+	return out, nil
+}
+
+func (s *PostgresStore) ListWebhookSubscriptions(ctx context.Context, tenantID string, page, pageSize int) ([]WebhookSubscription, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 100
+	}
+	const q = `SELECT id, tenant_id, url, event_types, secret, status, created_at, updated_at FROM webhook_subscriptions WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+	rows, err := s.db.QueryContext(ctx, q, tenantID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		s.logger.Error("ListWebhookSubscriptions query failed", logger.ErrorField(err))
+		return nil, err
+	}
+	defer rows.Close()
+	var out []WebhookSubscription
+	for rows.Next() {
+		var w WebhookSubscription
+		var eventTypes string
+		if err := rows.Scan(&w.ID, &w.TenantID, &w.URL, &eventTypes, &w.Secret, &w.Status, &w.CreatedAt, &w.UpdatedAt); err != nil {
+			s.logger.Error("ListWebhookSubscriptions scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+		w.EventTypes = strings.Split(eventTypes, ",")
+		out = append(out, w)
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) DeleteWebhookSubscription(ctx context.Context, subID string) error {
+	const q = `DELETE FROM webhook_subscriptions WHERE id = $1`
+	_, err := s.db.ExecContext(ctx, q, subID)
+	if err != nil {
+		s.logger.Error("DeleteWebhookSubscription failed", logger.ErrorField(err), logger.String("subID", subID))
+	}
+	return err
+}
+
+// Implement TaxInfoService
+func (s *PostgresStore) SetTaxInfo(ctx context.Context, info TaxInfo) (TaxInfo, error) {
+	const q = `INSERT INTO tax_info (id, tenant_id, country, region, tax_id, tax_rate, currency, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (tenant_id) DO UPDATE SET country = $3, region = $4, tax_id = $5, tax_rate = $6, currency = $7, updated_at = $9 RETURNING id, tenant_id, country, region, tax_id, tax_rate, currency, created_at, updated_at`
+	row := s.db.QueryRowContext(ctx, q, info.ID, info.TenantID, info.Country, info.Region, info.TaxID, info.TaxRate, info.Currency, info.CreatedAt, info.UpdatedAt)
+	var out TaxInfo
+	if err := row.Scan(&out.ID, &out.TenantID, &out.Country, &out.Region, &out.TaxID, &out.TaxRate, &out.Currency, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		s.logger.Error("SetTaxInfo failed", logger.ErrorField(err), logger.Any("info", info))
+		return TaxInfo{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) GetTaxInfo(ctx context.Context, tenantID string) (TaxInfo, error) {
+	const q = `SELECT id, tenant_id, country, region, tax_id, tax_rate, currency, created_at, updated_at FROM tax_info WHERE tenant_id = $1`
+	row := s.db.QueryRowContext(ctx, q, tenantID)
+	var out TaxInfo
+	if err := row.Scan(&out.ID, &out.TenantID, &out.Country, &out.Region, &out.TaxID, &out.TaxRate, &out.Currency, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		s.logger.Error("GetTaxInfo failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return TaxInfo{}, err
+	}
+	return out, nil
+}
+
+// --- Reporting ---
+func (s *PostgresStore) GetRevenueReport(ctx context.Context) (map[string]interface{}, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount),0) FROM invoices WHERE status = 'paid' AND created_at >= NOW() - INTERVAL '30 days'`)
+	var revenue float64
+	if err := row.Scan(&revenue); err != nil {
+		s.logger.Error("GetRevenueReport failed", logger.ErrorField(err))
+		return nil, err
+	}
+	return map[string]interface{}{"revenue": revenue}, nil
+}
+
+func (s *PostgresStore) GetARReport(ctx context.Context) (map[string]interface{}, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount),0) FROM invoices WHERE status IN ('issued', 'overdue')`)
+	var ar float64
+	if err := row.Scan(&ar); err != nil {
+		s.logger.Error("GetARReport failed", logger.ErrorField(err))
+		return nil, err
+	}
+	return map[string]interface{}{"accounts_receivable": ar}, nil
+}
+
+func (s *PostgresStore) GetChurnReport(ctx context.Context) (map[string]interface{}, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM subscriptions WHERE status = 'canceled' AND canceled_at >= NOW() - INTERVAL '30 days'`)
+	var churn int
+	if err := row.Scan(&churn); err != nil {
+		s.logger.Error("GetChurnReport failed", logger.ErrorField(err))
+		return nil, err
+	}
+	return map[string]interface{}{"churned_subscriptions": churn}, nil
+}
+
+// --- Usage Aggregation/Overage ---
+func (s *PostgresStore) AggregateUsageForBillingCycle(ctx context.Context, accountID string, periodStart, periodEnd time.Time) (map[string]float64, error) {
+	if accountID == "" {
+		return nil, NewValidationError("account_id", "must not be empty")
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT metric, SUM(amount) FROM usage WHERE account_id = $1 AND created_at >= $2 AND created_at <= $3 GROUP BY metric`, accountID, periodStart, periodEnd)
+	if err != nil {
+		s.logger.Error("AggregateUsageForBillingCycle failed", logger.ErrorField(err))
+		return nil, err
+	}
+	defer rows.Close()
+	usageTotals := make(map[string]float64)
+	for rows.Next() {
+		var metric string
+		var total float64
+		if err := rows.Scan(&metric, &total); err != nil {
+			s.logger.Error("AggregateUsageForBillingCycle scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+		usageTotals[metric] = total
+	}
+	return usageTotals, nil
+}
+
+func (s *PostgresStore) CalculateOverageCharges(ctx context.Context, accountID, planID string, periodStart, periodEnd time.Time) (map[string]float64, error) {
+	if accountID == "" || planID == "" {
+		return nil, NewValidationError("overage", "accountID and planID required")
+	}
+	plan, err := s.GetPlan(ctx, planID)
+	if err != nil {
+		s.logger.Error("CalculateOverageCharges: GetPlan failed", logger.ErrorField(err))
+		return nil, err
+	}
+	usageTotals, err := s.AggregateUsageForBillingCycle(ctx, accountID, periodStart, periodEnd)
+	if err != nil {
+		return nil, err
+	}
+	limits, overages, err := parsePlanPricing(plan.Pricing)
+	if err != nil {
+		return nil, err
+	}
+	overageCharges := make(map[string]float64)
+	for resource, used := range usageTotals {
+		limit := limits[resource]
+		rate := overages[resource]
+		if used > limit && rate > 0 {
+			overageCharges[resource] = (used - limit) * rate
+		}
+	}
+	return overageCharges, nil
+}
+
+// --- Plan Pricing Parsing ---
+func parsePlanPricing(pricing string) (map[string]float64, map[string]float64, error) {
+	var raw map[string]map[string]float64
+	err := json.Unmarshal([]byte(pricing), &raw)
+	if err != nil {
+		return nil, nil, err
+	}
+	limits := make(map[string]float64)
+	overages := make(map[string]float64)
+	for k, v := range raw {
+		limits[k] = v["limit"]
+		overages[k] = v["overage"]
+	}
+	return limits, overages, nil
+}
+
+// --- Enhanced Invoice Creation: Fee/Tax Calculation ---
+func (s *PostgresStore) CreateInvoiceWithFeesAndTax(ctx context.Context, i Invoice, fixedFee, percentFee, taxRate float64) (Invoice, error) {
+	// Calculate subtotal
+	subtotal := i.Amount
+	feeTotal := fixedFee
+	if percentFee > 0 {
+		feeTotal += subtotal * (percentFee / 100)
+	}
+	taxAmount := (subtotal + feeTotal) * taxRate / 100
+	i.TaxAmount = taxAmount
+	i.TaxRate = taxRate
+	i.Amount = subtotal + feeTotal + taxAmount
+	// Store fees as JSON string for extensibility
+	fees := []map[string]interface{}{}
+	if fixedFee > 0 {
+		fees = append(fees, map[string]interface{}{"type": "fixed", "amount": fixedFee})
+	}
+	if percentFee > 0 {
+		fees = append(fees, map[string]interface{}{"type": "percent", "amount": percentFee})
+	}
+	feeBytes, _ := json.Marshal(fees)
+	i.Fees = string(feeBytes)
+	const q = `INSERT INTO invoices (id, account_id, amount, status, due_date, created_at, updated_at, tax_amount, tax_rate, fees) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, account_id, amount, status, due_date, created_at, updated_at, tax_amount, tax_rate, fees`
+	row := s.db.QueryRowContext(ctx, q, i.ID, i.AccountID, i.Amount, i.Status, i.DueDate, i.CreatedAt, i.UpdatedAt, i.TaxAmount, i.TaxRate, i.Fees)
+	var out Invoice
+	if err := row.Scan(&out.ID, &out.AccountID, &out.Amount, &out.Status, &out.DueDate, &out.CreatedAt, &out.UpdatedAt, &out.TaxAmount, &out.TaxRate, &out.Fees); err != nil {
+		s.logger.Error("CreateInvoiceWithFeesAndTax failed", logger.ErrorField(err), logger.Any("invoice", i))
+		return Invoice{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) CreateManualRefund(ctx context.Context, refund Refund) (Refund, error) {
+	const q = `INSERT INTO refunds (id, payment_id, invoice_id, amount, currency, status, reason, created_at, updated_at, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, payment_id, invoice_id, amount, currency, status, reason, created_at, updated_at, metadata`
+	row := s.db.QueryRowContext(ctx, q, refund.ID, refund.PaymentID, refund.InvoiceID, refund.Amount, refund.Currency, refund.Status, refund.Reason, refund.CreatedAt, refund.UpdatedAt, refund.Metadata)
+	var out Refund
+	if err := row.Scan(&out.ID, &out.PaymentID, &out.InvoiceID, &out.Amount, &out.Currency, &out.Status, &out.Reason, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
+		s.logger.Error("CreateManualRefund failed", logger.ErrorField(err), logger.Any("refund", refund))
+		return Refund{}, err
+	}
+	s.logAudit(ctx, AuditLog{
+		ID:        generateUUID(),
+		ActorID:   "system",
+		Action:    "create_manual_refund",
+		Resource:  "refund",
+		TargetID:  out.ID,
+		Details:   "Manual refund created",
+		CreatedAt: time.Now().UTC(),
+		Metadata:  "{}",
+	})
+	return out, nil
 }

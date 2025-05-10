@@ -1,5 +1,12 @@
 package billing_management
 
+import (
+	"context"
+	"time"
+
+	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+)
+
 type AccountService interface {
 	CreateAccount(input Account) (Account, error)
 	UpdateAccount(input Account) (Account, error)
@@ -137,3 +144,46 @@ type AccountActionService interface {
 }
 
 var _ AccountActionService = (*PostgresStore)(nil)
+
+type APIUsageService interface {
+	CreateAPIUsage(ctx context.Context, usage APIUsage) (APIUsage, error)
+	ListAPIUsage(ctx context.Context, tenantID, apiKeyID, endpoint string, periodStart, periodEnd time.Time, page, pageSize int) ([]APIUsage, error)
+}
+
+type APIKeyService interface {
+	CreateAPIKey(ctx context.Context, key APIKey) (APIKey, error)
+	RotateAPIKey(ctx context.Context, apiKeyID, actorID string) (APIKeyRotation, error)
+	RevokeAPIKey(ctx context.Context, apiKeyID string) error
+	ListAPIKeys(ctx context.Context, tenantID string, page, pageSize int) ([]APIKey, error)
+}
+
+type RateLimitService interface {
+	SetRateLimit(ctx context.Context, rl RateLimit) (RateLimit, error)
+	GetRateLimit(ctx context.Context, tenantID, apiKeyID string) (RateLimit, error)
+}
+
+type SLAService interface {
+	SetSLA(ctx context.Context, sla SLA) (SLA, error)
+	GetSLA(ctx context.Context, tenantID string) (SLA, error)
+}
+
+type PluginService interface {
+	RegisterPlugin(ctx context.Context, plugin Plugin) (Plugin, error)
+	ListPlugins(ctx context.Context, tenantID string, page, pageSize int) ([]Plugin, error)
+	UpdatePlugin(ctx context.Context, plugin Plugin) (Plugin, error)
+	DeletePlugin(ctx context.Context, pluginID string) error
+}
+
+type WebhookSubscriptionService interface {
+	CreateWebhookSubscription(ctx context.Context, sub WebhookSubscription) (WebhookSubscription, error)
+	ListWebhookSubscriptions(ctx context.Context, tenantID string, page, pageSize int) ([]WebhookSubscription, error)
+	DeleteWebhookSubscription(ctx context.Context, subID string) error
+}
+
+type TaxInfoService interface {
+	SetTaxInfo(ctx context.Context, info TaxInfo) (TaxInfo, error)
+	GetTaxInfo(ctx context.Context, tenantID string) (TaxInfo, error)
+}
+
+// All audit logging must use AuditLogger for decoupling and optionality.
+type BillingAuditLogger = security_management.AuditLogger

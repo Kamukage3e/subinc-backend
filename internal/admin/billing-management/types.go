@@ -40,6 +40,7 @@ type Plan struct {
 	Description string    `json:"description"`
 	Price       float64   `json:"price"`
 	Active      bool      `json:"active"`
+	Pricing     string    `json:"pricing"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -84,6 +85,9 @@ type Invoice struct {
 	DueDate   time.Time `json:"due_date"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	TaxAmount float64   `json:"tax_amount"`
+	TaxRate   float64   `json:"tax_rate"`
+	Fees      string    `json:"fees"`
 }
 
 func (i *Invoice) Validate() error {
@@ -484,4 +488,107 @@ func (e *ValidationError) Error() string {
 
 func NewValidationError(field, message string) error {
 	return &ValidationError{Field: field, Message: message}
+}
+
+// Add tenant-aware fields, API metering, audit, currency, region, localization, webhooks, SLA, rate limiting, plugin types
+
+// APIUsage tracks per-tenant API usage for metering and billing
+// All fields are required for SaaS metering and analytics
+// Partitioned by tenant_id and api_key for isolation
+// Timestamp is RFC3339
+// Endpoint is the API route or method
+// Count is the number of calls in the period
+// Period is ISO8601 (e.g., 2024-06-01T00:00:00Z)
+type APIUsage struct {
+	ID        string    `json:"id"`
+	TenantID  string    `json:"tenant_id"`
+	APIKeyID  string    `json:"api_key_id"`
+	Endpoint  string    `json:"endpoint"`
+	Count     int64     `json:"count"`
+	Period    time.Time `json:"period"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// APIKey represents a customer API key/secret for authentication
+// All fields are required for SaaS security and auditability
+type APIKey struct {
+	ID         string     `json:"id"`
+	TenantID   string     `json:"tenant_id"`
+	Key        string     `json:"key"`
+	SecretHash string     `json:"secret_hash"`
+	Status     string     `json:"status"` // active, revoked, expired
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	LastUsedAt time.Time  `json:"last_used_at"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+	Metadata   string     `json:"metadata"`
+}
+
+// APIKeyRotation tracks key rotation events for compliance
+type APIKeyRotation struct {
+	ID        string    `json:"id"`
+	APIKeyID  string    `json:"api_key_id"`
+	TenantID  string    `json:"tenant_id"`
+	RotatedAt time.Time `json:"rotated_at"`
+	ActorID   string    `json:"actor_id"`
+}
+
+// RateLimit defines per-tenant or per-key rate limiting for APIs
+type RateLimit struct {
+	ID        string    `json:"id"`
+	TenantID  string    `json:"tenant_id"`
+	APIKeyID  string    `json:"api_key_id"`
+	Limit     int64     `json:"limit"`
+	Period    string    `json:"period"` // e.g., second, minute, hour, day
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// SLA defines per-tenant service level agreements
+type SLA struct {
+	ID           string    `json:"id"`
+	TenantID     string    `json:"tenant_id"`
+	UptimeTarget float64   `json:"uptime_target"` // e.g., 99.9
+	ResponseTime int64     `json:"response_time_ms"`
+	SupportLevel string    `json:"support_level"` // e.g., standard, premium
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// Plugin represents a customer or third-party add-on/plugin
+type Plugin struct {
+	ID         string    `json:"id"`
+	TenantID   string    `json:"tenant_id"`
+	Name       string    `json:"name"`
+	Type       string    `json:"type"` // webhook, event, transformation, etc.
+	Config     string    `json:"config"`
+	Status     string    `json:"status"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+	LastUsedAt time.Time `json:"last_used_at"`
+}
+
+// WebhookSubscription for real-time eventing
+type WebhookSubscription struct {
+	ID         string    `json:"id"`
+	TenantID   string    `json:"tenant_id"`
+	URL        string    `json:"url"`
+	EventTypes []string  `json:"event_types"`
+	Secret     string    `json:"secret"`
+	Status     string    `json:"status"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// TaxInfo for multi-currency, multi-region, VAT/GST compliance
+type TaxInfo struct {
+	ID        string    `json:"id"`
+	TenantID  string    `json:"tenant_id"`
+	Country   string    `json:"country"`
+	Region    string    `json:"region"`
+	TaxID     string    `json:"tax_id"`
+	TaxRate   float64   `json:"tax_rate"`
+	Currency  string    `json:"currency"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

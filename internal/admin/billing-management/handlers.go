@@ -1,29 +1,83 @@
 package billing_management
 
 import (
+	"context"
+	"time"
+
+	"encoding/json"
+
 	"github.com/gofiber/fiber/v2"
+	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
 type BillingAdminHandler struct {
-	AccountService           AccountService
-	PlanService              PlanService
-	UsageService             UsageService
-	InvoiceService           InvoiceService
-	PaymentService           PaymentService
-	AuditLogService          AuditLogService
-	DiscountService          DiscountService
-	CouponService            CouponService
-	CreditService            CreditService
-	RefundService            RefundService
-	PaymentMethodService     PaymentMethodService
-	SubscriptionService      SubscriptionService
-	WebhookEventService      WebhookEventService
-	InvoiceAdjustmentService InvoiceAdjustmentService
-	ManualAdjustmentService  ManualAdjustmentService
-	ManualRefundService      ManualRefundService
-	AccountActionService     AccountActionService
+	AccountService             AccountService
+	PlanService                PlanService
+	UsageService               UsageService
+	InvoiceService             InvoiceService
+	PaymentService             PaymentService
+	DiscountService            DiscountService
+	CouponService              CouponService
+	CreditService              CreditService
+	RefundService              RefundService
+	PaymentMethodService       PaymentMethodService
+	SubscriptionService        SubscriptionService
+	WebhookEventService        WebhookEventService
+	InvoiceAdjustmentService   InvoiceAdjustmentService
+	ManualAdjustmentService    ManualAdjustmentService
+	ManualRefundService        ManualRefundService
+	AccountActionService       AccountActionService
+	APIUsageService            APIUsageService
+	APIKeyService              APIKeyService
+	RateLimitService           RateLimitService
+	SLAService                 SLAService
+	PluginService              PluginService
+	WebhookSubscriptionService WebhookSubscriptionService
+	TaxInfoService             TaxInfoService
+	Store                      *PostgresStore
+	AuditLogger                security_management.AuditLogger
 	// Add all other real service dependencies here as you migrate
+}
+
+// Helper to serialize details to string for audit logs
+func auditDetails(v interface{}) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
+// getActorID extracts the user_id from fiber context or returns "system" if not present
+func getActorID(c *fiber.Ctx) string {
+	actor, ok := c.Locals("user_id").(string)
+	if ok && actor != "" {
+		return actor
+	}
+	return "system"
+}
+
+func (h *BillingAdminHandler) logAudit(ctx context.Context, log AuditLog) {
+	if h.AuditLogger == nil {
+		h.AuditLogger = security_management.NoopAuditLogger{}
+	}
+	// Details is always a string now
+	detailsStr := log.Details
+	_, err := h.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
+		ID:        log.ID,
+		ActorID:   log.ActorID,
+		Action:    log.Action,
+		TargetID:  log.TargetID,
+		Details:   detailsStr,
+		CreatedAt: log.CreatedAt,
+	})
+	if err != nil {
+		logger.LogError("audit log write failed", logger.ErrorField(err), logger.Any("audit_log", log))
+	}
 }
 
 func (h *BillingAdminHandler) CreateAccount(c *fiber.Ctx) error {
@@ -37,6 +91,14 @@ func (h *BillingAdminHandler) CreateAccount(c *fiber.Ctx) error {
 		logger.LogError("CreateAccount: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        account.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "create_account",
+		TargetID:  account.ID,
+		Details:   auditDetails(map[string]interface{}{"input": input}),
+		CreatedAt: time.Now(),
+	})
 	return c.Status(fiber.StatusCreated).JSON(account)
 }
 
@@ -52,6 +114,14 @@ func (h *BillingAdminHandler) UpdateAccount(c *fiber.Ctx) error {
 		logger.LogError("UpdateAccount: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        account.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "update_account",
+		TargetID:  account.ID,
+		Details:   auditDetails(map[string]interface{}{"input": input}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(account)
 }
 
@@ -66,6 +136,14 @@ func (h *BillingAdminHandler) GetAccount(c *fiber.Ctx) error {
 		logger.LogError("GetAccount: not found", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        account.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "get_account",
+		TargetID:  account.ID,
+		Details:   auditDetails(map[string]interface{}{"id": id}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(account)
 }
 
@@ -78,6 +156,14 @@ func (h *BillingAdminHandler) ListAccounts(c *fiber.Ctx) error {
 		logger.LogError("ListAccounts: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        "",
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "list_accounts",
+		TargetID:  tenantID,
+		Details:   auditDetails(map[string]interface{}{"tenant_id": tenantID, "page": page, "page_size": pageSize}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(fiber.Map{"accounts": accounts, "page": page, "page_size": pageSize})
 }
 
@@ -92,6 +178,14 @@ func (h *BillingAdminHandler) CreatePlan(c *fiber.Ctx) error {
 		logger.LogError("CreatePlan: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        plan.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "create_plan",
+		TargetID:  plan.ID,
+		Details:   auditDetails(map[string]interface{}{"input": input}),
+		CreatedAt: time.Now(),
+	})
 	return c.Status(fiber.StatusCreated).JSON(plan)
 }
 
@@ -107,6 +201,14 @@ func (h *BillingAdminHandler) UpdatePlan(c *fiber.Ctx) error {
 		logger.LogError("UpdatePlan: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        plan.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "update_plan",
+		TargetID:  plan.ID,
+		Details:   auditDetails(map[string]interface{}{"input": input}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(plan)
 }
 
@@ -121,6 +223,14 @@ func (h *BillingAdminHandler) GetPlan(c *fiber.Ctx) error {
 		logger.LogError("GetPlan: not found", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        plan.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "get_plan",
+		TargetID:  plan.ID,
+		Details:   auditDetails(map[string]interface{}{"id": id}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(plan)
 }
 
@@ -133,6 +243,14 @@ func (h *BillingAdminHandler) ListPlans(c *fiber.Ctx) error {
 		logger.LogError("ListPlans: failed", logger.ErrorField(err), logger.Bool("active_only", activeOnly))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        "",
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "list_plans",
+		TargetID:  "",
+		Details:   auditDetails(map[string]interface{}{"active_only": activeOnly, "page": page, "page_size": pageSize}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(fiber.Map{"plans": plans, "page": page, "page_size": pageSize})
 }
 
@@ -146,6 +264,14 @@ func (h *BillingAdminHandler) DeletePlan(c *fiber.Ctx) error {
 		logger.LogError("DeletePlan: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        id,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "delete_plan",
+		TargetID:  id,
+		Details:   auditDetails(map[string]interface{}{"id": id}),
+		CreatedAt: time.Now(),
+	})
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -160,6 +286,14 @@ func (h *BillingAdminHandler) CreateUsage(c *fiber.Ctx) error {
 		logger.LogError("CreateUsage: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        usage.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "create_usage",
+		TargetID:  usage.AccountID,
+		Details:   auditDetails(map[string]interface{}{"input": input}),
+		CreatedAt: time.Now(),
+	})
 	return c.Status(fiber.StatusCreated).JSON(usage)
 }
 
@@ -174,6 +308,14 @@ func (h *BillingAdminHandler) ListUsage(c *fiber.Ctx) error {
 		logger.LogError("ListUsage: failed", logger.ErrorField(err), logger.String("account_id", accountID), logger.String("metric", metric), logger.String("period", period))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        "",
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "list_usage",
+		TargetID:  accountID,
+		Details:   auditDetails(map[string]interface{}{"account_id": accountID, "metric": metric, "period": period, "page": page, "page_size": pageSize}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(fiber.Map{"usages": usages, "page": page, "page_size": pageSize})
 }
 
@@ -188,6 +330,14 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 		logger.LogError("CreateInvoice: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        invoice.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "create_invoice",
+		TargetID:  invoice.AccountID,
+		Details:   auditDetails(map[string]interface{}{"input": input}),
+		CreatedAt: time.Now(),
+	})
 	return c.Status(fiber.StatusCreated).JSON(invoice)
 }
 
@@ -203,6 +353,14 @@ func (h *BillingAdminHandler) UpdateInvoice(c *fiber.Ctx) error {
 		logger.LogError("UpdateInvoice: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        invoice.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "update_invoice",
+		TargetID:  invoice.AccountID,
+		Details:   auditDetails(map[string]interface{}{"input": input}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(invoice)
 }
 
@@ -217,6 +375,14 @@ func (h *BillingAdminHandler) GetInvoice(c *fiber.Ctx) error {
 		logger.LogError("GetInvoice: not found", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        invoice.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "get_invoice",
+		TargetID:  invoice.AccountID,
+		Details:   auditDetails(map[string]interface{}{"id": id}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(invoice)
 }
 
@@ -230,6 +396,14 @@ func (h *BillingAdminHandler) ListInvoices(c *fiber.Ctx) error {
 		logger.LogError("ListInvoices: failed", logger.ErrorField(err), logger.String("account_id", accountID), logger.String("status", status))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        "",
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "list_invoices",
+		TargetID:  accountID,
+		Details:   auditDetails(map[string]interface{}{"account_id": accountID, "status": status, "page": page, "page_size": pageSize}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(fiber.Map{"invoices": invoices, "page": page, "page_size": pageSize})
 }
 
@@ -244,6 +418,14 @@ func (h *BillingAdminHandler) CreatePayment(c *fiber.Ctx) error {
 		logger.LogError("CreatePayment: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        payment.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "create_payment",
+		TargetID:  payment.InvoiceID,
+		Details:   auditDetails(map[string]interface{}{"input": input}),
+		CreatedAt: time.Now(),
+	})
 	return c.Status(fiber.StatusCreated).JSON(payment)
 }
 
@@ -259,6 +441,14 @@ func (h *BillingAdminHandler) UpdatePayment(c *fiber.Ctx) error {
 		logger.LogError("UpdatePayment: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        payment.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "update_payment",
+		TargetID:  payment.InvoiceID,
+		Details:   auditDetails(map[string]interface{}{"input": input}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(payment)
 }
 
@@ -273,6 +463,14 @@ func (h *BillingAdminHandler) GetPayment(c *fiber.Ctx) error {
 		logger.LogError("GetPayment: not found", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        payment.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "get_payment",
+		TargetID:  payment.InvoiceID,
+		Details:   auditDetails(map[string]interface{}{"id": id}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(payment)
 }
 
@@ -285,49 +483,15 @@ func (h *BillingAdminHandler) ListPayments(c *fiber.Ctx) error {
 		logger.LogError("ListPayments: failed", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        "",
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "list_payments",
+		TargetID:  invoiceID,
+		Details:   auditDetails(map[string]interface{}{"invoice_id": invoiceID, "page": page, "page_size": pageSize}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(fiber.Map{"payments": payments, "page": page, "page_size": pageSize})
-}
-
-func (h *BillingAdminHandler) ListAuditLogs(c *fiber.Ctx) error {
-	accountID := c.Query("account_id")
-	action := c.Query("action")
-	page := c.QueryInt("page", 1)
-	pageSize := c.QueryInt("page_size", 100)
-	logs, err := h.AuditLogService.ListAuditLogs(accountID, action, page, pageSize)
-	if err != nil {
-		logger.LogError("ListAuditLogs: failed", logger.ErrorField(err), logger.String("account_id", accountID), logger.String("action", action))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(fiber.Map{"audit_logs": logs, "page": page, "page_size": pageSize})
-}
-
-func (h *BillingAdminHandler) SearchAuditLogs(c *fiber.Ctx) error {
-	accountID := c.Query("account_id")
-	action := c.Query("action")
-	startTime := c.Query("start_time")
-	endTime := c.Query("end_time")
-	page := c.QueryInt("page", 1)
-	pageSize := c.QueryInt("page_size", 100)
-	logs, err := h.AuditLogService.SearchAuditLogs(accountID, action, startTime, endTime, page, pageSize)
-	if err != nil {
-		logger.LogError("SearchAuditLogs: failed", logger.ErrorField(err), logger.String("account_id", accountID), logger.String("action", action), logger.String("start_time", startTime), logger.String("end_time", endTime))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(fiber.Map{"audit_logs": logs, "page": page, "page_size": pageSize})
-}
-
-func (h *BillingAdminHandler) CreateAuditLog(c *fiber.Ctx) error {
-	var input AuditLog
-	if err := c.BodyParser(&input); err != nil {
-		logger.LogError("CreateAuditLog: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	log, err := h.AuditLogService.CreateAuditLog(input)
-	if err != nil {
-		logger.LogError("CreateAuditLog: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.Status(fiber.StatusCreated).JSON(log)
 }
 
 func (h *BillingAdminHandler) CreateDiscount(c *fiber.Ctx) error {
@@ -341,6 +505,14 @@ func (h *BillingAdminHandler) CreateDiscount(c *fiber.Ctx) error {
 		logger.LogError("CreateDiscount: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        discount.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "create_discount",
+		TargetID:  discount.ID,
+		Details:   auditDetails(map[string]interface{}{"input": input}),
+		CreatedAt: time.Now(),
+	})
 	return c.Status(fiber.StatusCreated).JSON(discount)
 }
 
@@ -356,6 +528,14 @@ func (h *BillingAdminHandler) UpdateDiscount(c *fiber.Ctx) error {
 		logger.LogError("UpdateDiscount: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        discount.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "update_discount",
+		TargetID:  discount.ID,
+		Details:   auditDetails(map[string]interface{}{"input": input}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(discount)
 }
 
@@ -369,6 +549,14 @@ func (h *BillingAdminHandler) DeleteDiscount(c *fiber.Ctx) error {
 		logger.LogError("DeleteDiscount: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        id,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "delete_discount",
+		TargetID:  id,
+		Details:   auditDetails(map[string]interface{}{"id": id}),
+		CreatedAt: time.Now(),
+	})
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -383,6 +571,14 @@ func (h *BillingAdminHandler) GetDiscount(c *fiber.Ctx) error {
 		logger.LogError("GetDiscount: not found", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        discount.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "get_discount",
+		TargetID:  discount.ID,
+		Details:   auditDetails(map[string]interface{}{"id": id}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(discount)
 }
 
@@ -397,6 +593,14 @@ func (h *BillingAdminHandler) GetDiscountByCode(c *fiber.Ctx) error {
 		logger.LogError("GetDiscountByCode: not found", logger.ErrorField(err), logger.String("code", code))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        discount.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "get_discount_by_code",
+		TargetID:  discount.ID,
+		Details:   auditDetails(map[string]interface{}{"code": code}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(discount)
 }
 
@@ -409,6 +613,14 @@ func (h *BillingAdminHandler) ListDiscounts(c *fiber.Ctx) error {
 		logger.LogError("ListDiscounts: failed", logger.ErrorField(err), logger.Bool("active_only", activeOnly))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        "",
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "list_discounts",
+		TargetID:  "",
+		Details:   auditDetails(map[string]interface{}{"active_only": activeOnly, "page": page, "page_size": pageSize}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(fiber.Map{"discounts": discounts, "page": page, "page_size": pageSize})
 }
 
@@ -423,6 +635,14 @@ func (h *BillingAdminHandler) CreateCoupon(c *fiber.Ctx) error {
 		logger.LogError("CreateCoupon: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        coupon.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "create_coupon",
+		TargetID:  coupon.ID,
+		Details:   auditDetails(map[string]interface{}{"input": input}),
+		CreatedAt: time.Now(),
+	})
 	return c.Status(fiber.StatusCreated).JSON(coupon)
 }
 
@@ -438,6 +658,14 @@ func (h *BillingAdminHandler) UpdateCoupon(c *fiber.Ctx) error {
 		logger.LogError("UpdateCoupon: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        coupon.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "update_coupon",
+		TargetID:  coupon.ID,
+		Details:   auditDetails(map[string]interface{}{"input": input}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(coupon)
 }
 
@@ -451,6 +679,14 @@ func (h *BillingAdminHandler) DeleteCoupon(c *fiber.Ctx) error {
 		logger.LogError("DeleteCoupon: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        id,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "delete_coupon",
+		TargetID:  id,
+		Details:   auditDetails(map[string]interface{}{"id": id}),
+		CreatedAt: time.Now(),
+	})
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -465,6 +701,14 @@ func (h *BillingAdminHandler) GetCoupon(c *fiber.Ctx) error {
 		logger.LogError("GetCoupon: not found", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        coupon.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "get_coupon",
+		TargetID:  coupon.ID,
+		Details:   auditDetails(map[string]interface{}{"id": id}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(coupon)
 }
 
@@ -479,6 +723,14 @@ func (h *BillingAdminHandler) GetCouponByCode(c *fiber.Ctx) error {
 		logger.LogError("GetCouponByCode: not found", logger.ErrorField(err), logger.String("code", code))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        coupon.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "get_coupon_by_code",
+		TargetID:  coupon.ID,
+		Details:   auditDetails(map[string]interface{}{"code": code}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(coupon)
 }
 
@@ -496,6 +748,14 @@ func (h *BillingAdminHandler) ListCoupons(c *fiber.Ctx) error {
 		logger.LogError("ListCoupons: failed", logger.ErrorField(err), logger.String("discount_id", discountID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        "",
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "list_coupons",
+		TargetID:  discountID,
+		Details:   auditDetails(map[string]interface{}{"discount_id": discountID, "is_active": isActive, "page": page, "page_size": pageSize}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(fiber.Map{"coupons": coupons, "page": page, "page_size": pageSize})
 }
 
@@ -510,6 +770,14 @@ func (h *BillingAdminHandler) CreateCredit(c *fiber.Ctx) error {
 		logger.LogError("CreateCredit: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        credit.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "create_credit",
+		TargetID:  credit.AccountID,
+		Details:   auditDetails(map[string]interface{}{"input": input}),
+		CreatedAt: time.Now(),
+	})
 	return c.Status(fiber.StatusCreated).JSON(credit)
 }
 
@@ -525,23 +793,37 @@ func (h *BillingAdminHandler) UpdateCredit(c *fiber.Ctx) error {
 		logger.LogError("UpdateCredit: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        credit.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "update_credit",
+		TargetID:  credit.AccountID,
+		Details:   auditDetails(map[string]interface{}{"input": input}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(credit)
 }
 
 func (h *BillingAdminHandler) PatchCredit(c *fiber.Ctx) error {
 	id := c.Params("id")
-	var req struct {
-		Action string  `json:"action"`
-		Amount float64 `json:"amount,omitempty"`
+	action := c.Query("action")
+	amount := c.QueryFloat("amount", 0)
+	if id == "" || action == "" {
+		logger.LogError("PatchCredit: id and action required", logger.String("id", id), logger.String("action", action))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id and action required"})
 	}
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("PatchCredit: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if err := h.CreditService.PatchCredit(id, req.Action, req.Amount); err != nil {
-		logger.LogError("PatchCredit: failed", logger.ErrorField(err), logger.String("id", id), logger.String("action", req.Action))
+	if err := h.CreditService.PatchCredit(id, action, amount); err != nil {
+		logger.LogError("PatchCredit: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        id,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "patch_credit",
+		TargetID:  id,
+		Details:   auditDetails(map[string]interface{}{"action": action, "amount": amount}),
+		CreatedAt: time.Now(),
+	})
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -555,6 +837,14 @@ func (h *BillingAdminHandler) DeleteCredit(c *fiber.Ctx) error {
 		logger.LogError("DeleteCredit: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        id,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "delete_credit",
+		TargetID:  id,
+		Details:   auditDetails(map[string]interface{}{"id": id}),
+		CreatedAt: time.Now(),
+	})
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -569,6 +859,14 @@ func (h *BillingAdminHandler) GetCredit(c *fiber.Ctx) error {
 		logger.LogError("GetCredit: not found", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        credit.ID,
+		ActorID:   c.Locals("user_id").(string),
+		Action:    "get_credit",
+		TargetID:  credit.AccountID,
+		Details:   auditDetails(map[string]interface{}{"id": id}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(credit)
 }
 
@@ -597,6 +895,14 @@ func (h *BillingAdminHandler) CreateRefund(c *fiber.Ctx) error {
 		logger.LogError("CreateRefund: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        refund.ID,
+		ActorID:   getActorID(c),
+		Action:    "create_refund",
+		TargetID:  refund.ID,
+		Details:   auditDetails(map[string]interface{}{"input": input}),
+		CreatedAt: time.Now(),
+	})
 	return c.Status(fiber.StatusCreated).JSON(refund)
 }
 
@@ -610,6 +916,14 @@ func (h *BillingAdminHandler) UpdateRefund(c *fiber.Ctx) error {
 		logger.LogError("UpdateRefund: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        id,
+		ActorID:   getActorID(c),
+		Action:    "update_refund",
+		TargetID:  id,
+		Details:   auditDetails(map[string]interface{}{"id": id}),
+		CreatedAt: time.Now(),
+	})
 	return c.SendStatus(fiber.StatusOK)
 }
 
@@ -623,6 +937,14 @@ func (h *BillingAdminHandler) DeleteRefund(c *fiber.Ctx) error {
 		logger.LogError("DeleteRefund: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        id,
+		ActorID:   getActorID(c),
+		Action:    "delete_refund",
+		TargetID:  id,
+		Details:   auditDetails(map[string]interface{}{"id": id}),
+		CreatedAt: time.Now(),
+	})
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -637,6 +959,14 @@ func (h *BillingAdminHandler) GetRefund(c *fiber.Ctx) error {
 		logger.LogError("GetRefund: not found", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        refund.ID,
+		ActorID:   getActorID(c),
+		Action:    "get_refund",
+		TargetID:  refund.ID,
+		Details:   auditDetails(map[string]interface{}{"id": id}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(refund)
 }
 
@@ -651,6 +981,14 @@ func (h *BillingAdminHandler) ListRefunds(c *fiber.Ctx) error {
 		logger.LogError("ListRefunds: failed", logger.ErrorField(err), logger.String("payment_id", paymentID), logger.String("invoice_id", invoiceID), logger.String("status", status))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        "",
+		ActorID:   getActorID(c),
+		Action:    "list_refunds",
+		TargetID:  paymentID,
+		Details:   auditDetails(map[string]interface{}{"payment_id": paymentID, "invoice_id": invoiceID, "status": status, "page": page, "page_size": pageSize}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(fiber.Map{"refunds": refunds, "page": page, "page_size": pageSize})
 }
 
@@ -674,6 +1012,14 @@ func (h *BillingAdminHandler) CreatePaymentMethod(c *fiber.Ctx) error {
 		logger.LogError("CreatePaymentMethod: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "failed to create payment method"})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        pm.ID,
+		ActorID:   getActorID(c),
+		Action:    "create_payment_method",
+		TargetID:  pm.ID,
+		Details:   auditDetails(map[string]interface{}{"input": input, "payment_data": paymentData}),
+		CreatedAt: time.Now(),
+	})
 	return c.Status(fiber.StatusCreated).JSON(pm)
 }
 
@@ -697,39 +1043,38 @@ func (h *BillingAdminHandler) UpdatePaymentMethod(c *fiber.Ctx) error {
 		logger.LogError("UpdatePaymentMethod: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "failed to update payment method"})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        pm.ID,
+		ActorID:   getActorID(c),
+		Action:    "update_payment_method",
+		TargetID:  pm.ID,
+		Details:   auditDetails(map[string]interface{}{"input": input}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(pm)
 }
 
 func (h *BillingAdminHandler) PatchPaymentMethod(c *fiber.Ctx) error {
 	id := c.Params("id")
+	setDefault := c.QueryBool("set_default", false)
+	status := c.Query("status")
 	if id == "" {
-		logger.LogError("PatchPaymentMethod: id required")
+		logger.LogError("PatchPaymentMethod: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	var req struct {
-		SetDefault *bool  `json:"set_default,omitempty"`
-		Status     string `json:"status,omitempty"`
+	if err := h.PaymentMethodService.PatchPaymentMethod(id, &setDefault, status); err != nil {
+		logger.LogError("PatchPaymentMethod: failed", logger.ErrorField(err), logger.String("id", id))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("PatchPaymentMethod: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.SetDefault != nil && *req.SetDefault {
-		if err := h.PaymentMethodService.PatchPaymentMethod(id, req.SetDefault, ""); err != nil {
-			logger.LogError("PatchPaymentMethod: set default failed", logger.ErrorField(err))
-			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "failed to set default payment method"})
-		}
-		return c.SendStatus(fiber.StatusNoContent)
-	}
-	if req.Status != "" {
-		if err := h.PaymentMethodService.PatchPaymentMethod(id, nil, req.Status); err != nil {
-			logger.LogError("PatchPaymentMethod: status update failed", logger.ErrorField(err))
-			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "failed to update payment method status"})
-		}
-		return c.SendStatus(fiber.StatusNoContent)
-	}
-	logger.LogError("PatchPaymentMethod: no valid patch operation")
-	return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "no valid patch operation"})
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        id,
+		ActorID:   getActorID(c),
+		Action:    "patch_payment_method",
+		TargetID:  id,
+		Details:   auditDetails(map[string]interface{}{"set_default": setDefault, "status": status}),
+		CreatedAt: time.Now(),
+	})
+	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (h *BillingAdminHandler) DeletePaymentMethod(c *fiber.Ctx) error {
@@ -742,6 +1087,14 @@ func (h *BillingAdminHandler) DeletePaymentMethod(c *fiber.Ctx) error {
 		logger.LogError("DeletePaymentMethod: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "failed to delete payment method"})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        id,
+		ActorID:   getActorID(c),
+		Action:    "delete_payment_method",
+		TargetID:  id,
+		Details:   auditDetails(map[string]interface{}{"id": id}),
+		CreatedAt: time.Now(),
+	})
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -756,6 +1109,14 @@ func (h *BillingAdminHandler) GetPaymentMethod(c *fiber.Ctx) error {
 		logger.LogError("GetPaymentMethod: not found", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "payment method not found"})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        pm.ID,
+		ActorID:   getActorID(c),
+		Action:    "get_payment_method",
+		TargetID:  pm.ID,
+		Details:   auditDetails(map[string]interface{}{"id": id}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(pm)
 }
 
@@ -769,6 +1130,14 @@ func (h *BillingAdminHandler) ListPaymentMethods(c *fiber.Ctx) error {
 		logger.LogError("ListPaymentMethods: failed", logger.ErrorField(err), logger.String("account_id", accountID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "failed to list payment methods"})
 	}
+	go h.logAudit(c.Context(), AuditLog{
+		ID:        "",
+		ActorID:   getActorID(c),
+		Action:    "list_payment_methods",
+		TargetID:  accountID,
+		Details:   auditDetails(map[string]interface{}{"account_id": accountID, "status": status, "page": page, "page_size": pageSize}),
+		CreatedAt: time.Now(),
+	})
 	return c.JSON(fiber.Map{"payment_methods": methods, "page": page, "page_size": pageSize})
 }
 
@@ -815,37 +1184,16 @@ func (h *BillingAdminHandler) UpdateSubscription(c *fiber.Ctx) error {
 
 func (h *BillingAdminHandler) PatchSubscription(c *fiber.Ctx) error {
 	id := c.Params("id")
-	if id == "" {
-		logger.LogError("PatchSubscription: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	action := c.Query("action")
+	if id == "" || action == "" {
+		logger.LogError("PatchSubscription: id and action required", logger.String("id", id), logger.String("action", action))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id and action required"})
 	}
-	var req struct {
-		Status          string  `json:"status,omitempty"`
-		ScheduledPlanID string  `json:"scheduled_plan_id,omitempty"`
-		ChangeAt        *string `json:"change_at,omitempty"`
+	if err := h.SubscriptionService.PatchSubscription(id, action); err != nil {
+		logger.LogError("PatchSubscription: failed", logger.ErrorField(err), logger.String("id", id))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("PatchSubscription: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.Status != "" {
-		err := h.SubscriptionService.PatchSubscription(id, "status:"+req.Status)
-		if err != nil {
-			logger.LogError("PatchSubscription: status update failed", logger.ErrorField(err))
-			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "failed to update subscription status"})
-		}
-		return c.SendStatus(fiber.StatusNoContent)
-	}
-	if req.ScheduledPlanID != "" && req.ChangeAt != nil {
-		err := h.SubscriptionService.PatchSubscription(id, "plan:"+req.ScheduledPlanID+":"+*req.ChangeAt)
-		if err != nil {
-			logger.LogError("PatchSubscription: plan change failed", logger.ErrorField(err))
-			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "failed to schedule plan change"})
-		}
-		return c.SendStatus(fiber.StatusNoContent)
-	}
-	logger.LogError("PatchSubscription: no valid patch operation")
-	return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "no valid patch operation"})
+	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (h *BillingAdminHandler) DeleteSubscription(c *fiber.Ctx) error {
@@ -1129,30 +1477,30 @@ func (h *BillingAdminHandler) PerformAccountAction(c *fiber.Ctx) error {
 }
 
 func (h *BillingAdminHandler) GetInvoicePreview(c *fiber.Ctx) error {
-	accountID := c.Query("account_id")
+	accountID := c.Params("id")
 	if accountID == "" {
-		logger.LogError("GetInvoicePreview: account_id required")
+		logger.LogError("GetInvoicePreview: account_id required", logger.String("account_id", accountID))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "account_id required"})
 	}
-	preview, err := h.InvoiceService.GetInvoicePreview(accountID)
+	invoice, err := h.InvoiceService.GetInvoicePreview(accountID)
 	if err != nil {
-		logger.LogError("GetInvoicePreview: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "failed to get invoice preview"})
+		logger.LogError("GetInvoicePreview: failed", logger.ErrorField(err), logger.String("account_id", accountID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(preview)
+	return c.JSON(invoice)
 }
 
 func (h *BillingAdminHandler) RedeemCoupon(c *fiber.Ctx) error {
 	code := c.Params("code")
 	accountID := c.Query("account_id")
 	if code == "" || accountID == "" {
-		logger.LogError("RedeemCoupon: code and account_id required")
+		logger.LogError("RedeemCoupon: code and account_id required", logger.String("code", code), logger.String("account_id", accountID))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "code and account_id required"})
 	}
 	coupon, err := h.CouponService.RedeemCoupon(code, accountID)
 	if err != nil {
-		logger.LogError("RedeemCoupon: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "failed to redeem coupon"})
+		logger.LogError("RedeemCoupon: failed", logger.ErrorField(err), logger.String("code", code))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(coupon)
 }
@@ -1160,23 +1508,23 @@ func (h *BillingAdminHandler) RedeemCoupon(c *fiber.Ctx) error {
 func (h *BillingAdminHandler) ApplyCreditsToInvoice(c *fiber.Ctx) error {
 	invoiceID := c.Params("id")
 	if invoiceID == "" {
-		logger.LogError("ApplyCreditsToInvoice: invoice_id required")
+		logger.LogError("ApplyCreditsToInvoice: invoice_id required", logger.String("invoice_id", invoiceID))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})
 	}
 	if err := h.CreditService.ApplyCreditsToInvoice(invoiceID); err != nil {
-		logger.LogError("ApplyCreditsToInvoice: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "failed to apply credits"})
+		logger.LogError("ApplyCreditsToInvoice: failed", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (h *BillingAdminHandler) GetBillingConfig(c *fiber.Ctx) error {
-	config, err := h.InvoiceService.GetBillingConfig()
+	cfg, err := h.InvoiceService.GetBillingConfig()
 	if err != nil {
 		logger.LogError("GetBillingConfig: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "failed to get billing config"})
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(config)
+	return c.JSON(cfg)
 }
 
 func (h *BillingAdminHandler) SetBillingConfig(c *fiber.Ctx) error {
@@ -1187,7 +1535,282 @@ func (h *BillingAdminHandler) SetBillingConfig(c *fiber.Ctx) error {
 	}
 	if err := h.InvoiceService.SetBillingConfig(input); err != nil {
 		logger.LogError("SetBillingConfig: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "failed to set billing config"})
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// APIUsage Handlers
+func (h *BillingAdminHandler) CreateAPIUsage(c *fiber.Ctx) error {
+	var input APIUsage
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	out, err := h.APIUsageService.CreateAPIUsage(c.Context(), input)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusCreated).JSON(out)
+}
+
+func (h *BillingAdminHandler) ListAPIUsage(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id")
+	apiKeyID := c.Query("api_key_id")
+	endpoint := c.Query("endpoint")
+	periodStart, _ := time.Parse(time.RFC3339, c.Query("period_start"))
+	periodEnd, _ := time.Parse(time.RFC3339, c.Query("period_end"))
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 100)
+	out, err := h.APIUsageService.ListAPIUsage(c.Context(), tenantID, apiKeyID, endpoint, periodStart, periodEnd, page, pageSize)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(out)
+}
+
+// APIKey Handlers
+func (h *BillingAdminHandler) CreateAPIKey(c *fiber.Ctx) error {
+	var input APIKey
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	out, err := h.APIKeyService.CreateAPIKey(c.Context(), input)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusCreated).JSON(out)
+}
+
+func (h *BillingAdminHandler) RotateAPIKey(c *fiber.Ctx) error {
+	apiKeyID := c.Params("id")
+	actorID := c.Locals("actor_id").(string)
+	out, err := h.APIKeyService.RotateAPIKey(c.Context(), apiKeyID, actorID)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(out)
+}
+
+func (h *BillingAdminHandler) RevokeAPIKey(c *fiber.Ctx) error {
+	apiKeyID := c.Params("id")
+	if err := h.APIKeyService.RevokeAPIKey(c.Context(), apiKeyID); err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *BillingAdminHandler) ListAPIKeys(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 100)
+	out, err := h.APIKeyService.ListAPIKeys(c.Context(), tenantID, page, pageSize)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(out)
+}
+
+// RateLimit Handlers
+func (h *BillingAdminHandler) SetRateLimit(c *fiber.Ctx) error {
+	var input RateLimit
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	out, err := h.RateLimitService.SetRateLimit(c.Context(), input)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusCreated).JSON(out)
+}
+
+func (h *BillingAdminHandler) GetRateLimit(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id")
+	apiKeyID := c.Query("api_key_id")
+	out, err := h.RateLimitService.GetRateLimit(c.Context(), tenantID, apiKeyID)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(out)
+}
+
+// SLA Handlers
+func (h *BillingAdminHandler) SetSLA(c *fiber.Ctx) error {
+	var input SLA
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	out, err := h.SLAService.SetSLA(c.Context(), input)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusCreated).JSON(out)
+}
+
+func (h *BillingAdminHandler) GetSLA(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id")
+	out, err := h.SLAService.GetSLA(c.Context(), tenantID)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(out)
+}
+
+// Plugin Handlers
+func (h *BillingAdminHandler) RegisterPlugin(c *fiber.Ctx) error {
+	var input Plugin
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	out, err := h.PluginService.RegisterPlugin(c.Context(), input)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusCreated).JSON(out)
+}
+
+func (h *BillingAdminHandler) ListPlugins(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 100)
+	out, err := h.PluginService.ListPlugins(c.Context(), tenantID, page, pageSize)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(out)
+}
+
+func (h *BillingAdminHandler) UpdatePlugin(c *fiber.Ctx) error {
+	var input Plugin
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	out, err := h.PluginService.UpdatePlugin(c.Context(), input)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(out)
+}
+
+func (h *BillingAdminHandler) DeletePlugin(c *fiber.Ctx) error {
+	pluginID := c.Params("id")
+	if err := h.PluginService.DeletePlugin(c.Context(), pluginID); err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// WebhookSubscription Handlers
+func (h *BillingAdminHandler) CreateWebhookSubscription(c *fiber.Ctx) error {
+	var input WebhookSubscription
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	out, err := h.WebhookSubscriptionService.CreateWebhookSubscription(c.Context(), input)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusCreated).JSON(out)
+}
+
+func (h *BillingAdminHandler) ListWebhookSubscriptions(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 100)
+	out, err := h.WebhookSubscriptionService.ListWebhookSubscriptions(c.Context(), tenantID, page, pageSize)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(out)
+}
+
+func (h *BillingAdminHandler) DeleteWebhookSubscription(c *fiber.Ctx) error {
+	subID := c.Params("id")
+	if err := h.WebhookSubscriptionService.DeleteWebhookSubscription(c.Context(), subID); err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// TaxInfo Handlers
+func (h *BillingAdminHandler) SetTaxInfo(c *fiber.Ctx) error {
+	var input TaxInfo
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	out, err := h.TaxInfoService.SetTaxInfo(c.Context(), input)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusCreated).JSON(out)
+}
+
+func (h *BillingAdminHandler) GetTaxInfo(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id")
+	out, err := h.TaxInfoService.GetTaxInfo(c.Context(), tenantID)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(out)
+}
+
+func (h *BillingAdminHandler) GetRevenueReport(c *fiber.Ctx) error {
+	out, err := h.Store.GetRevenueReport(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(out)
+}
+
+func (h *BillingAdminHandler) GetARReport(c *fiber.Ctx) error {
+	out, err := h.Store.GetARReport(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(out)
+}
+
+func (h *BillingAdminHandler) GetChurnReport(c *fiber.Ctx) error {
+	out, err := h.Store.GetChurnReport(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(out)
+}
+
+func (h *BillingAdminHandler) AggregateUsageForBillingCycle(c *fiber.Ctx) error {
+	accountID := c.Query("account_id")
+	periodStart, _ := time.Parse(time.RFC3339, c.Query("period_start"))
+	periodEnd, _ := time.Parse(time.RFC3339, c.Query("period_end"))
+	out, err := h.Store.AggregateUsageForBillingCycle(c.Context(), accountID, periodStart, periodEnd)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(out)
+}
+
+func (h *BillingAdminHandler) CalculateOverageCharges(c *fiber.Ctx) error {
+	accountID := c.Query("account_id")
+	planID := c.Query("plan_id")
+	periodStart, _ := time.Parse(time.RFC3339, c.Query("period_start"))
+	periodEnd, _ := time.Parse(time.RFC3339, c.Query("period_end"))
+	out, err := h.Store.CalculateOverageCharges(c.Context(), accountID, planID, periodStart, periodEnd)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(out)
+}
+
+func (h *BillingAdminHandler) CreateInvoiceWithFeesAndTax(c *fiber.Ctx) error {
+	var input Invoice
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	fixedFee := c.QueryFloat("fixed_fee", 0)
+	percentFee := c.QueryFloat("percent_fee", 0)
+	taxRate := c.QueryFloat("tax_rate", 0)
+	out, err := h.Store.CreateInvoiceWithFeesAndTax(c.Context(), input, fixedFee, percentFee, taxRate)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusCreated).JSON(out)
 }
