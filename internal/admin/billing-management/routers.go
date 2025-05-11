@@ -9,10 +9,10 @@ func billingScopeExtractor(c *fiber.Ctx) (string, string) {
 	return "billing", c.Get("X-Billing-ID")
 }
 
-func RegisterAdminBillingRoutes(router fiber.Router, handler *BillingAdminHandler) {
+func RegisterAdminBillingRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret string) {
 	billing := router.Group(
 		"/billing-management",
-		security_management.OIDCMiddleware(),
+		security_management.OIDCMiddleware(jwtSecret),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, billingScopeExtractor),
 	)
 

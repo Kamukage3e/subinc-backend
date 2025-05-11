@@ -13,16 +13,15 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/jung-kurt/gofpdf"
-	viper "github.com/spf13/viper"
 	"github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
 	paymentpkg "github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-// All connection strings are stored in the viper config here
-func getStripeWebhookSecret() string {
-	return viper.GetString("stripe.webhook_secret")
+// All connection strings are passed in from main.go
+func getStripeWebhookSecret(stripeWebhookSecret string) string {
+	return stripeWebhookSecret
 }
 
 // Helper to serialize details to string for audit logs

@@ -8,7 +8,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/spf13/viper"
 )
 
 // securityHeadersMiddleware sets strict security headers for all responses.
@@ -66,7 +65,7 @@ func (rl *inMemoryRateLimiter) middleware() fiber.Handler {
 }
 
 // OIDCMiddleware validates JWT/OIDC tokens and sets claims in context.
-func OIDCMiddleware() fiber.Handler {
+func OIDCMiddleware(jwtSecret string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		authHeader := c.Get("Authorization")
 		if !strings.HasPrefix(authHeader, "Bearer ") {
@@ -74,8 +73,7 @@ func OIDCMiddleware() fiber.Handler {
 		}
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			// Replace with your real public key or secret
-			return []byte(viper.GetString("jwt.secret")), nil
+			return []byte(jwtSecret), nil
 		})
 		if err != nil || !token.Valid {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid token"})

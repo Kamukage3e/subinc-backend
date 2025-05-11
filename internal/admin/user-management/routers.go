@@ -47,10 +47,10 @@ func RegisterRoutes(r fiber.Router, h *UserHandler) {
 
 }
 
-func RegisterAdminUserRoutes(router fiber.Router, handler *UserHandler) {
+func RegisterAdminUserRoutes(router fiber.Router, handler *UserHandler, jwtSecret string) {
 	user := router.Group(
 		"/user-management",
-		security_management.OIDCMiddleware(),
+		security_management.OIDCMiddleware(jwtSecret),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, userScopeExtractor),
 	)
 	user.Post("/users/create", handler.CreateUser)

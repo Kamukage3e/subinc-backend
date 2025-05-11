@@ -9,10 +9,10 @@ func tenantScopeExtractor(c *fiber.Ctx) (string, string) {
 	return "tenant", c.Get("X-Tenant-ID")
 }
 
-func RegisterAdminTenantRoutes(router fiber.Router, handler *TenantAdminHandler) {
+func RegisterAdminTenantRoutes(router fiber.Router, handler *TenantAdminHandler, jwtSecret string) {
 	tenant := router.Group(
 		"/tenant-management",
-		security_management.OIDCMiddleware(),
+		security_management.OIDCMiddleware(jwtSecret),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, tenantScopeExtractor),
 	)
 

@@ -9,10 +9,10 @@ func projectScopeExtractor(c *fiber.Ctx) (string, string) {
 	return "project", c.Get("X-Project-ID")
 }
 
-func RegisterAdminProjectRoutes(router fiber.Router, handler *ProjectHandler) {
+func RegisterAdminProjectRoutes(router fiber.Router, handler *ProjectHandler, jwtSecret string) {
 	proj := router.Group(
 		"/project-management",
-		security_management.OIDCMiddleware(),
+		security_management.OIDCMiddleware(jwtSecret),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, projectScopeExtractor),
 	)
 

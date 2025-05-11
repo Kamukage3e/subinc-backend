@@ -9,10 +9,10 @@ func orgScopeExtractor(c *fiber.Ctx) (string, string) {
 	return "org", c.Get("X-Org-ID")
 }
 
-func RegisterAdminOrganizationRoutes(router fiber.Router, handler *OrganizationHandler) {
+func RegisterAdminOrganizationRoutes(router fiber.Router, handler *OrganizationHandler, jwtSecret string) {
 	org := router.Group(
 		"/organization-management",
-		security_management.OIDCMiddleware(),
+		security_management.OIDCMiddleware(jwtSecret),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, orgScopeExtractor),
 	)
 

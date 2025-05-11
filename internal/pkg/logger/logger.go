@@ -5,8 +5,6 @@ import (
 
 	"os"
 
-	"github.com/spf13/viper"
-
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -82,7 +80,7 @@ var (
 var Default *Logger
 
 func init() {
-	Default = NewProduction()
+	Default = NewProduction(InfoLevel, "", true, "", "")
 }
 
 // With adds a variadic number of fields to the logging context
@@ -152,45 +150,45 @@ func (l *Logger) Flush() error {
 	return l.zap.Sync()
 }
 
-// getEnv gets an environment variable or returns a default
-func getEnv(key, defaultValue string) string {
-	if value := viper.GetString(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
 // NewProduction returns a production-grade, colorful, human-friendly logger for all environments
-func NewProduction() *Logger {
+func NewProduction(level zapcore.Level, format string, color bool, service string, env string) *Logger {
 	config := zap.NewDevelopmentEncoderConfig()
 	config.EncodeTime = zapcore.ISO8601TimeEncoder
-	config.EncodeLevel = zapcore.CapitalColorLevelEncoder // Colorize level
+	if color {
+		config.EncodeLevel = zapcore.CapitalColorLevelEncoder // Colorize level
+	} else {
+		config.EncodeLevel = zapcore.CapitalLevelEncoder
+	}
 	config.EncodeCaller = zapcore.ShortCallerEncoder
 	config.EncodeName = zapcore.FullNameEncoder
 	consoleEncoder := zapcore.NewConsoleEncoder(config)
-	core := zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), zapcore.InfoLevel)
+	core := zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), level)
 	zapLogger := zap.New(core, zap.AddCaller())
-	return &Logger{zap: zapLogger, level: InfoLevel}
+	return &Logger{zap: zapLogger, level: level}
 }
 
 // NewDev returns a fully colorful, human-friendly logger for local/dev
-func NewDev() *Logger {
+func NewDev(level zapcore.Level, format string, color bool, service string, env string) *Logger {
 	config := zap.NewDevelopmentEncoderConfig()
 	config.EncodeTime = zapcore.ISO8601TimeEncoder
-	config.EncodeLevel = zapcore.CapitalColorLevelEncoder // Colorize level
+	if color {
+		config.EncodeLevel = zapcore.CapitalColorLevelEncoder // Colorize level
+	} else {
+		config.EncodeLevel = zapcore.CapitalLevelEncoder
+	}
 	config.EncodeCaller = zapcore.ShortCallerEncoder
 	config.EncodeName = zapcore.FullNameEncoder
 	consoleEncoder := zapcore.NewConsoleEncoder(config)
-	core := zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), zapcore.DebugLevel)
+	core := zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), level)
 	zapLogger := zap.New(core, zap.AddCaller())
-	return &Logger{zap: zapLogger, level: DebugLevel}
+	return &Logger{zap: zapLogger, level: level}
 }
 
 // NewNoop returns a no-op logger (for tests or when logging is not needed)
 func NewNoop() *Logger {
 	config := zap.NewDevelopmentEncoderConfig()
 	config.EncodeTime = zapcore.ISO8601TimeEncoder
-	config.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	config.EncodeLevel = zapcore.CapitalLevelEncoder
 	consoleEncoder := zapcore.NewConsoleEncoder(config)
 	core := zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), zapcore.ErrorLevel)
 	zapLogger := zap.New(core)

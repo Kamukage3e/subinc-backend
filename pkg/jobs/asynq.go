@@ -11,7 +11,6 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
-	"github.com/spf13/viper"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -135,54 +134,32 @@ type JobConfig struct {
 }
 
 // NewDefaultJobConfig creates a production-ready job configuration
-func NewDefaultJobConfig(redisClient *redis.Client, logger *logger.Logger) (*JobConfig, error) {
+func NewDefaultJobConfig(redisClient *redis.Client, logger *logger.Logger, concurrency int, retryLimit int, shutdownTimeout, healthCheckInterval time.Duration, strictPriority bool, queues map[string]int) (*JobConfig, error) {
 	if redisClient == nil {
 		return nil, errors.New("redis client cannot be nil")
 	}
 	if logger == nil {
 		return nil, errors.New("logger cannot be nil")
 	}
-
-	// Set reasonable defaults
-	queues := map[string]int{
-		QueueCritical: 6, // Higher priority
-		QueueDefault:  3, // Normal priority
-		QueueLow:      1, // Lower priority
-	}
-
-	// Try to read from viper config
-	concurrency := viper.GetInt("jobs.concurrency")
 	if concurrency <= 0 {
-		concurrency = 10 // Reasonable default
+		concurrency = 10
 	}
-
-	retryLimit := viper.GetInt("jobs.retry_limit")
 	if retryLimit <= 0 {
-		retryLimit = 25 // Reasonable default
+		retryLimit = 25
 	}
-
-	shutdownTimeout := viper.GetDuration("jobs.shutdown_timeout")
 	if shutdownTimeout <= 0 {
-		shutdownTimeout = 30 * time.Second // Reasonable default
+		shutdownTimeout = 30 * time.Second
 	}
-
-	healthCheckInterval := viper.GetDuration("jobs.health_check_interval")
 	if healthCheckInterval <= 0 {
-		healthCheckInterval = 15 * time.Second // Reasonable default
+		healthCheckInterval = 15 * time.Second
 	}
-
-	strictPriority := viper.GetBool("jobs.strict_priority")
-
-	// Check for custom queue configuration
-	if viper.IsSet("jobs.queues") {
-		queueSettings := viper.GetStringMap("jobs.queues")
-		for name, priority := range queueSettings {
-			if p, ok := priority.(int); ok && p > 0 {
-				queues[name] = p
-			}
+	if queues == nil {
+		queues = map[string]int{
+			QueueCritical: 6,
+			QueueDefault:  3,
+			QueueLow:      1,
 		}
 	}
-
 	return &JobConfig{
 		RedisClient:         redisClient,
 		Logger:              logger,
