@@ -11,8 +11,6 @@ import (
 
 type ProjectHandler struct {
 	ProjectService         ProjectService
-	ProjectMemberService   ProjectMemberService
-	ProjectInviteService   ProjectInviteService
 	ProjectSettingsService ProjectSettingsService
 	ProjectAuditLogService ProjectAuditLogService
 	SecurityAuditLogger    security_management.AuditLogger // optional, may be nil
@@ -30,28 +28,6 @@ type Project struct {
 	Tags        map[string]string `json:"tags"`
 	CreatedAt   time.Time         `json:"created_at"`
 	UpdatedAt   time.Time         `json:"updated_at"`
-}
-
-type ProjectMember struct {
-	ID        string    `json:"id"`
-	ProjectID string    `json:"project_id"`
-	UserID    string    `json:"user_id"`
-	Role      string    `json:"role"`
-	Status    string    `json:"status"`
-	InvitedBy string    `json:"invited_by"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-type ProjectInvite struct {
-	ID        string    `json:"id"`
-	ProjectID string    `json:"project_id"`
-	Email     string    `json:"email"`
-	Role      string    `json:"role"`
-	Status    string    `json:"status"`
-	Token     string    `json:"token"`
-	ExpiresAt time.Time `json:"expires_at"`
-	CreatedAt time.Time `json:"created_at"`
 }
 
 type ProjectSettings struct {

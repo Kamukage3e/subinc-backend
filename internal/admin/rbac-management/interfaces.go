@@ -73,3 +73,36 @@ type RBACService interface {
 	CheckPermission(ctx context.Context, userID, resource, action string) (bool, error)
 	GetUserRoles(ctx context.Context, userID, resource string) ([]string, error)
 }
+
+// ABAC support
+// ABACPolicyService manages attribute-based access control policies
+// All methods are context-aware and multi-tenant
+// All errors must be robust and user-friendly
+// All returned slices are never nil
+// All IDs are UUIDs
+// All timestamps are UTC
+// All methods are production-grade
+// No placeholders
+
+type ABACPolicyService interface {
+	CreateABACPolicy(ctx context.Context, policy ABACPolicy) (ABACPolicy, error)
+	UpdateABACPolicy(ctx context.Context, policy ABACPolicy) (ABACPolicy, error)
+	DeleteABACPolicy(ctx context.Context, id string) error
+	GetABACPolicy(ctx context.Context, id string) (ABACPolicy, error)
+	ListABACPolicies(ctx context.Context, tenantID string, page, pageSize int) ([]ABACPolicy, error)
+	EvaluateABAC(ctx context.Context, input ABACEvaluationInput) (ABACEvaluationResult, error)
+}
+
+type PolicySimulationService interface {
+	SimulatePolicy(ctx context.Context, input PolicySimulationInput) (PolicySimulationResult, error)
+}
+
+type PermissionExplainerService interface {
+	ExplainPermission(ctx context.Context, input PermissionExplainInput) (PermissionExplainResult, error)
+}
+
+type RoleDelegationService interface {
+	DelegateRole(ctx context.Context, input RoleDelegationInput) error
+	RevokeDelegatedRole(ctx context.Context, input RoleDelegationInput) error
+	ListDelegatedRoles(ctx context.Context, tenantID, userID string, page, pageSize int) ([]DelegatedRole, error)
+}

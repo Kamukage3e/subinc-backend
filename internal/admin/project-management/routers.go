@@ -13,12 +13,6 @@ func RegisterAdminProjectRoutes(router fiber.Router, handler *ProjectHandler) {
 	proj.Get("/projects/get", handler.GetProject)
 	proj.Get("/projects/list", handler.ListProjects)
 
-	proj.Post("/invites/create", handler.CreateInvite)
-	proj.Post("/invites/accept", handler.AcceptInvite)
-	proj.Delete("/invites/revoke", handler.RevokeInvite)
-	proj.Get("/invites/list", handler.ListInvites)
-	proj.Get("/invites/search", handler.ListInvites)
-
 	proj.Get("/settings/get", handler.GetSettings)
 	proj.Put("/settings/update", handler.UpdateSettings)
 

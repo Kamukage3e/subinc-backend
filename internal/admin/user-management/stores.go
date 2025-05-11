@@ -239,3 +239,106 @@ func (s *PostgresStore) ListAuditLogs(ctx context.Context, userID, actorID, acti
 	}
 	return logs, nil
 }
+
+// OrgProjectUserService implementation
+// Org membership
+func (s *PostgresStore) AddUserToOrg(ctx context.Context, orgID, userID, invitedBy, role string) error {
+	const q = `INSERT INTO org_members (id, org_id, user_id, role, status, invited_by, created_at, updated_at) VALUES (gen_random_uuid(), $1, $2, $3, 'active', $4, now(), now())`
+	_, err := s.DB.Exec(ctx, q, orgID, userID, role, invitedBy)
+	if err != nil {
+		logger.LogError("AddUserToOrg failed", logger.ErrorField(err), logger.String("org_id", orgID), logger.String("user_id", userID))
+		return err
+	}
+	return nil
+}
+
+func (s *PostgresStore) RemoveUserFromOrg(ctx context.Context, orgID, userID string) error {
+	const q = `DELETE FROM org_members WHERE org_id=$1 AND user_id=$2`
+	_, err := s.DB.Exec(ctx, q, orgID, userID)
+	if err != nil {
+		logger.LogError("RemoveUserFromOrg failed", logger.ErrorField(err), logger.String("org_id", orgID), logger.String("user_id", userID))
+		return err
+	}
+	return nil
+}
+
+func (s *PostgresStore) ListOrgUsers(ctx context.Context, orgID string, page, pageSize int) ([]User, error) {
+	const q = `SELECT u.id, u.email, u.status, u.created_at, u.updated_at FROM users u JOIN org_members m ON u.id = m.user_id WHERE m.org_id=$1 ORDER BY u.created_at DESC LIMIT $2 OFFSET $3`
+	rows, err := s.DB.Query(ctx, q, orgID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		logger.LogError("ListOrgUsers failed", logger.ErrorField(err), logger.String("org_id", orgID))
+		return nil, err
+	}
+	defer rows.Close()
+	var users []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Email, &u.Status, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			logger.LogError("ListOrgUsers scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, nil
+}
+
+func (s *PostgresStore) InviteUserToOrg(ctx context.Context, orgID, email, invitedBy, role string) error {
+	const q = `INSERT INTO org_invites (id, org_id, email, role, status, token, expires_at, created_at) VALUES (gen_random_uuid(), $1, $2, $3, 'pending', gen_random_uuid(), now() + interval '7 days', now())`
+	_, err := s.DB.Exec(ctx, q, orgID, email, role)
+	if err != nil {
+		logger.LogError("InviteUserToOrg failed", logger.ErrorField(err), logger.String("org_id", orgID), logger.String("email", email))
+		return err
+	}
+	return nil
+}
+
+// Project membership
+func (s *PostgresStore) AddUserToProject(ctx context.Context, projectID, userID, invitedBy, role string) error {
+	const q = `INSERT INTO project_members (id, project_id, user_id, role, status, invited_by, created_at, updated_at) VALUES (gen_random_uuid(), $1, $2, $3, 'active', $4, now(), now())`
+	_, err := s.DB.Exec(ctx, q, projectID, userID, role, invitedBy)
+	if err != nil {
+		logger.LogError("AddUserToProject failed", logger.ErrorField(err), logger.String("project_id", projectID), logger.String("user_id", userID))
+		return err
+	}
+	return nil
+}
+
+func (s *PostgresStore) RemoveUserFromProject(ctx context.Context, projectID, userID string) error {
+	const q = `DELETE FROM project_members WHERE project_id=$1 AND user_id=$2`
+	_, err := s.DB.Exec(ctx, q, projectID, userID)
+	if err != nil {
+		logger.LogError("RemoveUserFromProject failed", logger.ErrorField(err), logger.String("project_id", projectID), logger.String("user_id", userID))
+		return err
+	}
+	return nil
+}
+
+func (s *PostgresStore) ListProjectUsers(ctx context.Context, projectID string, page, pageSize int) ([]User, error) {
+	const q = `SELECT u.id, u.email, u.status, u.created_at, u.updated_at FROM users u JOIN project_members m ON u.id = m.user_id WHERE m.project_id=$1 ORDER BY u.created_at DESC LIMIT $2 OFFSET $3`
+	rows, err := s.DB.Query(ctx, q, projectID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		logger.LogError("ListProjectUsers failed", logger.ErrorField(err), logger.String("project_id", projectID))
+		return nil, err
+	}
+	defer rows.Close()
+	var users []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Email, &u.Status, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			logger.LogError("ListProjectUsers scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, nil
+}
+
+func (s *PostgresStore) InviteUserToProject(ctx context.Context, projectID, email, invitedBy, role string) error {
+	const q = `INSERT INTO project_invites (id, project_id, email, role, status, token, expires_at, created_at) VALUES (gen_random_uuid(), $1, $2, $3, 'pending', gen_random_uuid(), now() + interval '7 days', now())`
+	_, err := s.DB.Exec(ctx, q, projectID, email, role)
+	if err != nil {
+		logger.LogError("InviteUserToProject failed", logger.ErrorField(err), logger.String("project_id", projectID), logger.String("email", email))
+		return err
+	}
+	return nil
+}

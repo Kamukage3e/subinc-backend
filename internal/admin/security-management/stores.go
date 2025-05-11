@@ -1,9 +1,14 @@
 package security_management
 
 import (
+	"bytes"
 	"context"
-
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/smtp"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
@@ -391,4 +396,382 @@ type auditLoggerFunc func(ctx context.Context, log SecurityAuditLog) (SecurityAu
 
 func (f auditLoggerFunc) CreateSecurityAuditLog(ctx context.Context, log SecurityAuditLog) (SecurityAuditLog, error) {
 	return f(ctx, log)
+}
+
+// --- SecurityAnalyticsService ---
+
+func (s *PostgresStore) GetSecurityAnalytics(ctx context.Context, tenantID string) (SecurityAnalytics, error) {
+	var analytics SecurityAnalytics
+	analytics.TenantID = tenantID
+	analytics.GeneratedAt = time.Now().UTC()
+
+	risk := 50.0
+	breaches, err := s.ListBreaches(ctx, 1, 10)
+	if err != nil && breaches == nil {
+		s.logger.Error("GetSecurityAnalytics: ListBreaches failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return SecurityAnalytics{}, &DBError{Op: "GetSecurityAnalytics.ListBreaches", Err: err}
+	}
+	if len(breaches) > 0 {
+		risk += float64(len(breaches)) * 10
+	}
+	var mfaCount int
+	row := s.db.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE tenant_id=$1 AND mfa_enabled=TRUE`, tenantID)
+	if err := row.Scan(&mfaCount); err != nil {
+		s.logger.Error("GetSecurityAnalytics: mfa_count failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return SecurityAnalytics{}, &DBError{Op: "GetSecurityAnalytics.mfa_count", Err: err}
+	}
+	if mfaCount > 0 {
+		risk -= 10
+	}
+	anomalies, err := s.ListAnomalies(ctx, tenantID, 1, 10)
+	if err != nil && anomalies == nil {
+		s.logger.Error("GetSecurityAnalytics: ListAnomalies failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return SecurityAnalytics{}, &DBError{Op: "GetSecurityAnalytics.ListAnomalies", Err: err}
+	}
+	if len(anomalies) > 0 {
+		risk += float64(len(anomalies)) * 5
+	}
+	row = s.db.QueryRow(ctx, `SELECT COUNT(*) FROM login_history WHERE tenant_id=$1 AND success=FALSE AND created_at > NOW() - INTERVAL '30 days'`, tenantID)
+	var failedLogins int
+	if err := row.Scan(&failedLogins); err != nil {
+		s.logger.Error("GetSecurityAnalytics: failed_logins failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return SecurityAnalytics{}, &DBError{Op: "GetSecurityAnalytics.failed_logins", Err: err}
+	}
+	if failedLogins == 0 {
+		risk -= 5
+	}
+	if risk < 0 {
+		risk = 0
+	}
+	if risk > 100 {
+		risk = 100
+	}
+	analytics.RiskScore = risk
+
+	switch {
+	case risk < 40:
+		analytics.Posture = "good"
+	case risk < 70:
+		analytics.Posture = "warning"
+	default:
+		analytics.Posture = "critical"
+	}
+
+	analytics.Anomalies = anomalies
+	return analytics, nil
+}
+
+func (s *PostgresStore) ListAnomalies(ctx context.Context, tenantID string, page, pageSize int) ([]Anomaly, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 100
+	}
+	const q = `SELECT id, type, details, detected_at FROM anomalies WHERE tenant_id = $1 ORDER BY detected_at DESC LIMIT $2 OFFSET $3`
+	offset := (page - 1) * pageSize
+	rows, err := s.db.Query(ctx, q, tenantID, pageSize, offset)
+	if err != nil {
+		s.logger.Error("ListAnomalies query failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return nil, &DBError{Op: "ListAnomalies.query", Err: err}
+	}
+	defer rows.Close()
+	var out []Anomaly
+	for rows.Next() {
+		var a Anomaly
+		if err := rows.Scan(&a.ID, &a.Type, &a.Details, &a.DetectedAt); err != nil {
+			s.logger.Error("ListAnomalies scan failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+			return nil, &DBError{Op: "ListAnomalies.scan", Err: err}
+		}
+		out = append(out, a)
+	}
+	return out, nil
+}
+
+// --- Real Anomaly Detection Logic ---
+
+func (s *PostgresStore) DetectAnomalies(ctx context.Context, tenantID string) ([]Anomaly, error) {
+	var anomalies []Anomaly
+	// 1. Suspicious logins: same user, different geo/IP within 1h
+	const suspiciousLoginQ = `SELECT user_id, ip, location, created_at FROM login_history WHERE tenant_id=$1 AND success=TRUE ORDER BY user_id, created_at DESC LIMIT 1000`
+	rows, err := s.db.Query(ctx, suspiciousLoginQ, tenantID)
+	if err != nil {
+		s.logger.Error("DetectAnomalies: suspiciousLoginQ failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return nil, err
+	}
+	defer rows.Close()
+	userLast := make(map[string]struct {
+		IP      string
+		Loc     string
+		Created time.Time
+	})
+	for rows.Next() {
+		var userID, ip, loc string
+		var created time.Time
+		if err := rows.Scan(&userID, &ip, &loc, &created); err != nil {
+			s.logger.Error("DetectAnomalies: scan failed", logger.ErrorField(err))
+			continue
+		}
+		if last, ok := userLast[userID]; ok {
+			if last.IP != ip || last.Loc != loc {
+				if created.Sub(last.Created) < time.Hour {
+					anomalies = append(anomalies, Anomaly{
+						ID:         uuidString(),
+						Type:       "suspicious_login",
+						Details:    "Multiple locations/IPs in 1h for user " + userID,
+						DetectedAt: created,
+					})
+				}
+			}
+		}
+		userLast[userID] = struct {
+			IP      string
+			Loc     string
+			Created time.Time
+		}{ip, loc, created}
+	}
+	// 2. Device changes: new device for user in last 24h
+	const deviceQ = `SELECT user_id, type, name, created_at FROM devices WHERE tenant_id=$1 AND created_at > NOW() - INTERVAL '1 day'`
+	rows, err = s.db.Query(ctx, deviceQ, tenantID)
+	if err == nil {
+		for rows.Next() {
+			var userID, typ, name string
+			var created time.Time
+			if err := rows.Scan(&userID, &typ, &name, &created); err == nil {
+				anomalies = append(anomalies, Anomaly{
+					ID:         uuidString(),
+					Type:       "new_device",
+					Details:    "New device: " + typ + " " + name + " for user " + userID,
+					DetectedAt: created,
+				})
+			}
+		}
+	}
+	// 3. Brute-force: >5 failed logins for user in 10min
+	const bruteQ = `SELECT user_id, COUNT(*) FROM login_history WHERE tenant_id=$1 AND success=FALSE AND created_at > NOW() - INTERVAL '10 minutes' GROUP BY user_id HAVING COUNT(*) > 5`
+	rows, err = s.db.Query(ctx, bruteQ, tenantID)
+	if err == nil {
+		for rows.Next() {
+			var userID string
+			var count int
+			if err := rows.Scan(&userID, &count); err == nil {
+				anomalies = append(anomalies, Anomaly{
+					ID:         uuidString(),
+					Type:       "brute_force",
+					Details:    "Brute-force: " + userID + " failed logins: " + itoa(count),
+					DetectedAt: time.Now().UTC(),
+				})
+			}
+		}
+	}
+	// 4. Breach correlation: user in breach and active session
+	const breachQ = `SELECT b.details, s.user_id, s.id FROM breaches b JOIN sessions s ON b.details LIKE '%' || s.user_id || '%' WHERE s.tenant_id=$1 AND s.expires_at > NOW()`
+	rows, err = s.db.Query(ctx, breachQ, tenantID)
+	if err == nil {
+		for rows.Next() {
+			var breachDetails, userID, sessionID string
+			if err := rows.Scan(&breachDetails, &userID, &sessionID); err == nil {
+				anomalies = append(anomalies, Anomaly{
+					ID:         uuidString(),
+					Type:       "breach_active_session",
+					Details:    "User " + userID + " in breach and has active session " + sessionID,
+					DetectedAt: time.Now().UTC(),
+				})
+			}
+		}
+	}
+	return anomalies, nil
+}
+
+func uuidString() string {
+	return time.Now().UTC().Format("20060102150405") + "-" + randomString(8)
+}
+
+func randomString(n int) string {
+	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
+	}
+	return string(b)
+}
+
+func itoa(i int) string {
+	return fmt.Sprintf("%d", i)
+}
+
+// --- NotificationService ---
+
+func (s *PostgresStore) GetNotificationConfig(ctx context.Context, tenantID string) (NotificationConfig, error) {
+	const q = `SELECT channels, recipients, events, enabled FROM notification_configs WHERE tenant_id = $1`
+	row := s.db.QueryRow(ctx, q, tenantID)
+	var cfg NotificationConfig
+	var channels, events []string
+	if err := row.Scan(&channels, &cfg.Recipients, &events, &cfg.Enabled); err != nil {
+		s.logger.Error("GetNotificationConfig failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return NotificationConfig{}, err
+	}
+	cfg.TenantID = tenantID
+	for _, ch := range channels {
+		cfg.Channels = append(cfg.Channels, NotificationChannel(ch))
+	}
+	cfg.Events = events
+	return cfg, nil
+}
+
+func (s *PostgresStore) UpdateNotificationConfig(ctx context.Context, cfg NotificationConfig) error {
+	const q = `INSERT INTO notification_configs (tenant_id, channels, recipients, events, enabled) VALUES ($1, $2, $3, $4, $5)
+	ON CONFLICT (tenant_id) DO UPDATE SET channels = $2, recipients = $3, events = $4, enabled = $5`
+	channels := make([]string, len(cfg.Channels))
+	for i, ch := range cfg.Channels {
+		channels[i] = string(ch)
+	}
+	_, err := s.db.Exec(ctx, q, cfg.TenantID, channels, cfg.Recipients, cfg.Events, cfg.Enabled)
+	if err != nil {
+		s.logger.Error("UpdateNotificationConfig failed", logger.ErrorField(err), logger.String("tenant_id", cfg.TenantID))
+		return err
+	}
+	return nil
+}
+
+func (s *PostgresStore) SendNotification(ctx context.Context, tenantID string, event string, details map[string]interface{}) error {
+	cfg, err := s.GetNotificationConfig(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("SendNotification: config fetch failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return &DBError{Op: "SendNotification.config", Err: err}
+	}
+	if !cfg.Enabled {
+		s.logger.Info("SendNotification: notifications disabled", logger.String("tenant_id", tenantID))
+		return nil
+	}
+	for _, ch := range cfg.Channels {
+		switch ch {
+		case NotificationEmail:
+			err := sendEmailProvider("smtp", cfg.Recipients, event, details)
+			if err != nil {
+				s.logger.Error("SendNotification: email failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+				return &DBError{Op: "SendNotification.email", Err: err}
+			}
+		case NotificationSMS:
+			err := sendSMSProvider("twilio", cfg.Recipients, event, details)
+			if err != nil {
+				s.logger.Error("SendNotification: sms failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+				return &DBError{Op: "SendNotification.sms", Err: err}
+			}
+		case NotificationSlack:
+			err := sendChatProvider("slack", cfg.Recipients, event, details)
+			if err != nil {
+				s.logger.Error("SendNotification: slack failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+				return &DBError{Op: "SendNotification.slack", Err: err}
+			}
+		}
+	}
+	return nil
+}
+
+func sendEmailProvider(provider string, recipients []string, event string, details map[string]interface{}) error {
+	enabled, ok := emailEnabled[provider]
+	if !ok || !enabled {
+		return nil
+	}
+	cfg := emailConfig[provider]
+	host := cfg["host"]
+	port := cfg["port"]
+	user := cfg["user"]
+	pass := cfg["pass"]
+	from := cfg["from"]
+	if host == "" || port == "" || user == "" || pass == "" || from == "" {
+		return errors.New("email provider config missing")
+	}
+	addr := fmt.Sprintf("%s:%s", host, port)
+	subject := "[Security Event] " + event
+	body, _ := json.MarshalIndent(details, "", "  ")
+	msg := []byte(fmt.Sprintf("To: %s\r\nSubject: %s\r\n\r\n%s", recipients[0], subject, string(body)))
+	auth := smtp.PlainAuth("", user, pass, host)
+	return smtp.SendMail(addr, auth, from, recipients, msg)
+}
+
+func sendSMSProvider(provider string, recipients []string, event string, details map[string]interface{}) error {
+	enabled, ok := smsEnabled[provider]
+	if !ok || !enabled {
+		return nil
+	}
+	cfg := smsConfig[provider]
+	twilioSID := cfg["sid"]
+	twilioToken := cfg["token"]
+	twilioFrom := cfg["from"]
+	if twilioSID == "" || twilioToken == "" || twilioFrom == "" {
+		return errors.New("sms provider config missing")
+	}
+	body, _ := json.Marshal(details)
+	for _, to := range recipients {
+		url := fmt.Sprintf("https://api.twilio.com/2010-04-01/Accounts/%s/Messages.json", twilioSID)
+		data := fmt.Sprintf("From=%s&To=%s&Body=%s", twilioFrom, to, event+": "+string(body))
+		req, _ := http.NewRequest("POST", url, bytes.NewBufferString(data))
+		req.SetBasicAuth(twilioSID, twilioToken)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil || resp.StatusCode >= 300 {
+			return fmt.Errorf("twilio sms failed: %v", err)
+		}
+	}
+	return nil
+}
+
+func sendChatProvider(provider string, recipients []string, event string, details map[string]interface{}) error {
+	_ = recipients
+	enabled, ok := chatEnabled[provider]
+	if !ok || !enabled {
+		return nil
+	}
+	cfg := chatConfig[provider]
+	switch provider {
+	case "slack":
+		webhook := cfg["webhook"]
+		if webhook == "" {
+			return errors.New("slack webhook config missing")
+		}
+		payload := map[string]interface{}{
+			"text": fmt.Sprintf("*%s*\n```%s```", event, toPrettyJSON(details)),
+		}
+		b, _ := json.Marshal(payload)
+		resp, err := http.Post(webhook, "application/json", bytes.NewBuffer(b))
+		if err != nil || resp.StatusCode >= 300 {
+			return fmt.Errorf("slack webhook failed: %v", err)
+		}
+		return nil
+	case "teams":
+		return errors.New("teams not implemented")
+	default:
+		return errors.New("unknown chat provider")
+	}
+}
+
+func toPrettyJSON(v interface{}) string {
+	b, _ := json.MarshalIndent(v, "", "  ")
+	return string(b)
+}
+
+// --- SecurityModuleConfigService ---
+
+func (s *PostgresStore) GetSecurityModuleConfig(ctx context.Context, tenantID string) (SecurityModuleConfig, error) {
+	const q = `SELECT enabled FROM security_module_configs WHERE tenant_id = $1`
+	row := s.db.QueryRow(ctx, q, tenantID)
+	var cfg SecurityModuleConfig
+	if err := row.Scan(&cfg.Enabled); err != nil {
+		s.logger.Error("GetSecurityModuleConfig failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return SecurityModuleConfig{}, err
+	}
+	return cfg, nil
+}
+
+func (s *PostgresStore) SetSecurityModuleConfig(ctx context.Context, tenantID string, enabled bool) error {
+	const q = `INSERT INTO security_module_configs (tenant_id, enabled) VALUES ($1, $2)
+	ON CONFLICT (tenant_id) DO UPDATE SET enabled = $2`
+	_, err := s.db.Exec(ctx, q, tenantID, enabled)
+	if err != nil {
+		s.logger.Error("SetSecurityModuleConfig failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return err
+	}
+	return nil
 }

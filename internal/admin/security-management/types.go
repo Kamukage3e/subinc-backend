@@ -12,17 +12,28 @@ type PostgresStore struct {
 	logger *logger.Logger
 }
 
+// Define RBACService interface locally to avoid import cycle
+// This must match the interface in handlers.go and rbac-management
+
+type RBACService interface {
+	CheckPermission(ctx interface{}, actorID, resource, action string) (bool, error)
+}
+
 type SecurityAdminHandler struct {
-	SecurityEventService    SecurityEventService
-	LoginHistoryService     LoginHistoryService
-	MFAService              MFAService
-	PasswordService         PasswordService
-	SessionService          SessionService
-	SecurityAuditLogService SecurityAuditLogService
-	APIKeyService           APIKeyService
-	DeviceService           DeviceService
-	BreachService           BreachService
-	SecurityPolicyService   SecurityPolicyService
+	SecurityEventService        SecurityEventService
+	LoginHistoryService         LoginHistoryService
+	MFAService                  MFAService
+	PasswordService             PasswordService
+	SessionService              SessionService
+	SecurityAuditLogService     SecurityAuditLogService
+	APIKeyService               APIKeyService
+	DeviceService               DeviceService
+	BreachService               BreachService
+	SecurityPolicyService       SecurityPolicyService
+	RBACService                 RBACService
+	SecurityAnalyticsService    SecurityAnalyticsService
+	NotificationService         NotificationService
+	SecurityModuleConfigService SecurityModuleConfigService
 }
 
 type SecurityEvent struct {
@@ -98,4 +109,39 @@ type SecurityPolicy struct {
 type DBError struct {
 	Op  string
 	Err error
+}
+
+type SecurityAnalytics struct {
+	TenantID    string    `json:"tenant_id"`
+	RiskScore   float64   `json:"risk_score"`
+	Posture     string    `json:"posture"`
+	Anomalies   []Anomaly `json:"anomalies"`
+	GeneratedAt time.Time `json:"generated_at"`
+}
+
+type Anomaly struct {
+	ID         string    `json:"id"`
+	Type       string    `json:"type"`
+	Details    string    `json:"details"`
+	DetectedAt time.Time `json:"detected_at"`
+}
+
+type NotificationChannel string
+
+const (
+	NotificationEmail NotificationChannel = "email"
+	NotificationSMS   NotificationChannel = "sms"
+	NotificationSlack NotificationChannel = "slack"
+)
+
+type NotificationConfig struct {
+	TenantID   string                `json:"tenant_id"`
+	Channels   []NotificationChannel `json:"channels"`
+	Recipients []string              `json:"recipients"`
+	Events     []string              `json:"events"`
+	Enabled    bool                  `json:"enabled"`
+}
+
+type SecurityModuleConfig struct {
+	Enabled bool `json:"enabled"`
 }

@@ -26,4 +26,16 @@ func RegisterRoutes(r fiber.Router, h *UserHandler) {
 	r.Post("/sessions/get", h.GetSession)
 	r.Post("/sessions/list", h.ListSessions)
 
+	// Org membership
+	r.Post("/orgs/add-user", h.AddUserToOrg)
+	r.Post("/orgs/remove-user", h.RemoveUserFromOrg)
+	r.Post("/orgs/list-users", h.ListOrgUsers)
+	r.Post("/orgs/invite-user", h.InviteUserToOrg)
+
+	// Project membership
+	r.Post("/projects/add-user", h.AddUserToProject)
+	r.Post("/projects/remove-user", h.RemoveUserFromProject)
+	r.Post("/projects/list-users", h.ListProjectUsers)
+	r.Post("/projects/invite-user", h.InviteUserToProject)
+
 }

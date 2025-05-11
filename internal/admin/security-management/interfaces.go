@@ -55,3 +55,19 @@ type SecurityPolicyService interface {
 type AuditLogger interface {
 	CreateSecurityAuditLog(ctx context.Context, log SecurityAuditLog) (SecurityAuditLog, error)
 }
+
+type SecurityAnalyticsService interface {
+	GetSecurityAnalytics(ctx context.Context, tenantID string) (SecurityAnalytics, error)
+	ListAnomalies(ctx context.Context, tenantID string, page, pageSize int) ([]Anomaly, error)
+}
+
+type NotificationService interface {
+	GetNotificationConfig(ctx context.Context, tenantID string) (NotificationConfig, error)
+	UpdateNotificationConfig(ctx context.Context, config NotificationConfig) error
+	SendNotification(ctx context.Context, tenantID string, event string, details map[string]interface{}) error
+}
+
+type SecurityModuleConfigService interface {
+	GetSecurityModuleConfig(ctx context.Context, tenantID string) (SecurityModuleConfig, error)
+	SetSecurityModuleConfig(ctx context.Context, tenantID string, enabled bool) error
+}

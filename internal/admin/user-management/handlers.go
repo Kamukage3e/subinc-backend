@@ -5,14 +5,8 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
-
-type UserHandler struct {
-	Store       *PostgresStore
-	RBACService rbac_management.RBACService // optional, may be nil
-}
 
 func NewUserHandler(store *PostgresStore) *UserHandler {
 	return &UserHandler{Store: store}
@@ -293,6 +287,200 @@ func (h *UserHandler) ListSessions(c *fiber.Ctx) error {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list sessions"})
 	}
 	return c.JSON(sessions)
+}
+
+// --- Org/Project Membership/Invite Handlers ---
+
+func (h *UserHandler) AddUserToOrg(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "org_member", "add")
+		if err != nil || !permitted {
+			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		OrgID     string `json:"org_id"`
+		UserID    string `json:"user_id"`
+		InvitedBy string `json:"invited_by"`
+		Role      string `json:"role"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.OrgID == "" || input.UserID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "org_id and user_id required"})
+	}
+	err := h.Store.AddUserToOrg(c.Context(), input.OrgID, input.UserID, input.InvitedBy, input.Role)
+	if err != nil {
+		logger.LogError("AddUserToOrg failed", logger.ErrorField(err))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to add user to org"})
+	}
+	return c.SendStatus(http.StatusNoContent)
+}
+
+func (h *UserHandler) RemoveUserFromOrg(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "org_member", "remove")
+		if err != nil || !permitted {
+			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		OrgID  string `json:"org_id"`
+		UserID string `json:"user_id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.OrgID == "" || input.UserID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "org_id and user_id required"})
+	}
+	err := h.Store.RemoveUserFromOrg(c.Context(), input.OrgID, input.UserID)
+	if err != nil {
+		logger.LogError("RemoveUserFromOrg failed", logger.ErrorField(err))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to remove user from org"})
+	}
+	return c.SendStatus(http.StatusNoContent)
+}
+
+func (h *UserHandler) ListOrgUsers(c *fiber.Ctx) error {
+	var input struct {
+		OrgID    string `json:"org_id"`
+		Page     int    `json:"page"`
+		PageSize int    `json:"page_size"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.OrgID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "org_id required"})
+	}
+	if input.Page == 0 {
+		input.Page = 1
+	}
+	if input.PageSize == 0 {
+		input.PageSize = 50
+	}
+	users, err := h.Store.ListOrgUsers(c.Context(), input.OrgID, input.Page, input.PageSize)
+	if err != nil {
+		logger.LogError("ListOrgUsers failed", logger.ErrorField(err))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list org users"})
+	}
+	return c.JSON(users)
+}
+
+func (h *UserHandler) InviteUserToOrg(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "org_invite", "invite")
+		if err != nil || !permitted {
+			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		OrgID     string `json:"org_id"`
+		Email     string `json:"email"`
+		InvitedBy string `json:"invited_by"`
+		Role      string `json:"role"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.OrgID == "" || input.Email == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "org_id and email required"})
+	}
+	err := h.Store.InviteUserToOrg(c.Context(), input.OrgID, input.Email, input.InvitedBy, input.Role)
+	if err != nil {
+		logger.LogError("InviteUserToOrg failed", logger.ErrorField(err))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to invite user to org"})
+	}
+	return c.SendStatus(http.StatusNoContent)
+}
+
+func (h *UserHandler) AddUserToProject(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "project_member", "add")
+		if err != nil || !permitted {
+			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		ProjectID string `json:"project_id"`
+		UserID    string `json:"user_id"`
+		InvitedBy string `json:"invited_by"`
+		Role      string `json:"role"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.ProjectID == "" || input.UserID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "project_id and user_id required"})
+	}
+	err := h.Store.AddUserToProject(c.Context(), input.ProjectID, input.UserID, input.InvitedBy, input.Role)
+	if err != nil {
+		logger.LogError("AddUserToProject failed", logger.ErrorField(err))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to add user to project"})
+	}
+	return c.SendStatus(http.StatusNoContent)
+}
+
+func (h *UserHandler) RemoveUserFromProject(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "project_member", "remove")
+		if err != nil || !permitted {
+			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		ProjectID string `json:"project_id"`
+		UserID    string `json:"user_id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.ProjectID == "" || input.UserID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "project_id and user_id required"})
+	}
+	err := h.Store.RemoveUserFromProject(c.Context(), input.ProjectID, input.UserID)
+	if err != nil {
+		logger.LogError("RemoveUserFromProject failed", logger.ErrorField(err))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to remove user from project"})
+	}
+	return c.SendStatus(http.StatusNoContent)
+}
+
+func (h *UserHandler) ListProjectUsers(c *fiber.Ctx) error {
+	var input struct {
+		ProjectID string `json:"project_id"`
+		Page      int    `json:"page"`
+		PageSize  int    `json:"page_size"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.ProjectID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "project_id required"})
+	}
+	if input.Page == 0 {
+		input.Page = 1
+	}
+	if input.PageSize == 0 {
+		input.PageSize = 50
+	}
+	users, err := h.Store.ListProjectUsers(c.Context(), input.ProjectID, input.Page, input.PageSize)
+	if err != nil {
+		logger.LogError("ListProjectUsers failed", logger.ErrorField(err))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list project users"})
+	}
+	return c.JSON(users)
+}
+
+func (h *UserHandler) InviteUserToProject(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "project_invite", "invite")
+		if err != nil || !permitted {
+			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		ProjectID string `json:"project_id"`
+		Email     string `json:"email"`
+		InvitedBy string `json:"invited_by"`
+		Role      string `json:"role"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.ProjectID == "" || input.Email == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "project_id and email required"})
+	}
+	err := h.Store.InviteUserToProject(c.Context(), input.ProjectID, input.Email, input.InvitedBy, input.Role)
+	if err != nil {
+		logger.LogError("InviteUserToProject failed", logger.ErrorField(err))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to invite user to project"})
+	}
+	return c.SendStatus(http.StatusNoContent)
 }
 
 func NowUTC() (t time.Time) {

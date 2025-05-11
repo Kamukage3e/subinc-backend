@@ -14,21 +14,6 @@ type ProjectService interface {
 	ListProjects(ctx context.Context, orgID string, page, pageSize int) ([]Project, error)
 }
 
-type ProjectMemberService interface {
-	AddMember(ctx context.Context, member ProjectMember) (ProjectMember, error)
-	RemoveMember(ctx context.Context, id string) error
-	UpdateMember(ctx context.Context, member ProjectMember) (ProjectMember, error)
-	GetMember(ctx context.Context, id string) (ProjectMember, error)
-	ListMembers(ctx context.Context, projectID string, page, pageSize int) ([]ProjectMember, error)
-}
-
-type ProjectInviteService interface {
-	CreateInvite(ctx context.Context, invite ProjectInvite) (ProjectInvite, error)
-	AcceptInvite(ctx context.Context, token string) error
-	RevokeInvite(ctx context.Context, id string) error
-	ListInvites(ctx context.Context, projectID string, page, pageSize int) ([]ProjectInvite, error)
-}
-
 type ProjectSettingsService interface {
 	GetSettings(ctx context.Context, projectID string) (ProjectSettings, error)
 	UpdateSettings(ctx context.Context, projectID, settings string) error

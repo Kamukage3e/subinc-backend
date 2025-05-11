@@ -3,13 +3,13 @@ package rbac_management
 import (
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PostgresStore struct {
-	db  *pgxpool.Pool
+	db          *pgxpool.Pool
 	logger      *logger.Logger
 	AuditLogger security_management.AuditLogger
 }
@@ -24,6 +24,7 @@ type RBACHandler struct {
 	AuditLogService      AuditLogService
 	Store                *PostgresStore
 	AuditLogger          security_management.AuditLogger
+	RBACService          RBACService // optional, may be nil
 }
 
 // --- Request structs for body-only input ---
@@ -164,4 +165,79 @@ type AuditLog struct {
 	TargetID  string    `json:"target_id"`
 	Details   string    `json:"details"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// ABAC/Advanced RBAC types
+
+type ABACPolicy struct {
+	ID         string                 `json:"id"`
+	TenantID   string                 `json:"tenant_id"`
+	Name       string                 `json:"name"`
+	Effect     string                 `json:"effect"` // allow/deny
+	Actions    []string               `json:"actions"`
+	Resources  []string               `json:"resources"`
+	Subjects   []string               `json:"subjects"`
+	Conditions map[string]interface{} `json:"conditions"`
+	CreatedAt  time.Time              `json:"created_at"`
+	UpdatedAt  time.Time              `json:"updated_at"`
+}
+
+type ABACEvaluationInput struct {
+	TenantID string                 `json:"tenant_id"`
+	UserID   string                 `json:"user_id"`
+	Action   string                 `json:"action"`
+	Resource string                 `json:"resource"`
+	Context  map[string]interface{} `json:"context"`
+}
+
+type ABACEvaluationResult struct {
+	Allowed   bool     `json:"allowed"`
+	PolicyIDs []string `json:"policy_ids"`
+	Reason    string   `json:"reason"`
+}
+
+type PolicySimulationInput struct {
+	TenantID string                 `json:"tenant_id"`
+	UserID   string                 `json:"user_id"`
+	Action   string                 `json:"action"`
+	Resource string                 `json:"resource"`
+	Context  map[string]interface{} `json:"context"`
+}
+
+type PolicySimulationResult struct {
+	Allowed         bool     `json:"allowed"`
+	MatchedPolicies []string `json:"matched_policies"`
+	Reason          string   `json:"reason"`
+}
+
+type PermissionExplainInput struct {
+	TenantID string `json:"tenant_id"`
+	UserID   string `json:"user_id"`
+	Action   string `json:"action"`
+	Resource string `json:"resource"`
+}
+
+type PermissionExplainResult struct {
+	Allowed     bool     `json:"allowed"`
+	PolicyIDs   []string `json:"policy_ids"`
+	Explanation string   `json:"explanation"`
+}
+
+type RoleDelegationInput struct {
+	TenantID   string     `json:"tenant_id"`
+	FromUserID string     `json:"from_user_id"`
+	ToUserID   string     `json:"to_user_id"`
+	RoleID     string     `json:"role_id"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+}
+
+type DelegatedRole struct {
+	ID         string     `json:"id"`
+	TenantID   string     `json:"tenant_id"`
+	FromUserID string     `json:"from_user_id"`
+	ToUserID   string     `json:"to_user_id"`
+	RoleID     string     `json:"role_id"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }

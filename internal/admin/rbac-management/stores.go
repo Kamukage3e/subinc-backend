@@ -9,6 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 
+	"encoding/json"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
@@ -565,3 +567,282 @@ func (s *PostgresStore) GetUserRoles(ctx context.Context, userID, resource strin
 }
 
 var ErrInvalidRBACInput = errors.New("invalid RBAC input")
+
+// --- ABACPolicyService ---
+
+func (s *PostgresStore) CreateABACPolicy(ctx context.Context, policy ABACPolicy) (ABACPolicy, error) {
+	const q = `INSERT INTO abac_policies (id, tenant_id, name, effect, actions, resources, subjects, conditions, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, tenant_id, name, effect, actions, resources, subjects, conditions, created_at, updated_at`
+	id := uuid.NewString()
+	now := time.Now().UTC()
+	cond, err := json.Marshal(policy.Conditions)
+	if err != nil {
+		s.logger.Error("CreateABACPolicy: marshal conditions failed", logger.ErrorField(err))
+		return ABACPolicy{}, err
+	}
+	row := s.db.QueryRow(ctx, q, id, policy.TenantID, policy.Name, policy.Effect, pq.Array(policy.Actions), pq.Array(policy.Resources), pq.Array(policy.Subjects), cond, now, now)
+	var out ABACPolicy
+	var condRaw []byte
+	if err := row.Scan(&out.ID, &out.TenantID, &out.Name, &out.Effect, pq.Array(&out.Actions), pq.Array(&out.Resources), pq.Array(&out.Subjects), &condRaw, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		s.logger.Error("CreateABACPolicy failed", logger.ErrorField(err), logger.Any("policy", policy))
+		return ABACPolicy{}, err
+	}
+	if err := json.Unmarshal(condRaw, &out.Conditions); err != nil {
+		s.logger.Error("CreateABACPolicy: unmarshal conditions failed", logger.ErrorField(err))
+		return ABACPolicy{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) UpdateABACPolicy(ctx context.Context, policy ABACPolicy) (ABACPolicy, error) {
+	const q = `UPDATE abac_policies SET name=$2, effect=$3, actions=$4, resources=$5, subjects=$6, conditions=$7, updated_at=$8 WHERE id=$1 RETURNING id, tenant_id, name, effect, actions, resources, subjects, conditions, created_at, updated_at`
+	cond, err := json.Marshal(policy.Conditions)
+	if err != nil {
+		s.logger.Error("UpdateABACPolicy: marshal conditions failed", logger.ErrorField(err))
+		return ABACPolicy{}, err
+	}
+	row := s.db.QueryRow(ctx, q, policy.ID, policy.Name, policy.Effect, pq.Array(policy.Actions), pq.Array(policy.Resources), pq.Array(policy.Subjects), cond, time.Now().UTC())
+	var out ABACPolicy
+	var condRaw []byte
+	if err := row.Scan(&out.ID, &out.TenantID, &out.Name, &out.Effect, pq.Array(&out.Actions), pq.Array(&out.Resources), pq.Array(&out.Subjects), &condRaw, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		s.logger.Error("UpdateABACPolicy failed", logger.ErrorField(err), logger.Any("policy", policy))
+		return ABACPolicy{}, err
+	}
+	if err := json.Unmarshal(condRaw, &out.Conditions); err != nil {
+		s.logger.Error("UpdateABACPolicy: unmarshal conditions failed", logger.ErrorField(err))
+		return ABACPolicy{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) DeleteABACPolicy(ctx context.Context, id string) error {
+	const q = `DELETE FROM abac_policies WHERE id=$1`
+	_, err := s.db.Exec(ctx, q, id)
+	if err != nil {
+		s.logger.Error("DeleteABACPolicy failed", logger.ErrorField(err), logger.String("id", id))
+		return err
+	}
+	return nil
+}
+
+func (s *PostgresStore) GetABACPolicy(ctx context.Context, id string) (ABACPolicy, error) {
+	const q = `SELECT id, tenant_id, name, effect, actions, resources, subjects, conditions, created_at, updated_at FROM abac_policies WHERE id=$1`
+	row := s.db.QueryRow(ctx, q, id)
+	var out ABACPolicy
+	var condRaw []byte
+	if err := row.Scan(&out.ID, &out.TenantID, &out.Name, &out.Effect, pq.Array(&out.Actions), pq.Array(&out.Resources), pq.Array(&out.Subjects), &condRaw, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		s.logger.Error("GetABACPolicy failed", logger.ErrorField(err), logger.String("id", id))
+		return ABACPolicy{}, err
+	}
+	if err := json.Unmarshal(condRaw, &out.Conditions); err != nil {
+		s.logger.Error("GetABACPolicy: unmarshal conditions failed", logger.ErrorField(err))
+		return ABACPolicy{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) ListABACPolicies(ctx context.Context, tenantID string, page, pageSize int) ([]ABACPolicy, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 100
+	}
+	const q = `SELECT id, tenant_id, name, effect, actions, resources, subjects, conditions, created_at, updated_at FROM abac_policies WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+	offset := (page - 1) * pageSize
+	rows, err := s.db.Query(ctx, q, tenantID, pageSize, offset)
+	if err != nil {
+		s.logger.Error("ListABACPolicies query failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ABACPolicy
+	for rows.Next() {
+		var p ABACPolicy
+		var condRaw []byte
+		if err := rows.Scan(&p.ID, &p.TenantID, &p.Name, &p.Effect, pq.Array(&p.Actions), pq.Array(&p.Resources), pq.Array(&p.Subjects), &condRaw, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			s.logger.Error("ListABACPolicies scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+		if err := json.Unmarshal(condRaw, &p.Conditions); err != nil {
+			s.logger.Error("ListABACPolicies: unmarshal conditions failed", logger.ErrorField(err))
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) EvaluateABAC(ctx context.Context, input ABACEvaluationInput) (ABACEvaluationResult, error) {
+	const q = `SELECT id, effect, actions, resources, subjects, conditions FROM abac_policies WHERE tenant_id=$1`
+	rows, err := s.db.Query(ctx, q, input.TenantID)
+	if err != nil {
+		s.logger.Error("EvaluateABAC query failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		return ABACEvaluationResult{}, err
+	}
+	defer rows.Close()
+	var matched []string
+	for rows.Next() {
+		var id, effect string
+		var actions, resources, subjects []string
+		var condRaw []byte
+		if err := rows.Scan(&id, &effect, pq.Array(&actions), pq.Array(&resources), pq.Array(&subjects), &condRaw); err != nil {
+			s.logger.Error("EvaluateABAC scan failed", logger.ErrorField(err))
+			return ABACEvaluationResult{}, err
+		}
+		if !contains(actions, input.Action) {
+			continue
+		}
+		if !contains(resources, input.Resource) {
+			continue
+		}
+		if len(subjects) > 0 && !contains(subjects, input.UserID) {
+			continue
+		}
+		var cond map[string]interface{}
+		if err := json.Unmarshal(condRaw, &cond); err != nil {
+			continue
+		}
+		if !evaluateConditions(cond, input.Context) {
+			continue
+		}
+		if effect == "allow" {
+			matched = append(matched, id)
+		}
+	}
+	return ABACEvaluationResult{
+		Allowed:   len(matched) > 0,
+		PolicyIDs: matched,
+		Reason:    "matched policies",
+	}, nil
+}
+
+// --- PolicySimulationService ---
+
+func (s *PostgresStore) SimulatePolicy(ctx context.Context, input PolicySimulationInput) (PolicySimulationResult, error) {
+	res, err := s.EvaluateABAC(ctx, ABACEvaluationInput{
+		TenantID: input.TenantID,
+		UserID:   input.UserID,
+		Action:   input.Action,
+		Resource: input.Resource,
+		Context:  input.Context,
+	})
+	if err != nil {
+		s.logger.Error("SimulatePolicy failed", logger.ErrorField(err))
+		return PolicySimulationResult{}, err
+	}
+	return PolicySimulationResult{
+		Allowed:         res.Allowed,
+		MatchedPolicies: res.PolicyIDs,
+		Reason:          res.Reason,
+	}, nil
+}
+
+// --- PermissionExplainerService ---
+
+func (s *PostgresStore) ExplainPermission(ctx context.Context, input PermissionExplainInput) (PermissionExplainResult, error) {
+	res, err := s.EvaluateABAC(ctx, ABACEvaluationInput{
+		TenantID: input.TenantID,
+		UserID:   input.UserID,
+		Action:   input.Action,
+		Resource: input.Resource,
+		Context:  map[string]interface{}{},
+	})
+	if err != nil {
+		s.logger.Error("ExplainPermission failed", logger.ErrorField(err))
+		return PermissionExplainResult{}, err
+	}
+	explanation := ""
+	if res.Allowed {
+		explanation = "Permission granted by policies: " + join(res.PolicyIDs, ", ")
+	} else {
+		explanation = "No matching ABAC policy found"
+	}
+	return PermissionExplainResult{
+		Allowed:     res.Allowed,
+		PolicyIDs:   res.PolicyIDs,
+		Explanation: explanation,
+	}, nil
+}
+
+// --- RoleDelegationService ---
+
+func (s *PostgresStore) DelegateRole(ctx context.Context, input RoleDelegationInput) error {
+	const q = `INSERT INTO delegated_roles (id, tenant_id, from_user_id, to_user_id, role_id, expires_at, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	id := uuid.NewString()
+	now := time.Now().UTC()
+	_, err := s.db.Exec(ctx, q, id, input.TenantID, input.FromUserID, input.ToUserID, input.RoleID, input.ExpiresAt, now, now)
+	if err != nil {
+		s.logger.Error("DelegateRole failed", logger.ErrorField(err), logger.Any("input", input))
+		return err
+	}
+	return nil
+}
+
+func (s *PostgresStore) RevokeDelegatedRole(ctx context.Context, input RoleDelegationInput) error {
+	const q = `DELETE FROM delegated_roles WHERE tenant_id=$1 AND from_user_id=$2 AND to_user_id=$3 AND role_id=$4`
+	_, err := s.db.Exec(ctx, q, input.TenantID, input.FromUserID, input.ToUserID, input.RoleID)
+	if err != nil {
+		s.logger.Error("RevokeDelegatedRole failed", logger.ErrorField(err), logger.Any("input", input))
+		return err
+	}
+	return nil
+}
+
+func (s *PostgresStore) ListDelegatedRoles(ctx context.Context, tenantID, userID string, page, pageSize int) ([]DelegatedRole, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 100
+	}
+	const q = `SELECT id, tenant_id, from_user_id, to_user_id, role_id, expires_at, created_at, updated_at FROM delegated_roles WHERE tenant_id=$1 AND to_user_id=$2 ORDER BY created_at DESC LIMIT $3 OFFSET $4`
+	offset := (page - 1) * pageSize
+	rows, err := s.db.Query(ctx, q, tenantID, userID, pageSize, offset)
+	if err != nil {
+		s.logger.Error("ListDelegatedRoles query failed", logger.ErrorField(err), logger.String("tenant_id", tenantID), logger.String("user_id", userID))
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DelegatedRole
+	for rows.Next() {
+		var d DelegatedRole
+		if err := rows.Scan(&d.ID, &d.TenantID, &d.FromUserID, &d.ToUserID, &d.RoleID, &d.ExpiresAt, &d.CreatedAt, &d.UpdatedAt); err != nil {
+			s.logger.Error("ListDelegatedRoles scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
+
+// --- helpers ---
+
+func contains(arr []string, v string) bool {
+	for _, s := range arr {
+		if s == v {
+			return true
+		}
+	}
+	return false
+}
+
+func join(arr []string, sep string) string {
+	if len(arr) == 0 {
+		return ""
+	}
+	out := arr[0]
+	for i := 1; i < len(arr); i++ {
+		out += sep + arr[i]
+	}
+	return out
+}
+
+func evaluateConditions(conds map[string]interface{}, ctx map[string]interface{}) bool {
+	// Simple implementation: all keys in conds must match ctx
+	for k, v := range conds {
+		if ctx[k] != v {
+			return false
+		}
+	}
+	return true
+}

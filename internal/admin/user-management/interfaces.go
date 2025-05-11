@@ -35,3 +35,15 @@ type UserSessionService interface {
 
 type UserAuditLogger = security_management.AuditLogger
 
+type OrgProjectUserService interface {
+	// Org membership
+	AddUserToOrg(ctx context.Context, orgID, userID, invitedBy, role string) error
+	RemoveUserFromOrg(ctx context.Context, orgID, userID string) error
+	ListOrgUsers(ctx context.Context, orgID string, page, pageSize int) ([]User, error)
+	InviteUserToOrg(ctx context.Context, orgID, email, invitedBy, role string) error
+	// Project membership
+	AddUserToProject(ctx context.Context, projectID, userID, invitedBy, role string) error
+	RemoveUserFromProject(ctx context.Context, projectID, userID string) error
+	ListProjectUsers(ctx context.Context, projectID string, page, pageSize int) ([]User, error)
+	InviteUserToProject(ctx context.Context, projectID, email, invitedBy, role string) error
+}
