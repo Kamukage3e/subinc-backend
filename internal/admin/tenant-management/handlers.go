@@ -338,3 +338,52 @@ func validateTenantSettings(settings map[string]interface{}) error {
 	}
 	return nil
 }
+
+// --- Tenant Lifecycle State Handlers ---
+
+func (h *TenantAdminHandler) SetTenantStatus(c *fiber.Ctx) error {
+	var input struct {
+		TenantID string       `json:"tenant_id"`
+		Status   TenantStatus `json:"status"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.TenantID == "" || input.Status == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id and status required"})
+	}
+	if err := h.TenantStore.SetTenantStatus(c.Context(), input.TenantID, input.Status); err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.AuditLogger != nil {
+		_, _ = h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        input.TenantID,
+			ActorID:   c.Locals("actor_id").(string),
+			Action:    "set_tenant_status",
+			TargetID:  input.TenantID,
+			Details:   marshalAuditDetails(input),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *TenantAdminHandler) GetTenantStatus(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	}
+	
+	status, err := h.TenantStore.GetTenantStatus(c.Context(), tenantID)
+	if err != nil {
+		logger.LogError("GetTenantStatus: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.AuditLogger != nil {
+		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "get_tenant_status",
+			TargetID:  tenantID,
+			Details:   marshalAuditDetails(fiber.Map{"id": tenantID}),
+		})
+	}
+	return c.JSON(fiber.Map{"tenant_id": tenantID, "status": status})
+}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/viper"
 )
 
@@ -84,6 +85,44 @@ func OIDCMiddleware() fiber.Handler {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid claims"})
 		}
 		c.Locals("claims", claims)
+		return c.Next()
+	}
+}
+
+// NewRateLimitMiddleware returns a distributed, DB-backed rate limiter middleware for the given scope extractor.
+// scopeExtractor returns (scope, scopeID) for the request (e.g., ("tenant", tenantID)).
+func NewRateLimitMiddleware(rateLimitService RateLimitService, scopeExtractor func(*fiber.Ctx) (string, string)) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		if rateLimitService == nil {
+			return c.Next()
+		}
+		scope, scopeID := scopeExtractor(c)
+		if scope == "" || scopeID == "" {
+			return c.Next()
+		}
+		cfg, err := rateLimitService.GetRateLimit(c.Context(), scope, scopeID)
+		if err != nil || cfg.Limit <= 0 || cfg.WindowSeconds <= 0 {
+			return c.Next()
+		}
+		pool, ok := c.Locals("db").(*pgxpool.Pool)
+		if !ok || pool == nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "db unavailable"})
+		}
+		const upsert = `INSERT INTO rate_limit_counters (scope, scope_id, window_start, count)
+			VALUES ($1, $2, NOW(), 1)
+			ON CONFLICT (scope, scope_id) DO UPDATE SET
+				count = CASE WHEN EXTRACT(EPOCH FROM (NOW() - rate_limit_counters.window_start)) < $3 THEN rate_limit_counters.count + 1 ELSE 1 END,
+				window_start = CASE WHEN EXTRACT(EPOCH FROM (NOW() - rate_limit_counters.window_start)) < $3 THEN rate_limit_counters.window_start ELSE NOW() END
+			RETURNING count, window_start`
+		var count int
+		var windowStart time.Time
+		err = pool.QueryRow(c.Context(), upsert, scope, scopeID, cfg.WindowSeconds).Scan(&count, &windowStart)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "rate limit counter error"})
+		}
+		if count > cfg.Limit {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "rate limit exceeded"})
+		}
 		return c.Next()
 	}
 }

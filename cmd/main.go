@@ -8,13 +8,11 @@ import (
 	"fmt"
 	"os"
 
-
 	"strings"
 
 	"time"
 
 	"database/sql"
-
 
 	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -25,11 +23,11 @@ import (
 
 	"github.com/spf13/viper"
 
-
-
 	. "github.com/subinc/subinc-backend/internal/pkg/logger"
 
 	"github.com/subinc/subinc-backend/pkg/jobs"
+	"github.com/subinc/subinc-backend/pkg/payment"
+	"github.com/subinc/subinc-backend/pkg/paypal"
 	"github.com/subinc/subinc-backend/pkg/session"
 )
 
@@ -38,9 +36,6 @@ var ErrServerClosed = errors.New("server closed")
 
 // Initialize logger
 var log *Logger
-
-
-
 
 // Refactor: Remove all table existence checks from ensureDefaultAdminRBAC
 func ensureDefaultAdminRBAC(adminStore *admin.PostgresAdminStore, log *Logger) error {
@@ -199,7 +194,30 @@ func main() {
 		defer jobServer.Shutdown()
 	}
 
+	// Register payment providers
+	stripeKey := viper.GetString("stripe.api_key")
+	if stripeKey == "" {
+		log.Fatal("stripe.api_key not set in config or env")
+	}
+	// Assume auditLogger is log or a compatible instance
+	payment.PaymentProviders.Register("stripe", payment.NewStripeProvider(stripeKey, log))
 
+	paypalClientID := viper.GetString("paypal.client_id")
+	paypalSecret := viper.GetString("paypal.secret")
+	paypalEnv := viper.GetString("paypal.env")
+	if paypalClientID == "" || paypalSecret == "" {
+		log.Fatal("paypal.client_id or paypal.secret not set in config or env")
+	}
+	var paypalClient *paypal.Client
+	{
+		// Real PayPal client init (sandbox or live)
+		var err error
+		paypalClient, err = paypal.NewClient(paypalClientID, paypalSecret, paypalEnv)
+		if err != nil {
+			log.Fatal("failed to initialize PayPal client", ErrorField(err))
+		}
+	}
+	payment.PaymentProviders.Register("paypal", payment.NewPaypalProvider(paypalClient, log))
 
 	// Register login route
 	app.Post("/api/v1/login", loginRouterHandler(adminHandler, userHandler))
@@ -269,7 +287,6 @@ func configureViper(logger *Logger) {
 	viper.SetDefault("rate_limit.max_requests", 100)
 	viper.SetDefault("rate_limit.window", time.Minute)
 }
-
 
 func ensureDefaultAdmin(adminStore *admin.PostgresAdminStore, log *Logger) {
 	users, err := adminStore.ListUsers()

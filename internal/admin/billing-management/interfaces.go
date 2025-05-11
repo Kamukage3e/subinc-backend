@@ -2,7 +2,9 @@ package billing_management
 
 import (
 	"context"
+	"time"
 
+	"github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 )
 
@@ -42,6 +44,9 @@ type PaymentService interface {
 	GetPayment(id string) (Payment, error)
 	ListPayments(invoiceID string, page, pageSize int) ([]Payment, error)
 	GetPaymentByIdempotencyKey(idempotencyKey string) (Payment, error)
+
+	RefundPayment(ctx context.Context, req *payment.RefundPaymentRequest) (*payment.PaymentResult, error)
+	GetPaymentStatus(ctx context.Context, paymentID string) (*payment.PaymentStatus, error)
 }
 
 type DiscountService interface {
@@ -155,3 +160,18 @@ type TenantCurrencyService interface {
 
 // All audit logging must use AuditLogger for decoupling and optionality.
 type BillingAuditLogger = security_management.AuditLogger
+
+// DisputeServiceInterface defines admin dispute management contract
+// (moved from types.go for consistency)
+type DisputeServiceInterface interface {
+	ListDisputes(ctx context.Context, tenantID, paymentID string, status payment.DisputeStatus, page, pageSize int) ([]payment.Dispute, error)
+	GetDispute(ctx context.Context, id string) (payment.Dispute, error)
+	UpdateDisputeStatus(ctx context.Context, id string, status payment.DisputeStatus, evidenceSubmitted *time.Time) error
+}
+
+type DisputeEvidenceServiceInterface interface {
+	ListEvidence(ctx context.Context, disputeID, tenantID string, page, pageSize int) ([]payment.DisputeEvidence, error)
+	GetEvidence(ctx context.Context, id string) (payment.DisputeEvidence, error)
+	UploadEvidence(ctx context.Context, evidence *payment.DisputeEvidence) error
+	UpdateEvidenceStatus(ctx context.Context, evidenceID, providerStatus, providerResponse string) error
+}

@@ -1,6 +1,9 @@
 package billing_management
 
 import (
+	"bytes"
+	"context"
+	"fmt"
 	"time"
 
 	"encoding/json"
@@ -9,7 +12,10 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/jung-kurt/gofpdf"
 	viper "github.com/spf13/viper"
+	"github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
+	paymentpkg "github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
@@ -3276,19 +3282,18 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 	}
 	account, err := h.AccountService.GetAccount(input.AccountID)
 	if err != nil {
-		logger.LogError("CreateCredit: account not found", logger.ErrorField(err), logger.String("account_id", input.AccountID))
+		logger.LogError("CreateInvoice: account not found", logger.ErrorField(err), logger.String("account_id", input.AccountID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "account not found"})
 	}
 	currency := strings.ToUpper(strings.TrimSpace(input.Currency))
 	if currency == "" {
 		currency = strings.ToUpper(strings.TrimSpace(account.Currency))
 		if currency == "" {
-			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "no currency set for credit or account"})
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "no currency set for invoice or account"})
 		}
 		input.Currency = currency
 	}
 	if input.Currency != account.Currency && account.Currency != "" {
-		// Multi-currency: convert
 		rate, rerr := h.Store.GetExchangeRate(c.Context(), input.Currency, account.Currency)
 		if rerr != nil || rate.Rate <= 0 {
 			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "no valid exchange rate from " + input.Currency + " to " + account.Currency})
@@ -3298,14 +3303,25 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 		input.Amount = input.Amount * rate.Rate
 		input.Currency = account.Currency
 	}
-	var inputCredit Credit
-	if err := c.BodyParser(&inputCredit); err != nil {
-		logger.LogError("CreateCredit: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	// --- Tax plugin selection and calculation ---
+	pluginName := "default"
+	if cfg, err := h.Store.GetTaxPluginConfig(c.Context(), account.TenantID); err == nil && cfg.PluginName != "" {
+		pluginName = cfg.PluginName
 	}
-	credit, err := h.CreditService.CreateCredit(inputCredit)
+	plugin, ok := TaxPlugins.Lookup(pluginName)
+	if !ok {
+		plugin = DefaultTaxPlugin{}
+	}
+	taxAmount, taxRate, terr := plugin.CalculateTax(c.Context(), input, account, account.TenantID)
+	if terr != nil {
+		logger.LogError("CreateInvoice: tax plugin failed", logger.ErrorField(terr), logger.String("plugin", pluginName))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tax calculation failed: " + terr.Error()})
+	}
+	input.TaxAmount = taxAmount
+	input.TaxRate = taxRate
+	invoice, err := h.InvoiceService.CreateInvoice(input)
 	if err != nil {
-		logger.LogError("CreateCredit: failed", logger.ErrorField(err), logger.Any("input", input))
+		logger.LogError("CreateInvoice: failed", logger.ErrorField(err), logger.Any("input", input))
 		errResp := fiber.Map{"error": err.Error()}
 		if apiErr, ok := err.(*Error); ok {
 			errResp["error"] = apiErr.Message
@@ -3316,18 +3332,18 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 	}
 	if h.AuditLogger != nil {
 		_, err := h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        credit.ID,
+			ID:        invoice.ID,
 			ActorID:   getActorID(c),
-			Action:    "create_credit",
-			TargetID:  credit.AccountID,
-			Details:   auditDetails(map[string]interface{}{"input": input, "account_currency": account.Currency}),
+			Action:    "create_invoice",
+			TargetID:  invoice.AccountID,
+			Details:   auditDetails(map[string]interface{}{"input": input, "account_currency": account.Currency, "tax_plugin": pluginName}),
 			CreatedAt: time.Now(),
 		})
 		if err != nil {
-			logger.LogError("CreateCredit: audit log failed", logger.ErrorField(err))
+			logger.LogError("CreateInvoice: audit log failed", logger.ErrorField(err))
 		}
 	}
-	return c.Status(fiber.StatusCreated).JSON(credit)
+	return c.Status(fiber.StatusCreated).JSON(invoice)
 }
 
 func (h *BillingAdminHandler) UpdateInvoice(c *fiber.Ctx) error {
@@ -4128,4 +4144,368 @@ func (h *BillingAdminHandler) SetTaxPluginConfig(c *fiber.Ctx) error {
 		}
 	}
 	return c.Status(fiber.StatusCreated).JSON(cfg)
+}
+
+func generateInvoicePDF(pdfData map[string]interface{}) ([]byte, error) {
+	pdf := gofpdf.New("P", "mm", "A4", "")
+	if title, ok := pdfData["title"].(string); ok && title != "" {
+		pdf.SetTitle(title, false)
+	}
+	pdf.AddPage()
+
+	// Logo (optional)
+	if logo, ok := pdfData["logo"].(string); ok && logo != "" {
+		pdf.ImageOptions(logo, 10, 10, 30, 0, false, gofpdf.ImageOptions{}, 0, "")
+		pdf.Ln(20)
+	}
+
+	// Header lines (optional)
+	if header, ok := pdfData["header"].([]string); ok {
+		pdf.SetFont("Arial", "B", 20)
+		for _, line := range header {
+			pdf.Cell(0, 12, line)
+			pdf.Ln(8)
+		}
+		pdf.Ln(4)
+	}
+
+	// Fields (label/value pairs)
+	if fields, ok := pdfData["fields"].([][2]string); ok {
+		pdf.SetFont("Arial", "", 12)
+		for _, pair := range fields {
+			pdf.Cell(40, 8, pair[0])
+			pdf.Cell(0, 8, pair[1])
+			pdf.Ln(8)
+		}
+		pdf.Ln(4)
+	}
+
+	// Table (rows: description, amount, currency)
+	if table, ok := pdfData["table"].([][3]string); ok && len(table) > 0 {
+		pdf.SetFont("Arial", "B", 12)
+		pdf.Cell(60, 8, "Description")
+		pdf.Cell(40, 8, "Amount")
+		pdf.Cell(40, 8, "Currency")
+		pdf.Ln(8)
+		pdf.SetFont("Arial", "", 12)
+		for _, row := range table {
+			pdf.Cell(60, 8, row[0])
+			pdf.Cell(40, 8, row[1])
+			pdf.Cell(40, 8, row[2])
+			pdf.Ln(8)
+		}
+		pdf.Ln(4)
+	}
+
+	// Footer/notes (optional)
+	if footer, ok := pdfData["footer"].(string); ok && footer != "" {
+		pdf.SetFont("Arial", "I", 10)
+		pdf.MultiCell(0, 7, footer, "", "L", false)
+	}
+
+	var buf bytes.Buffer
+	if err := pdf.Output(&buf); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// DownloadInvoicePDF returns the invoice PDF as an attachment. Only JSON body allowed.
+func (h *BillingAdminHandler) DownloadInvoicePDF(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "invoice", "read")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		InvoiceID string `json:"invoice_id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.InvoiceID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})
+	}
+	invoice, err := h.InvoiceService.GetInvoice(input.InvoiceID)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "invoice not found"})
+	}
+	account, err := h.AccountService.GetAccount(invoice.AccountID)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "account not found"})
+	}
+	pdfData := map[string]interface{}{
+		"title":  "Invoice " + invoice.ID,
+		"header": []string{"INVOICE"},
+		"fields": [][2]string{
+			{"Invoice ID:", invoice.ID},
+			{"Status:", invoice.Status},
+			{"Account Email:", account.Email},
+			{"Account ID:", account.ID},
+			{"Created:", invoice.CreatedAt.Format("2006-01-02 15:04")},
+			{"Due Date:", invoice.DueDate.Format("2006-01-02")},
+		},
+		"table": [][3]string{
+			{"Subtotal", fmt.Sprintf("%.2f", invoice.Amount-invoice.TaxAmount), invoice.Currency},
+			{"Tax", fmt.Sprintf("%.2f (%.2f%%)", invoice.TaxAmount, invoice.TaxRate), invoice.Currency},
+			{"Total", fmt.Sprintf("%.2f", invoice.Amount), invoice.Currency},
+		},
+		"footer": "Thank you for your business. If you have any questions, contact support@company.com.",
+	}
+	if invoice.OriginalAmount > 0 && invoice.OriginalCurrency != "" {
+		table := pdfData["table"].([][3]string)
+		table = append(table, [3]string{"Original Amount", fmt.Sprintf("%.2f", invoice.OriginalAmount), invoice.OriginalCurrency})
+		pdfData["table"] = table
+	}
+	pdfBytes, pdfErr := generateInvoicePDF(pdfData)
+	if pdfErr != nil {
+		return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"error": pdfErr.Error()})
+	}
+	c.Set("Content-Type", "application/pdf")
+	c.Set("Content-Disposition", "attachment; filename=invoice-"+invoice.ID+".pdf")
+	if h.AuditLogger != nil {
+		_, err := h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        invoice.ID,
+			ActorID:   getActorID(c),
+			Action:    "download_invoice_pdf",
+			TargetID:  invoice.AccountID,
+			Details:   auditDetails(map[string]interface{}{"invoice_id": invoice.ID}),
+			CreatedAt: time.Now(),
+		})
+		if err != nil {
+			logger.LogError("DownloadInvoicePDF: audit log failed", logger.ErrorField(err))
+		}
+	}
+	return c.Send(pdfBytes)
+}
+
+func (h *BillingAdminHandler) RefundPayment(c *fiber.Ctx) error {
+	var req payment.RefundPaymentRequest
+	if err := c.BodyParser(&req); err != nil {
+		logger.LogError("billing.refund_payment.invalid_request", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request"})
+	}
+	result, err := h.PaymentService.RefundPayment(c.Context(), &req)
+	if err != nil {
+		logger.LogError("billing.refund_payment.failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusOK).JSON(result)
+}
+
+func (h *BillingAdminHandler) GetPaymentStatus(c *fiber.Ctx) error {
+	paymentID := c.Query("payment_id")
+	if paymentID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "payment_id is required"})
+	}
+	result, err := h.PaymentService.GetPaymentStatus(c.Context(), paymentID)
+	if err != nil {
+		logger.LogError("billing.get_payment_status.failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusOK).JSON(result)
+}
+
+func DunningJob(ctx context.Context, store paymentpkg.StoreInterface, notificationService security_management.NotificationService, auditLogger security_management.AuditLogger, tenantID string) error {
+	failedPayments, err := store.ListFailedPayments(ctx, tenantID)
+	if err != nil {
+		logger.LogError("dunning.list_failed_payments", logger.ErrorField(err))
+		return err
+	}
+	dunningCfg, err := store.GetDunningConfig(ctx, tenantID)
+	if err != nil {
+		logger.LogError("dunning.get_config", logger.ErrorField(err))
+		return err
+	}
+	now := time.Now().UTC()
+	for _, p := range failedPayments {
+		if p.DunningAttempts >= dunningCfg.MaxAttempts {
+			if p.DunningState != "failed" {
+				_ = store.UpdateDunningState(ctx, p.ID, "failed", p.DunningAttempts)
+				_ = notificationService.SendNotification(ctx, tenantID, "dunning_failed", map[string]interface{}{"payment_id": p.ID, "invoice_id": p.InvoiceID})
+				if auditLogger != nil {
+					_, _ = auditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
+						ActorID:   "system",
+						Action:    "dunning_failed",
+						TargetID:  p.ID,
+						Details:   paymentpkg.MarshalAuditDetails(map[string]interface{}{"payment_id": p.ID, "invoice_id": p.InvoiceID}),
+						CreatedAt: now,
+					})
+				}
+			}
+			continue
+		}
+		if now.Sub(p.LastDunningAttempt) < dunningCfg.RetryIntervals[p.DunningAttempts] {
+			continue
+		}
+		// Attempt retry
+		result, retryErr := paymentpkg.RetryPayment(ctx, store, p)
+		_ = store.UpdateDunningAttempt(ctx, p.ID, now, p.DunningAttempts+1)
+		if retryErr == nil && result.Status == "completed" {
+			_ = store.UpdateDunningState(ctx, p.ID, "recovered", p.DunningAttempts+1)
+			_ = notificationService.SendNotification(ctx, tenantID, "dunning_recovered", map[string]interface{}{"payment_id": p.ID, "invoice_id": p.InvoiceID})
+			if auditLogger != nil {
+				_, _ = auditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
+					ActorID:   "system",
+					Action:    "dunning_recovered",
+					TargetID:  p.ID,
+					Details:   paymentpkg.MarshalAuditDetails(map[string]interface{}{"payment_id": p.ID, "invoice_id": p.InvoiceID}),
+					CreatedAt: now,
+				})
+			}
+			continue
+		}
+		_ = notificationService.SendNotification(ctx, tenantID, "dunning_retry", map[string]interface{}{"payment_id": p.ID, "invoice_id": p.InvoiceID, "attempt": p.DunningAttempts + 1})
+		if auditLogger != nil {
+			_, _ = auditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
+				ActorID:   "system",
+				Action:    "dunning_retry",
+				TargetID:  p.ID,
+				Details:   paymentpkg.MarshalAuditDetails(map[string]interface{}{"payment_id": p.ID, "invoice_id": p.InvoiceID, "attempt": p.DunningAttempts + 1}),
+				CreatedAt: now,
+			})
+		}
+	}
+	return nil
+}
+
+func (h *BillingAdminHandler) ListDisputes(c *fiber.Ctx) error {
+	var input struct {
+		TenantID  string                `json:"tenant_id"`
+		PaymentID string                `json:"payment_id"`
+		Status    payment.DisputeStatus `json:"status"`
+		Page      int                   `json:"page"`
+		PageSize  int                   `json:"page_size"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("ListDisputes: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.Page == 0 {
+		input.Page = 1
+	}
+	if input.PageSize == 0 {
+		input.PageSize = 100
+	}
+	list, err := h.DisputeService.ListDisputes(c.Context(), input.TenantID, input.PaymentID, input.Status, input.Page, input.PageSize)
+	if err != nil {
+		logger.LogError("ListDisputes: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(list)
+}
+
+// GetDispute admin handler
+func (h *BillingAdminHandler) GetDispute(c *fiber.Ctx) error {
+	id := c.Query("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+	d, err := h.DisputeService.GetDispute(c.Context(), id)
+	if err != nil {
+		logger.LogError("GetDispute: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(d)
+}
+
+// UpdateDisputeStatus admin handler
+func (h *BillingAdminHandler) UpdateDisputeStatus(c *fiber.Ctx) error {
+	var input struct {
+		DisputeID         string                `json:"dispute_id"`
+		Status            payment.DisputeStatus `json:"status"`
+		EvidenceSubmitted *time.Time            `json:"evidence_submitted,omitempty"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("UpdateDisputeStatus: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.DisputeID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "dispute_id required"})
+	}
+	err := h.DisputeService.UpdateDisputeStatus(c.Context(), input.DisputeID, input.Status, input.EvidenceSubmitted)
+	if err != nil {
+		logger.LogError("UpdateDisputeStatus: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.SendStatus(fiber.StatusOK)
+}
+
+// ListDisputeEvidence admin handler
+func (h *BillingAdminHandler) ListDisputeEvidence(c *fiber.Ctx) error {
+	var input struct {
+		DisputeID string `json:"dispute_id"`
+		TenantID  string `json:"tenant_id"`
+		Page      int    `json:"page"`
+		PageSize  int    `json:"page_size"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("ListDisputeEvidence: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.Page == 0 {
+		input.Page = 1
+	}
+	if input.PageSize == 0 {
+		input.PageSize = 100
+	}
+	list, err := h.DisputeEvidenceService.ListEvidence(c.Context(), input.DisputeID, input.TenantID, input.Page, input.PageSize)
+	if err != nil {
+		logger.LogError("ListDisputeEvidence: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(list)
+}
+
+// GetDisputeEvidence admin handler
+func (h *BillingAdminHandler) GetDisputeEvidence(c *fiber.Ctx) error {
+	id := c.Query("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+	e, err := h.DisputeEvidenceService.GetEvidence(c.Context(), id)
+	if err != nil {
+		logger.LogError("GetDisputeEvidence: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(e)
+}
+
+// UploadDisputeEvidence admin handler
+func (h *BillingAdminHandler) UploadDisputeEvidence(c *fiber.Ctx) error {
+	var input payment.DisputeEvidence
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("UploadDisputeEvidence: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.DisputeID == "" || input.TenantID == "" || input.FileURL == "" || input.FileName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing required fields"})
+	}
+	err := h.DisputeEvidenceService.UploadEvidence(c.Context(), &input)
+	if err != nil {
+		logger.LogError("UploadDisputeEvidence: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.SendStatus(fiber.StatusOK)
+}
+
+// UpdateDisputeEvidenceStatus admin handler
+func (h *BillingAdminHandler) UpdateDisputeEvidenceStatus(c *fiber.Ctx) error {
+	var input struct {
+		EvidenceID       string `json:"evidence_id"`
+		ProviderStatus   string `json:"provider_status"`
+		ProviderResponse string `json:"provider_response"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("UpdateDisputeEvidenceStatus: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.EvidenceID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "evidence_id required"})
+	}
+	err := h.DisputeEvidenceService.UpdateEvidenceStatus(c.Context(), input.EvidenceID, input.ProviderStatus, input.ProviderResponse)
+	if err != nil {
+		logger.LogError("UpdateDisputeEvidenceStatus: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.SendStatus(fiber.StatusOK)
 }

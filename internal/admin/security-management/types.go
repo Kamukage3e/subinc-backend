@@ -21,11 +21,14 @@ type RBACService interface {
 
 type SecurityAdminHandler struct {
 	SecurityEventService        SecurityEventService
+	SecurityEventWebhookService SecurityEventWebhookService
 	LoginHistoryService         LoginHistoryService
 	MFAService                  MFAService
 	PasswordService             PasswordService
+	PasswordResetTokenService   PasswordResetTokenService
 	SessionService              SessionService
 	SecurityAuditLogService     SecurityAuditLogService
+	RateLimitService            RateLimitService
 	APIKeyService               APIKeyService
 	DeviceService               DeviceService
 	BreachService               BreachService
@@ -144,4 +147,42 @@ type NotificationConfig struct {
 
 type SecurityModuleConfig struct {
 	Enabled bool `json:"enabled"`
+}
+
+// SecurityEventWebhook represents a webhook subscription for security events
+// All fields required for multi-tenant, secure event streaming
+// EventTypes: list of event types to subscribe to (e.g., login, permission_change)
+type SecurityEventWebhook struct {
+	ID         string    `json:"id"`
+	TenantID   string    `json:"tenant_id"`
+	URL        string    `json:"url"`
+	EventTypes []string  `json:"event_types"`
+	Secret     string    `json:"secret"`
+	Status     string    `json:"status"` // active, disabled
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// PasswordResetToken represents a token for password reset/verification
+// Used for token-based flows (not just admin reset)
+type PasswordResetToken struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"user_id"`
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expires_at"`
+	Used      bool      `json:"used"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// RateLimitConfig represents a rate limit for a tenant/org/user
+// Scope: "tenant", "org", or "user"
+type RateLimitConfig struct {
+	ID            string    `json:"id"`
+	Scope         string    `json:"scope"`
+	ScopeID       string    `json:"scope_id"`
+	Limit         int       `json:"limit"`
+	WindowSeconds int       `json:"window_seconds"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }

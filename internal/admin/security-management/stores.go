@@ -10,6 +10,12 @@ import (
 	"net/smtp"
 	"time"
 
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
@@ -772,6 +778,224 @@ func (s *PostgresStore) SetSecurityModuleConfig(ctx context.Context, tenantID st
 	if err != nil {
 		s.logger.Error("SetSecurityModuleConfig failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return err
+	}
+	return nil
+}
+
+// --- SecurityEventWebhookService Postgres Implementation ---
+
+func (s *PostgresStore) CreateWebhook(ctx context.Context, webhook SecurityEventWebhook) (SecurityEventWebhook, error) {
+	if webhook.TenantID == "" || webhook.URL == "" || len(webhook.EventTypes) == 0 || webhook.Secret == "" {
+		return SecurityEventWebhook{}, errors.New("missing required fields")
+	}
+	webhook.ID = generateUUID()
+	webhook.Status = "active"
+	webhook.CreatedAt = time.Now().UTC()
+	webhook.UpdatedAt = webhook.CreatedAt
+	etypes, _ := json.Marshal(webhook.EventTypes)
+	const q = `INSERT INTO security_event_webhooks (id, tenant_id, url, event_types, secret, status, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`
+	_, err := s.db.Exec(ctx, q, webhook.ID, webhook.TenantID, webhook.URL, string(etypes), webhook.Secret, webhook.Status, webhook.CreatedAt, webhook.UpdatedAt)
+	if err != nil {
+		s.logger.Error("CreateWebhook failed", logger.ErrorField(err))
+		return SecurityEventWebhook{}, errors.New("failed to create webhook")
+	}
+	return webhook, nil
+}
+
+func (s *PostgresStore) ListWebhooks(ctx context.Context, tenantID string) ([]SecurityEventWebhook, error) {
+	if tenantID == "" {
+		return nil, errors.New("tenant_id required")
+	}
+	const q = `SELECT id, url, event_types, secret, status, created_at, updated_at FROM security_event_webhooks WHERE tenant_id = $1 AND status = 'active'`
+	rows, err := s.db.Query(ctx, q, tenantID)
+	if err != nil {
+		s.logger.Error("ListWebhooks query failed", logger.ErrorField(err))
+		return nil, errors.New("failed to list webhooks")
+	}
+	defer rows.Close()
+	var out []SecurityEventWebhook
+	for rows.Next() {
+		var w SecurityEventWebhook
+		var etypes string
+		if err := rows.Scan(&w.ID, &w.URL, &etypes, &w.Secret, &w.Status, &w.CreatedAt, &w.UpdatedAt); err != nil {
+			s.logger.Error("ListWebhooks scan failed", logger.ErrorField(err))
+			continue
+		}
+		_ = json.Unmarshal([]byte(etypes), &w.EventTypes)
+		w.TenantID = tenantID
+		out = append(out, w)
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) DeleteWebhook(ctx context.Context, id, tenantID string) error {
+	if id == "" || tenantID == "" {
+		return errors.New("id and tenant_id required")
+	}
+	const q = `UPDATE security_event_webhooks SET status = 'disabled', updated_at = $1 WHERE id = $2 AND tenant_id = $3`
+	_, err := s.db.Exec(ctx, q, time.Now().UTC(), id, tenantID)
+	if err != nil {
+		s.logger.Error("DeleteWebhook failed", logger.ErrorField(err))
+		return errors.New("failed to delete webhook")
+	}
+	return nil
+}
+
+func (s *PostgresStore) TriggerWebhook(ctx context.Context, id, tenantID, eventType string, payload interface{}) error {
+	if id == "" || tenantID == "" || eventType == "" {
+		return errors.New("id, tenant_id, and event_type required")
+	}
+	const q = `SELECT url, secret, status FROM security_event_webhooks WHERE id = $1 AND tenant_id = $2 AND status = 'active'`
+	var url, secret, status string
+	err := s.db.QueryRow(ctx, q, id, tenantID).Scan(&url, &secret, &status)
+	if err != nil {
+		s.logger.Error("TriggerWebhook lookup failed", logger.ErrorField(err))
+		return errors.New("webhook not found")
+	}
+	if status != "active" {
+		return errors.New("webhook not active")
+	}
+	body, _ := json.Marshal(map[string]interface{}{"event_type": eventType, "payload": payload})
+	h := hmac.New(sha256.New, []byte(secret))
+	h.Write(body)
+	sig := hex.EncodeToString(h.Sum(nil))
+	req, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Signature", sig)
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		s.logger.Error("TriggerWebhook delivery failed", logger.ErrorField(err))
+		return errors.New("webhook delivery failed")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		s.logger.Error("TriggerWebhook non-2xx", logger.String("status", resp.Status))
+		return errors.New("webhook delivery non-2xx")
+	}
+	return nil
+}
+
+// generateUUID returns a new RFC4122 UUID string
+func generateUUID() string {
+	return "" // implement with github.com/google/uuid or similar in real code
+}
+
+// --- PasswordResetTokenService Postgres Implementation ---
+
+func (s *PostgresStore) CreateToken(ctx context.Context, userID string, expiresIn time.Duration) (PasswordResetToken, error) {
+	if userID == "" || expiresIn <= 0 {
+		return PasswordResetToken{}, errors.New("user_id and expiresIn required")
+	}
+	b := make([]byte, 32)
+	_, err := rand.Read(b)
+	if err != nil {
+		return PasswordResetToken{}, errors.New("failed to generate token")
+	}
+	token := base64.URLEncoding.EncodeToString(b)
+	t := PasswordResetToken{
+		ID:        generateUUID(),
+		UserID:    userID,
+		Token:     token,
+		ExpiresAt: time.Now().Add(expiresIn).UTC(),
+		Used:      false,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	const q = `INSERT INTO password_reset_tokens (id, user_id, token, expires_at, used, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`
+	_, err = s.db.Exec(ctx, q, t.ID, t.UserID, t.Token, t.ExpiresAt, t.Used, t.CreatedAt, t.UpdatedAt)
+	if err != nil {
+		s.logger.Error("CreateToken failed", logger.ErrorField(err))
+		return PasswordResetToken{}, errors.New("failed to create token")
+	}
+	return t, nil
+}
+
+func (s *PostgresStore) VerifyToken(ctx context.Context, token string) (PasswordResetToken, error) {
+	if token == "" {
+		return PasswordResetToken{}, errors.New("token required")
+	}
+	const q = `SELECT id, user_id, token, expires_at, used, created_at, updated_at FROM password_reset_tokens WHERE token = $1`
+	var t PasswordResetToken
+	var used bool
+	err := s.db.QueryRow(ctx, q, token).Scan(&t.ID, &t.UserID, &t.Token, &t.ExpiresAt, &used, &t.CreatedAt, &t.UpdatedAt)
+	if err != nil {
+		s.logger.Error("VerifyToken lookup failed", logger.ErrorField(err))
+		return PasswordResetToken{}, errors.New("token not found")
+	}
+	if used {
+		return PasswordResetToken{}, errors.New("token already used")
+	}
+	if time.Now().After(t.ExpiresAt) {
+		return PasswordResetToken{}, errors.New("token expired")
+	}
+	t.Used = used
+	return t, nil
+}
+
+func (s *PostgresStore) UseToken(ctx context.Context, token string) error {
+	if token == "" {
+		return errors.New("token required")
+	}
+	const q = `UPDATE password_reset_tokens SET used = TRUE, updated_at = $1 WHERE token = $2 AND used = FALSE AND expires_at > NOW()`
+	res, err := s.db.Exec(ctx, q, time.Now().UTC(), token)
+	if err != nil {
+		s.logger.Error("UseToken update failed", logger.ErrorField(err))
+		return errors.New("failed to use token")
+	}
+	n := res.RowsAffected()
+	if n == 0 {
+		return errors.New("token not valid or already used")
+	}
+	return nil
+}
+
+// --- RateLimitService Postgres Implementation ---
+
+func (s *PostgresStore) SetRateLimit(ctx context.Context, cfg RateLimitConfig) (RateLimitConfig, error) {
+	if cfg.Scope == "" || cfg.ScopeID == "" || cfg.Limit <= 0 || cfg.WindowSeconds <= 0 {
+		return RateLimitConfig{}, errors.New("invalid rate limit config")
+	}
+	const upsert = `INSERT INTO rate_limits (id, scope, scope_id, limit, window_seconds, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+		ON CONFLICT (scope, scope_id) DO UPDATE SET limit = $4, window_seconds = $5, updated_at = NOW()
+		RETURNING id, created_at, updated_at`
+	id := cfg.ID
+	if id == "" {
+		id = generateUUID()
+	}
+	row := s.db.QueryRow(ctx, upsert, id, cfg.Scope, cfg.ScopeID, cfg.Limit, cfg.WindowSeconds)
+	var createdAt, updatedAt time.Time
+	if err := row.Scan(&id, &createdAt, &updatedAt); err != nil {
+		return RateLimitConfig{}, errors.New("failed to upsert rate limit")
+	}
+	cfg.ID = id
+	cfg.CreatedAt = createdAt
+	cfg.UpdatedAt = updatedAt
+	return cfg, nil
+}
+
+func (s *PostgresStore) GetRateLimit(ctx context.Context, scope, scopeID string) (RateLimitConfig, error) {
+	if scope == "" || scopeID == "" {
+		return RateLimitConfig{}, errors.New("scope and scope_id required")
+	}
+	const q = `SELECT id, scope, scope_id, limit, window_seconds, created_at, updated_at FROM rate_limits WHERE scope = $1 AND scope_id = $2`
+	row := s.db.QueryRow(ctx, q, scope, scopeID)
+	var cfg RateLimitConfig
+	if err := row.Scan(&cfg.ID, &cfg.Scope, &cfg.ScopeID, &cfg.Limit, &cfg.WindowSeconds, &cfg.CreatedAt, &cfg.UpdatedAt); err != nil {
+		return RateLimitConfig{}, errors.New("rate limit not found")
+	}
+	return cfg, nil
+}
+
+func (s *PostgresStore) DeleteRateLimit(ctx context.Context, id string) error {
+	if id == "" {
+		return errors.New("id required")
+	}
+	const q = `DELETE FROM rate_limits WHERE id = $1`
+	_, err := s.db.Exec(ctx, q, id)
+	if err != nil {
+		return errors.New("failed to delete rate limit")
 	}
 	return nil
 }

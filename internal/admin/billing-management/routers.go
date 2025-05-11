@@ -2,10 +2,19 @@ package billing_management
 
 import (
 	"github.com/gofiber/fiber/v2"
+	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 )
 
+func billingScopeExtractor(c *fiber.Ctx) (string, string) {
+	return "billing", c.Get("X-Billing-ID")
+}
+
 func RegisterAdminBillingRoutes(router fiber.Router, handler *BillingAdminHandler) {
-	billing := router.Group("/billing-management")
+	billing := router.Group(
+		"/billing-management",
+		security_management.OIDCMiddleware(),
+		security_management.NewRateLimitMiddleware(handler.RateLimitService, billingScopeExtractor),
+	)
 
 	billing.Post("/accounts/create", handler.CreateAccount)
 	billing.Put("/accounts/update", handler.UpdateAccount)
@@ -25,8 +34,11 @@ func RegisterAdminBillingRoutes(router fiber.Router, handler *BillingAdminHandle
 	billing.Put("/invoices/update", handler.UpdateInvoice)
 	billing.Get("/invoices/get", handler.GetInvoice)
 	billing.Get("/invoices/list", handler.ListInvoices)
+	billing.Post("/invoices/pdf/download", handler.DownloadInvoicePDF)
 
 	billing.Post("/payments/create", handler.CreatePayment)
+	billing.Post("/payments/refund", handler.RefundPayment)
+	billing.Get("/payments/status", handler.GetPaymentStatus)
 	billing.Put("/payments/update", handler.UpdatePayment)
 	billing.Get("/payments/get", handler.GetPayment)
 	billing.Get("/payments/list", handler.ListPayments)
@@ -35,14 +47,14 @@ func RegisterAdminBillingRoutes(router fiber.Router, handler *BillingAdminHandle
 	billing.Put("/discounts/update", handler.UpdateDiscount)
 	billing.Delete("/discounts/delete", handler.DeleteDiscount)
 	billing.Get("/discounts/get", handler.GetDiscount)
-	billing.Get("/discounts/code/:code", handler.GetDiscountByCode)
+	billing.Get("/discounts/code", handler.GetDiscountByCode)
 	billing.Get("/discounts/list", handler.ListDiscounts)
 
 	billing.Post("/coupons/create", handler.CreateCoupon)
 	billing.Put("/coupons/update", handler.UpdateCoupon)
 	billing.Delete("/coupons/delete", handler.DeleteCoupon)
 	billing.Get("/coupons/get", handler.GetCoupon)
-	billing.Get("/coupons/code/:code", handler.GetCouponByCode)
+	billing.Get("/coupons/code", handler.GetCouponByCode)
 	billing.Get("/coupons/list", handler.ListCoupons)
 
 	billing.Post("/credits/create", handler.CreateCredit)
@@ -94,7 +106,7 @@ func RegisterAdminBillingRoutes(router fiber.Router, handler *BillingAdminHandle
 	billing.Post("/account-action/perform", handler.PerformAccountAction)
 
 	billing.Get("/accounts/invoice-preview", handler.GetInvoicePreview)
-	billing.Post("/coupons/redeem/:code", handler.RedeemCoupon)
+	billing.Post("/coupons/redeem", handler.RedeemCoupon)
 
 	billing.Get("/billing/config/get", handler.GetBillingConfig)
 	billing.Post("/billing/config/set", handler.SetBillingConfig)
@@ -118,4 +130,12 @@ func RegisterAdminBillingRoutes(router fiber.Router, handler *BillingAdminHandle
 	billing.Get("/usage/aggregate/get", handler.AggregateUsageForBillingCycle)
 	billing.Get("/usage/overage/get", handler.CalculateOverageCharges)
 	billing.Post("/invoices/with-fees-tax/create", handler.CreateInvoiceWithFeesAndTax)
+
+	billing.Get("/disputes/list", handler.ListDisputes)
+	billing.Get("/disputes/get", handler.GetDispute)
+	billing.Put("/disputes/status/update", handler.UpdateDisputeStatus)
+	billing.Get("/dispute-evidence/list", handler.ListDisputeEvidence)
+	billing.Get("/dispute-evidence/get", handler.GetDisputeEvidence)
+	billing.Post("/dispute-evidence/upload", handler.UploadDisputeEvidence)
+	billing.Put("/dispute-evidence/status/update", handler.UpdateDisputeEvidenceStatus)
 }

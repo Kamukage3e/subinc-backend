@@ -928,3 +928,230 @@ func (h *SecurityAdminHandler) GetProviderConfig(c *fiber.Ctx) error {
 	}
 	return c.JSON(cfg)
 }
+
+// --- Security Event Webhook Handlers ---
+
+func (h *SecurityAdminHandler) CreateWebhook(c *fiber.Ctx) error {
+	var input SecurityEventWebhook
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.TenantID == "" || input.URL == "" || len(input.EventTypes) == 0 || input.Secret == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing required fields"})
+	}
+	w, err := h.SecurityEventWebhookService.CreateWebhook(c.Context(), input)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.SecurityAuditLogService != nil {
+		_, _ = h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
+			ID:        w.ID,
+			ActorID:   c.Locals("actor_id").(string),
+			Action:    "create_security_webhook",
+			TargetID:  w.ID,
+			Details:   toPrettyJSON(w),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.Status(fiber.StatusCreated).JSON(w)
+}
+
+func (h *SecurityAdminHandler) ListWebhooks(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	}
+	list, err := h.SecurityEventWebhookService.ListWebhooks(c.Context(), tenantID)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(list)
+}
+
+func (h *SecurityAdminHandler) DeleteWebhook(c *fiber.Ctx) error {
+	id := c.Query("id")
+	tenantID := c.Query("tenant_id")
+	if id == "" || tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id and tenant_id required"})
+	}
+	err := h.SecurityEventWebhookService.DeleteWebhook(c.Context(), id, tenantID)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.SecurityAuditLogService != nil {
+		_, _ = h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
+			ID:        id,
+			ActorID:   c.Locals("actor_id").(string),
+			Action:    "delete_security_webhook",
+			TargetID:  id,
+			Details:   toPrettyJSON(map[string]string{"tenant_id": tenantID}),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *SecurityAdminHandler) TriggerWebhook(c *fiber.Ctx) error {
+	id := c.Query("id")
+	tenantID := c.Query("tenant_id")
+	eventType := c.Query("event_type")
+	var payload map[string]interface{}
+	_ = c.BodyParser(&payload)
+	if id == "" || tenantID == "" || eventType == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id, tenant_id, and event_type required"})
+	}
+	err := h.SecurityEventWebhookService.TriggerWebhook(c.Context(), id, tenantID, eventType, payload)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.SecurityAuditLogService != nil {
+		_, _ = h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
+			ID:        id,
+			ActorID:   c.Locals("actor_id").(string),
+			Action:    "trigger_security_webhook",
+			TargetID:  id,
+			Details:   toPrettyJSON(map[string]interface{}{"event_type": eventType, "payload": payload}),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.SendStatus(fiber.StatusOK)
+}
+
+// --- Password Reset/Verification Token Handlers ---
+
+func (h *SecurityAdminHandler) RequestPasswordResetToken(c *fiber.Ctx) error {
+	var input struct {
+		UserID    string        `json:"user_id"`
+		ExpiresIn time.Duration `json:"expires_in"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.UserID == "" || input.ExpiresIn <= 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id and expires_in required"})
+	}
+	token, err := h.PasswordResetTokenService.CreateToken(c.Context(), input.UserID, input.ExpiresIn)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.SecurityAuditLogService != nil {
+		_, _ = h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
+			ID:        token.ID,
+			ActorID:   c.Locals("actor_id").(string),
+			Action:    "request_password_reset_token",
+			TargetID:  token.UserID,
+			Details:   toPrettyJSON(token),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.Status(fiber.StatusCreated).JSON(token)
+}
+
+func (h *SecurityAdminHandler) VerifyPasswordResetToken(c *fiber.Ctx) error {
+	var input struct {
+		Token string `json:"token"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.Token == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "token required"})
+	}
+	token, err := h.PasswordResetTokenService.VerifyToken(c.Context(), input.Token)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(token)
+}
+
+func (h *SecurityAdminHandler) UsePasswordResetToken(c *fiber.Ctx) error {
+	var input struct {
+		Token   string `json:"token"`
+		UserID  string `json:"user_id"`
+		NewPass string `json:"new_password"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.Token == "" || input.UserID == "" || input.NewPass == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "token, user_id, and new_password required"})
+	}
+	if err := h.PasswordResetTokenService.UseToken(c.Context(), input.Token); err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if err := h.PasswordService.ResetUserPassword(c.Context(), input.UserID, input.NewPass); err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.SecurityAuditLogService != nil {
+		_, _ = h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
+			ID:        input.Token,
+			ActorID:   c.Locals("actor_id").(string),
+			Action:    "use_password_reset_token",
+			TargetID:  input.UserID,
+			Details:   toPrettyJSON(map[string]string{"token": input.Token, "user_id": input.UserID}),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// --- Rate Limit Config Handlers ---
+
+func (h *SecurityAdminHandler) SetRateLimit(c *fiber.Ctx) error {
+	var input RateLimitConfig
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	cfg, err := h.RateLimitService.SetRateLimit(c.Context(), input)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.SecurityAuditLogService != nil {
+		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
+			ID:        cfg.ID,
+			ActorID:   getActorID(c),
+			Action:    "set_rate_limit",
+			TargetID:  cfg.ScopeID,
+			Details:   marshalAuditDetails(cfg),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.Status(fiber.StatusOK).JSON(cfg)
+}
+
+func (h *SecurityAdminHandler) GetRateLimit(c *fiber.Ctx) error {
+	scope := c.Query("scope")
+	scopeID := c.Query("scope_id")
+	if scope == "" || scopeID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "scope and scope_id required"})
+	}
+	cfg, err := h.RateLimitService.GetRateLimit(c.Context(), scope, scopeID)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.SecurityAuditLogService != nil {
+		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
+			ID:        cfg.ID,
+			ActorID:   getActorID(c),
+			Action:    "get_rate_limit",
+			TargetID:  cfg.ScopeID,
+			Details:   marshalAuditDetails(cfg),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.Status(fiber.StatusOK).JSON(cfg)
+}
+
+func (h *SecurityAdminHandler) DeleteRateLimit(c *fiber.Ctx) error {
+	var input struct {
+		ID string `json:"id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.ID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+	if err := h.RateLimitService.DeleteRateLimit(c.Context(), input.ID); err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.SecurityAuditLogService != nil {
+		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
+			ID:        input.ID,
+			ActorID:   getActorID(c),
+			Action:    "delete_rate_limit",
+			TargetID:  input.ID,
+			Details:   marshalAuditDetails(input),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}

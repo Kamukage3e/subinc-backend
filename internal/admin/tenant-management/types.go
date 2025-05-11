@@ -10,6 +10,17 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
+// TenantStatus defines valid lifecycle states for a tenant
+// Valid: pending, active, suspended, deleted
+type TenantStatus string
+
+const (
+	TenantStatusPending   TenantStatus = "pending"
+	TenantStatusActive    TenantStatus = "active"
+	TenantStatusSuspended TenantStatus = "suspended"
+	TenantStatusDeleted   TenantStatus = "deleted"
+)
+
 // Tenant represents a SaaS tenant/org
 // All fields are required for production
 // Settings is a JSON blob for org settings/policies
@@ -17,11 +28,12 @@ import (
 // ID is UUID
 // Name is unique per tenant
 type Tenant struct {
-	ID        string    `json:"id" db:"id"`
-	Name      string    `json:"name" db:"name"`
-	Settings  string    `json:"settings" db:"settings"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+	ID        string       `json:"id" db:"id"`
+	Name      string       `json:"name" db:"name"`
+	Status    TenantStatus `json:"status" db:"status"`
+	Settings  string       `json:"settings" db:"settings"`
+	CreatedAt time.Time    `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at" db:"updated_at"`
 }
 
 // TenantSettings is a map for settings JSON
@@ -49,6 +61,8 @@ type TenantAdminHandler struct {
 	RBACService rbac_management.RBACService // optional, may be nil
 	// UserHandler is optional and only required if tenant management needs to delegate to user management.
 	UserHandler *user_management.UserHandler // optional
+	// RateLimitService is optional for deployments that require rate limiting.
+	RateLimitService security_management.RateLimitService // optional
 }
 
 type TenantSettingsStore struct {

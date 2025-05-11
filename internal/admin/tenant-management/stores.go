@@ -208,3 +208,35 @@ func (s *TenantStore) SearchTenants(ctx context.Context, filter TenantFilter) ([
 	}
 	return tenants, total, nil
 }
+
+// --- TenantLifecycleService Postgres Implementation ---
+
+func (s *TenantStore) SetTenantStatus(ctx context.Context, tenantID string, status TenantStatus) error {
+	if tenantID == "" {
+		return errors.New("tenant_id required")
+	}
+	if status != TenantStatusPending && status != TenantStatusActive && status != TenantStatusSuspended && status != TenantStatusDeleted {
+		return errors.New("invalid status")
+	}
+	const q = `UPDATE tenants SET status = $1, updated_at = NOW() WHERE id = $2`
+	_, err := s.DB.Exec(ctx, q, status, tenantID)
+	if err != nil {
+		s.log.Error("failed to update tenant status", logger.ErrorField(err), logger.String("tenant_id", tenantID), logger.String("status", string(status)))
+		return errors.New("failed to update tenant status")
+	}
+	return nil
+}
+
+func (s *TenantStore) GetTenantStatus(ctx context.Context, tenantID string) (TenantStatus, error) {
+	if tenantID == "" {
+		return "", errors.New("tenant_id required")
+	}
+	const q = `SELECT status FROM tenants WHERE id = $1`
+	var status TenantStatus
+	err := s.DB.QueryRow(ctx, q, tenantID).Scan(&status)
+	if err != nil {
+		s.log.Error("failed to get tenant status", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return "", errors.New("failed to get tenant status")
+	}
+	return status, nil
+}

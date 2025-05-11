@@ -55,8 +55,9 @@ type OrganizationHandler struct {
 	OrganizationService OrganizationService
 	OrgSettingsService  OrgSettingsService
 	OrgAuditLogger      OrgAuditLogger
-	UserService         user_management.UserService       // optional, may be nil
-	RBACService         rbac_management.RBACService       // optional, may be nil
-	ProjectService      project_management.ProjectService // optional, may be nil
+	UserService         user_management.UserService          // optional, may be nil
+	RBACService         rbac_management.RBACService          // optional, may be nil
+	RateLimitService    security_management.RateLimitService // for distributed rate limiting
+	ProjectService      project_management.ProjectService    // optional, may be nil
 	Store               *PostgresStore
 }

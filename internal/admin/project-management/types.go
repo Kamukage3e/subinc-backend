@@ -13,9 +13,10 @@ type ProjectHandler struct {
 	ProjectService         ProjectService
 	ProjectSettingsService ProjectSettingsService
 	ProjectAuditLogService ProjectAuditLogService
-	SecurityAuditLogger    security_management.AuditLogger // optional, may be nil
-	RBACService            rbac_management.RBACService     // optional, may be nil
-	UserService            user_management.UserService     // optional, may be nil
+	SecurityAuditLogger    security_management.AuditLogger      // optional, may be nil
+	RBACService            rbac_management.RBACService          // optional, may be nil
+	RateLimitService       security_management.RateLimitService // for distributed rate limiting
+	UserService            user_management.UserService          // optional, may be nil
 	Store                  *PostgresStore
 }
 

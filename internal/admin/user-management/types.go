@@ -4,6 +4,7 @@ import (
 	"time"
 
 	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
+	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 )
 
 type User struct {
@@ -101,6 +102,7 @@ type ProjectInvite struct {
 }
 
 type UserHandler struct {
-	Store       *PostgresStore
-	RBACService rbac_management.RBACService // optional, may be nil
+	Store            *PostgresStore
+	RBACService      rbac_management.RBACService          // optional, may be nil
+	RateLimitService security_management.RateLimitService // for distributed rate limiting
 }

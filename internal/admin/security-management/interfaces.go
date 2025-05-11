@@ -1,6 +1,9 @@
 package security_management
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type SecurityEventService interface {
 	ListUserSecurityEvents(ctx context.Context, userID string) ([]SecurityEvent, error)
@@ -70,4 +73,26 @@ type NotificationService interface {
 type SecurityModuleConfigService interface {
 	GetSecurityModuleConfig(ctx context.Context, tenantID string) (SecurityModuleConfig, error)
 	SetSecurityModuleConfig(ctx context.Context, tenantID string, enabled bool) error
+}
+
+// SecurityEventWebhookService handles CRUD and delivery for security event webhooks
+// All methods must be robust, multi-tenant, and audit-logged
+// Trigger is for manual/test delivery
+type SecurityEventWebhookService interface {
+	CreateWebhook(ctx context.Context, webhook SecurityEventWebhook) (SecurityEventWebhook, error)
+	ListWebhooks(ctx context.Context, tenantID string) ([]SecurityEventWebhook, error)
+	DeleteWebhook(ctx context.Context, id, tenantID string) error
+	TriggerWebhook(ctx context.Context, id, tenantID, eventType string, payload interface{}) error
+}
+
+type PasswordResetTokenService interface {
+	CreateToken(ctx context.Context, userID string, expiresIn time.Duration) (PasswordResetToken, error)
+	VerifyToken(ctx context.Context, token string) (PasswordResetToken, error)
+	UseToken(ctx context.Context, token string) error
+}
+
+type RateLimitService interface {
+	SetRateLimit(ctx context.Context, cfg RateLimitConfig) (RateLimitConfig, error)
+	GetRateLimit(ctx context.Context, scope, scopeID string) (RateLimitConfig, error)
+	DeleteRateLimit(ctx context.Context, id string) error
 }

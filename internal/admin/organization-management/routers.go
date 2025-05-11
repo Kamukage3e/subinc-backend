@@ -2,10 +2,19 @@ package organization_management
 
 import (
 	"github.com/gofiber/fiber/v2"
+	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 )
 
+func orgScopeExtractor(c *fiber.Ctx) (string, string) {
+	return "org", c.Get("X-Org-ID")
+}
+
 func RegisterAdminOrganizationRoutes(router fiber.Router, handler *OrganizationHandler) {
-	org := router.Group("/organization-management")
+	org := router.Group(
+		"/organization-management",
+		security_management.OIDCMiddleware(),
+		security_management.NewRateLimitMiddleware(handler.RateLimitService, orgScopeExtractor),
+	)
 
 	org.Post("/organizations/create", handler.CreateOrganization)
 	org.Put("/organizations/update", handler.UpdateOrganization)

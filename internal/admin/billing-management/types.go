@@ -6,6 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
+	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -30,8 +31,11 @@ type BillingAdminHandler struct {
 	WebhookSubscriptionService WebhookSubscriptionService
 	TaxInfoService             TaxInfoService
 	Store                      *PostgresStore
-	AuditLogger                BillingAuditLogger          // use interface for audit logging
-	RBACService                rbac_management.RBACService // optional, may be nil
+	AuditLogger                BillingAuditLogger                   // use interface for audit logging
+	RBACService                rbac_management.RBACService          // optional, may be nil
+	RateLimitService           security_management.RateLimitService // for distributed rate limiting
+	DisputeService             DisputeServiceInterface
+	DisputeEvidenceService     DisputeEvidenceServiceInterface
 }
 
 // Account represents a billing account
