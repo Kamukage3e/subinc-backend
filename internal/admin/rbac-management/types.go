@@ -80,24 +80,33 @@ type ListAuditLogRequest struct {
 // Role defines a named set of permissions for a tenant or system
 // ID is UUID, TenantID is required for tenant roles, Name is unique per tenant
 // System roles have TenantID = ""
+// Supports soft delete via DeletedAt
 type Role struct {
-	ID        string    `json:"id"`
-	TenantID  string    `json:"tenant_id"`
-	Name      string    `json:"name"`
-	Desc      string    `json:"desc"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        string     `json:"id"`
+	TenantID  string     `json:"tenant_id"`
+	Name      string     `json:"name"`
+	Desc      string     `json:"desc"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 }
 
 // Permission defines an action on a resource (API, object, etc.)
+// Supports hierarchical resources, wildcards, and regex patterns for resource matching
+// - ParentResourceID: for resource hierarchy
+// - ResourcePattern: for wildcard/regex resource matching
+// If ResourcePattern is set, Resource is ignored for matching
+// Example: ResourcePattern = "project:123:doc:*" or "^project:[0-9]+:doc:.*$"
 type Permission struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Resource  string    `json:"resource"`
-	Action    string    `json:"action"`
-	Desc      string    `json:"desc"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	Resource         string    `json:"resource"`
+	Action           string    `json:"action"`
+	Desc             string    `json:"desc"`
+	ParentResourceID string    `json:"parent_resource_id,omitempty"`
+	ResourcePattern  string    `json:"resource_pattern,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // RoleBinding binds a role to a user or service account in a tenant
@@ -146,13 +155,15 @@ type Resource struct {
 }
 
 // Policy defines a set of rules for access control
+// Supports soft delete via DeletedAt
 type Policy struct {
-	ID         string    `json:"id"`
-	TenantID   string    `json:"tenant_id"`
-	Name       string    `json:"name"`
-	Statements []string  `json:"statements"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID         string     `json:"id"`
+	TenantID   string     `json:"tenant_id"`
+	Name       string     `json:"name"`
+	Statements []string   `json:"statements"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	DeletedAt  *time.Time `json:"deleted_at,omitempty"`
 }
 
 // AuditLog for RBAC actions
@@ -241,3 +252,13 @@ type DelegatedRole struct {
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`
 }
+
+type PermissionTemplate struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Permissions []string  `json:"permissions"` // permission IDs
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+var permissionTemplates = make(map[string]PermissionTemplate) // in-memory for now

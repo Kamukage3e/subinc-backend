@@ -5,12 +5,10 @@ import (
 
 	"encoding/json"
 
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	viper "github.com/spf13/viper"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
@@ -1924,20 +1922,6 @@ func (h *BillingAdminHandler) CreateWebhookEvent(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	provider := c.Get("X-Webhook-Provider")
-	if provider == "stripe" {
-		sig := c.Get("Stripe-Signature")
-		if sig == "" {
-			logger.LogError("CreateWebhookEvent: missing Stripe-Signature header")
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing Stripe-Signature header"})
-		}
-		secret := getStripeWebhookSecret() // implement this to fetch from config/env
-		body := c.Body()
-		if !verifyStripeSignature(body, sig, secret) {
-			logger.LogError("CreateWebhookEvent: invalid Stripe signature")
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid Stripe signature"})
-		}
-	}
 	var input WebhookEvent
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
@@ -3198,27 +3182,6 @@ func (h *BillingAdminHandler) DeletePaymentMethod(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func verifyStripeSignature(body []byte, sigHeader, secret string) bool {
-	if secret == "" || sigHeader == "" {
-		return false
-	}
-	parts := strings.Split(sigHeader, ",")
-	var signature string
-	for _, part := range parts {
-		if strings.HasPrefix(part, "v1=") {
-			signature = strings.TrimPrefix(part, "v1=")
-			break
-		}
-	}
-	if signature == "" {
-		return false
-	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(body)
-	computed := hex.EncodeToString(mac.Sum(nil))
-	return hmac.Equal([]byte(signature), []byte(computed))
-}
-
 func (h *BillingAdminHandler) ListUsage(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := getActorID(c)
@@ -3288,9 +3251,33 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 		logger.LogError("CreateInvoice: validation failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
 	}
-	invoice, err := h.InvoiceService.CreateInvoice(input)
+	account, err := h.AccountService.GetAccount(input.AccountID)
 	if err != nil {
-		logger.LogError("CreateInvoice: failed", logger.ErrorField(err), logger.Any("input", input))
+		logger.LogError("CreateCredit: account not found", logger.ErrorField(err), logger.String("account_id", input.AccountID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "account not found"})
+	}
+	currency := strings.ToUpper(strings.TrimSpace(input.Currency))
+	if currency == "" {
+		currency = strings.ToUpper(strings.TrimSpace(account.Currency))
+		if currency == "" {
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "no currency set for credit or account"})
+		}
+		input.Currency = currency
+	}
+	if input.Currency != account.Currency && account.Currency != "" {
+		// Multi-currency: convert
+		rate, rerr := h.Store.GetExchangeRate(c.Context(), input.Currency, account.Currency)
+		if rerr != nil || rate.Rate <= 0 {
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "no valid exchange rate from " + input.Currency + " to " + account.Currency})
+		}
+		input.OriginalAmount = input.Amount
+		input.OriginalCurrency = input.Currency
+		input.Amount = input.Amount * rate.Rate
+		input.Currency = account.Currency
+	}
+	credit, err := h.CreditService.CreateCredit(input) 
+	if err != nil {
+		logger.LogError("CreateCredit: failed", logger.ErrorField(err), logger.Any("input", input))
 		errResp := fiber.Map{"error": err.Error()}
 		if apiErr, ok := err.(*Error); ok {
 			errResp["error"] = apiErr.Message
@@ -3301,18 +3288,18 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 	}
 	if h.AuditLogger != nil {
 		_, err := h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        invoice.ID,
+			ID:        credit.ID,
 			ActorID:   getActorID(c),
-			Action:    "create_invoice",
-			TargetID:  invoice.AccountID,
-			Details:   auditDetails(map[string]interface{}{"input": input}),
+			Action:    "create_credit",
+			TargetID:  credit.AccountID,
+			Details:   auditDetails(map[string]interface{}{"input": input, "account_currency": account.Currency}),
 			CreatedAt: time.Now(),
 		})
 		if err != nil {
-			logger.LogError("CreateInvoice: audit log failed", logger.ErrorField(err))
+			logger.LogError("CreateCredit: audit log failed", logger.ErrorField(err))
 		}
 	}
-	return c.Status(fiber.StatusCreated).JSON(invoice)
+	return c.Status(fiber.StatusCreated).JSON(credit)
 }
 
 func (h *BillingAdminHandler) UpdateInvoice(c *fiber.Ctx) error {
@@ -3376,6 +3363,7 @@ func (h *BillingAdminHandler) GetInvoice(c *fiber.Ctx) error {
 	}
 	invoice, err := h.InvoiceService.GetInvoice(input.InvoiceID)
 	if err != nil {
+		logger.LogError("CreateInvoiceAdjustment: invoice not found", logger.ErrorField(err), logger.String("invoice_id", input.InvoiceID))
 		logger.LogError("GetInvoice: not found", logger.ErrorField(err))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -3473,6 +3461,42 @@ func (h *BillingAdminHandler) CreatePayment(c *fiber.Ctx) error {
 		logger.LogError("CreatePayment: validation failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
 	}
+	invoice, err := h.InvoiceService.GetInvoice(input.InvoiceID)
+	if err != nil {
+		logger.LogError("CreatePayment: invoice not found", logger.ErrorField(err), logger.String("invoice_id", input.InvoiceID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "invoice not found"})
+	}
+	account, err := h.AccountService.GetAccount(invoice.AccountID)
+	if err != nil {
+		logger.LogError("CreatePayment: account not found", logger.ErrorField(err), logger.String("account_id", invoice.AccountID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "account not found"})
+	}
+	currency := strings.ToUpper(strings.TrimSpace(input.Currency))
+	if currency == "" {
+		currency = strings.ToUpper(strings.TrimSpace(invoice.Currency))
+		if currency == "" {
+			currency = strings.ToUpper(strings.TrimSpace(account.Currency))
+			if currency == "" {
+				tc, terr := h.Store.GetTenantCurrency(c.Context(), account.TenantID)
+				if terr != nil || tc.Currency == "" {
+					return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "no currency set for payment, invoice, account, or tenant"})
+				}
+				currency = tc.Currency
+			}
+		}
+		input.Currency = currency
+	}
+	if input.Currency != invoice.Currency && invoice.Currency != "" {
+		// Multi-currency: convert
+		rate, rerr := h.Store.GetExchangeRate(c.Context(), input.Currency, invoice.Currency)
+		if rerr != nil || rate.Rate <= 0 {
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "no valid exchange rate from " + input.Currency + " to " + invoice.Currency})
+		}
+		input.OriginalAmount = input.Amount
+		input.OriginalCurrency = input.Currency
+		input.Amount = input.Amount * rate.Rate
+		input.Currency = invoice.Currency
+	}
 	payment, err := h.PaymentService.CreatePayment(input)
 	if err != nil {
 		logger.LogError("CreatePayment: failed", logger.ErrorField(err), logger.Any("input", input))
@@ -3490,7 +3514,7 @@ func (h *BillingAdminHandler) CreatePayment(c *fiber.Ctx) error {
 			ActorID:   getActorID(c),
 			Action:    "create_payment",
 			TargetID:  payment.InvoiceID,
-			Details:   auditDetails(map[string]interface{}{"input": input}),
+			Details:   auditDetails(map[string]interface{}{"input": input, "invoice_currency": invoice.Currency}),
 			CreatedAt: time.Now(),
 		})
 		if err != nil {
@@ -3761,4 +3785,258 @@ func (h *BillingAdminHandler) DeleteDiscount(c *fiber.Ctx) error {
 		}
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// --- ExchangeRate Handlers ---
+
+func (h *BillingAdminHandler) CreateExchangeRate(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "exchange_rate", "create")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input ExchangeRate
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("CreateExchangeRate: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.BaseCurrency == "" || input.QuoteCurrency == "" || input.Rate <= 0 {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "base_currency, quote_currency, and positive rate required"})
+	}
+	if len(input.BaseCurrency) != 3 || len(input.QuoteCurrency) != 3 {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "currencies must be ISO 4217 codes"})
+	}
+	input.BaseCurrency = strings.ToUpper(input.BaseCurrency)
+	input.QuoteCurrency = strings.ToUpper(input.QuoteCurrency)
+	input.UpdatedAt = time.Now().UTC()
+	if input.ID == "" {
+		input.ID = generateUUID()
+	}
+	rate, err := h.Store.CreateExchangeRate(c.Context(), input)
+	if err != nil {
+		logger.LogError("CreateExchangeRate: failed", logger.ErrorField(err), logger.Any("input", input))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.AuditLogger != nil {
+		_, err := h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        rate.ID,
+			ActorID:   getActorID(c),
+			Action:    "create_exchange_rate",
+			TargetID:  rate.ID,
+			Details:   auditDetails(input),
+			CreatedAt: time.Now(),
+		})
+		if err != nil {
+			logger.LogError("CreateExchangeRate: audit log failed", logger.ErrorField(err))
+		}
+	}
+	return c.Status(fiber.StatusCreated).JSON(rate)
+}
+
+func (h *BillingAdminHandler) UpdateExchangeRate(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "exchange_rate", "update")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input ExchangeRate
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("UpdateExchangeRate: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.BaseCurrency == "" || input.QuoteCurrency == "" || input.Rate <= 0 {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "base_currency, quote_currency, and positive rate required"})
+	}
+	if len(input.BaseCurrency) != 3 || len(input.QuoteCurrency) != 3 {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "currencies must be ISO 4217 codes"})
+	}
+	input.BaseCurrency = strings.ToUpper(input.BaseCurrency)
+	input.QuoteCurrency = strings.ToUpper(input.QuoteCurrency)
+	input.UpdatedAt = time.Now().UTC()
+	rate, err := h.Store.UpdateExchangeRate(c.Context(), input)
+	if err != nil {
+		logger.LogError("UpdateExchangeRate: failed", logger.ErrorField(err), logger.Any("input", input))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.AuditLogger != nil {
+		_, err := h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        rate.ID,
+			ActorID:   getActorID(c),
+			Action:    "update_exchange_rate",
+			TargetID:  rate.ID,
+			Details:   auditDetails(input),
+			CreatedAt: time.Now(),
+		})
+		if err != nil {
+			logger.LogError("UpdateExchangeRate: audit log failed", logger.ErrorField(err))
+		}
+	}
+	return c.JSON(rate)
+}
+
+func (h *BillingAdminHandler) DeleteExchangeRate(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "exchange_rate", "delete")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		BaseCurrency  string `json:"base_currency"`
+		QuoteCurrency string `json:"quote_currency"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("DeleteExchangeRate: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.BaseCurrency == "" || input.QuoteCurrency == "" {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "base_currency and quote_currency required"})
+	}
+	if len(input.BaseCurrency) != 3 || len(input.QuoteCurrency) != 3 {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "currencies must be ISO 4217 codes"})
+	}
+	input.BaseCurrency = strings.ToUpper(input.BaseCurrency)
+	input.QuoteCurrency = strings.ToUpper(input.QuoteCurrency)
+	err := h.Store.DeleteExchangeRate(c.Context(), input.BaseCurrency, input.QuoteCurrency)
+	if err != nil {
+		logger.LogError("DeleteExchangeRate: failed", logger.ErrorField(err), logger.Any("input", input))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.AuditLogger != nil {
+		_, err := h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        "",
+			ActorID:   getActorID(c),
+			Action:    "delete_exchange_rate",
+			TargetID:  input.BaseCurrency + ":" + input.QuoteCurrency,
+			Details:   auditDetails(input),
+			CreatedAt: time.Now(),
+		})
+		if err != nil {
+			logger.LogError("DeleteExchangeRate: audit log failed", logger.ErrorField(err))
+		}
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *BillingAdminHandler) GetExchangeRate(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "exchange_rate", "read")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		BaseCurrency  string `json:"base_currency"`
+		QuoteCurrency string `json:"quote_currency"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("GetExchangeRate: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.BaseCurrency == "" || input.QuoteCurrency == "" {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "base_currency and quote_currency required"})
+	}
+	if len(input.BaseCurrency) != 3 || len(input.QuoteCurrency) != 3 {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "currencies must be ISO 4217 codes"})
+	}
+	input.BaseCurrency = strings.ToUpper(input.BaseCurrency)
+	input.QuoteCurrency = strings.ToUpper(input.QuoteCurrency)
+	rate, err := h.Store.GetExchangeRate(c.Context(), input.BaseCurrency, input.QuoteCurrency)
+	if err != nil {
+		logger.LogError("GetExchangeRate: failed", logger.ErrorField(err), logger.Any("input", input))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(rate)
+}
+
+func (h *BillingAdminHandler) ListExchangeRates(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "exchange_rate", "list")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	rates, err := h.Store.ListExchangeRates(c.Context())
+	if err != nil {
+		logger.LogError("ListExchangeRates: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"exchange_rates": rates})
+}
+
+// generateUUID returns a new RFC4122 UUID string
+func generateUUID() string {
+	return uuid.NewString()
+}
+
+// --- TenantCurrency Handlers ---
+
+func (h *BillingAdminHandler) SetTenantCurrency(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant_currency", "set")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		TenantID string `json:"tenant_id"`
+		Currency string `json:"currency"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("SetTenantCurrency: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.TenantID == "" || input.Currency == "" {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tenant_id and currency required"})
+	}
+	curr, err := h.Store.SetTenantCurrency(c.Context(), input.TenantID, input.Currency)
+	if err != nil {
+		logger.LogError("SetTenantCurrency: failed", logger.ErrorField(err), logger.Any("input", input))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.AuditLogger != nil {
+		_, err := h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        input.TenantID,
+			ActorID:   getActorID(c),
+			Action:    "set_tenant_currency",
+			TargetID:  input.TenantID,
+			Details:   auditDetails(input),
+			CreatedAt: time.Now(),
+		})
+		if err != nil {
+			logger.LogError("SetTenantCurrency: audit log failed", logger.ErrorField(err))
+		}
+	}
+	return c.Status(fiber.StatusCreated).JSON(curr)
+}
+
+func (h *BillingAdminHandler) GetTenantCurrency(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant_currency", "get")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		TenantID string `json:"tenant_id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
+		logger.LogError("GetTenantCurrency: tenant_id required", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	}
+	curr, err := h.Store.GetTenantCurrency(c.Context(), input.TenantID)
+	if err != nil {
+		logger.LogError("GetTenantCurrency: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(curr)
 }

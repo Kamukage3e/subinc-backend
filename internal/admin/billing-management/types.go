@@ -39,12 +39,14 @@ type BillingAdminHandler struct {
 // TenantID is the owning tenant
 // Email is the account email
 // Status is active, suspended, or closed
+// Currency is the ISO 4217 code for the currency
 // CreatedAt, UpdatedAt are RFC3339 timestamps
 type Account struct {
 	ID        string    `json:"id"`
 	TenantID  string    `json:"tenant_id"`
 	Email     string    `json:"email"`
 	Status    string    `json:"status"`
+	Currency  string    `json:"currency"` // ISO 4217, e.g. USD
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -67,6 +69,7 @@ type Plan struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Price       float64   `json:"price"`
+	Currency    string    `json:"currency"` // ISO 4217, e.g. USD
 	Active      bool      `json:"active"`
 	Pricing     string    `json:"pricing"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -106,16 +109,19 @@ func (u *Usage) Validate() *Error {
 }
 
 type Invoice struct {
-	ID        string    `json:"id"`
-	AccountID string    `json:"account_id"`
-	Amount    float64   `json:"amount"`
-	Status    string    `json:"status"`
-	DueDate   time.Time `json:"due_date"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	TaxAmount float64   `json:"tax_amount"`
-	TaxRate   float64   `json:"tax_rate"`
-	Fees      string    `json:"fees"`
+	ID               string    `json:"id"`
+	AccountID        string    `json:"account_id"`
+	Amount           float64   `json:"amount"`
+	Currency         string    `json:"currency"` // ISO 4217, e.g. USD
+	OriginalAmount   float64   `json:"original_amount,omitempty"`
+	OriginalCurrency string    `json:"original_currency,omitempty"`
+	Status           string    `json:"status"`
+	DueDate          time.Time `json:"due_date"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	TaxAmount        float64   `json:"tax_amount"`
+	TaxRate          float64   `json:"tax_rate"`
+	Fees             string    `json:"fees"`
 }
 
 func (i *Invoice) Validate() *Error {
@@ -137,15 +143,18 @@ func (i *Invoice) Validate() *Error {
 // Method: card, bank, etc.
 // Metadata: JSON-encoded for extensibility
 type Payment struct {
-	ID        string    `json:"id"`
-	InvoiceID string    `json:"invoice_id"`
-	Amount    float64   `json:"amount"`
-	Status    string    `json:"status"`
-	Method    string    `json:"method"`
-	Last4     string    `json:"last4"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Metadata  string    `json:"metadata"`
+	ID               string    `json:"id"`
+	InvoiceID        string    `json:"invoice_id"`
+	Amount           float64   `json:"amount"`
+	Currency         string    `json:"currency"` // ISO 4217, e.g. USD
+	OriginalAmount   float64   `json:"original_amount,omitempty"`
+	OriginalCurrency string    `json:"original_currency,omitempty"`
+	Status           string    `json:"status"`
+	Method           string    `json:"method"`
+	Last4            string    `json:"last4"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	Metadata         string    `json:"metadata"`
 }
 
 func (p *Payment) Validate() *Error {
@@ -173,16 +182,18 @@ func (p *Payment) Validate() *Error {
 // Status: active, consumed, expired
 // Metadata: JSON-encoded for extensibility
 type Credit struct {
-	ID        string    `json:"id"`
-	AccountID string    `json:"account_id"`
-	InvoiceID string    `json:"invoice_id,omitempty"`
-	Amount    float64   `json:"amount"`
-	Currency  string    `json:"currency"`
-	Type      string    `json:"type"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Metadata  string    `json:"metadata"`
+	ID               string    `json:"id"`
+	AccountID        string    `json:"account_id"`
+	InvoiceID        string    `json:"invoice_id,omitempty"`
+	Amount           float64   `json:"amount"`
+	Currency         string    `json:"currency"`
+	OriginalAmount   float64   `json:"original_amount,omitempty"`
+	OriginalCurrency string    `json:"original_currency,omitempty"`
+	Type             string    `json:"type"`
+	Status           string    `json:"status"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	Metadata         string    `json:"metadata"`
 }
 
 func (c *Credit) Validate() *Error {
@@ -209,16 +220,18 @@ func (c *Credit) Validate() *Error {
 // Status: pending, processed, failed, reversed
 // Metadata: JSON-encoded for extensibility
 type Refund struct {
-	ID        string    `json:"id"`
-	PaymentID string    `json:"payment_id"`
-	InvoiceID string    `json:"invoice_id,omitempty"`
-	Amount    float64   `json:"amount"`
-	Currency  string    `json:"currency"`
-	Status    string    `json:"status"`
-	Reason    string    `json:"reason"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Metadata  string    `json:"metadata"`
+	ID               string    `json:"id"`
+	PaymentID        string    `json:"payment_id"`
+	InvoiceID        string    `json:"invoice_id,omitempty"`
+	Amount           float64   `json:"amount"`
+	Currency         string    `json:"currency"`
+	OriginalAmount   float64   `json:"original_amount,omitempty"`
+	OriginalCurrency string    `json:"original_currency,omitempty"`
+	Reason           string    `json:"reason"`
+	Status           string    `json:"status"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	Metadata         string    `json:"metadata"`
 }
 
 func (r *Refund) Validate() *Error {
@@ -374,15 +387,17 @@ func (w *WebhookEvent) Validate() *Error {
 // Type: discount, credit, manual
 // Metadata: JSON-encoded for extensibility
 type InvoiceAdjustment struct {
-	ID        string    `json:"id"`
-	InvoiceID string    `json:"invoice_id"`
-	Type      string    `json:"type"`
-	Amount    float64   `json:"amount"`
-	Currency  string    `json:"currency"`
-	Reason    string    `json:"reason"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Metadata  string    `json:"metadata"`
+	ID               string    `json:"id"`
+	InvoiceID        string    `json:"invoice_id"`
+	Type             string    `json:"type"`
+	Amount           float64   `json:"amount"`
+	Currency         string    `json:"currency"`
+	OriginalAmount   float64   `json:"original_amount,omitempty"`
+	OriginalCurrency string    `json:"original_currency,omitempty"`
+	Reason           string    `json:"reason"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	Metadata         string    `json:"metadata"`
 }
 
 func (a *InvoiceAdjustment) Validate() *Error {
@@ -465,6 +480,7 @@ type Subscription struct {
 	AccountID          string     `json:"account_id"`
 	PlanID             string     `json:"plan_id"`
 	Status             string     `json:"status"`
+	Currency           string     `json:"currency"` // ISO 4217, e.g. USD
 	TrialStart         *time.Time `json:"trial_start,omitempty"`
 	TrialEnd           *time.Time `json:"trial_end,omitempty"`
 	CurrentPeriodStart time.Time  `json:"current_period_start"`
@@ -596,7 +612,31 @@ type TaxInfo struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// ExchangeRate represents a currency conversion rate (e.g. USD->EUR)
+// Used for multi-currency invoice/payment conversion
+// Source: e.g. ECB, fixer.io, manual
+// UpdatedAt: last update time
+// ID: UUID
+// BaseCurrency/QuoteCurrency: ISO 4217 codes
+// Rate: float64 (1 base = rate quote)
+type ExchangeRate struct {
+	ID            string    `json:"id"`
+	BaseCurrency  string    `json:"base_currency"`  // e.g. USD
+	QuoteCurrency string    `json:"quote_currency"` // e.g. EUR
+	Rate          float64   `json:"rate"`
+	Source        string    `json:"source"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
 type PostgresStore struct {
 	db     *pgxpool.Pool
 	logger *logger.Logger
+}
+
+// TenantCurrency represents the default billing currency for a tenant.
+// Used for multi-currency support and invoice/account defaults.
+type TenantCurrency struct {
+	TenantID  string    `json:"tenant_id"`
+	Currency  string    `json:"currency"` // ISO 4217, e.g. USD
+	UpdatedAt time.Time `json:"updated_at"`
 }

@@ -148,5 +148,10 @@ type TaxInfoService interface {
 	GetTaxInfo(ctx context.Context, tenantID string) (TaxInfo, error)
 }
 
+type TenantCurrencyService interface {
+	SetTenantCurrency(ctx context.Context, tenantID, currency string) (TenantCurrency, error)
+	GetTenantCurrency(ctx context.Context, tenantID string) (TenantCurrency, error)
+}
+
 // All audit logging must use AuditLogger for decoupling and optionality.
 type BillingAuditLogger = security_management.AuditLogger

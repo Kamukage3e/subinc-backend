@@ -11,6 +11,7 @@ import (
 
 	"encoding/json"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
@@ -35,11 +36,12 @@ func (s *PostgresStore) CreateRole(ctx context.Context, role Role) (Role, error)
 		s.logger.Error("CreateRole failed", logger.ErrorField(err), logger.Any("role", role))
 		return Role{}, err
 	}
-
+	s.logRBACChange(ctx, out.TenantID, "", "create", "role", out.ID, nil, out)
 	return out, nil
 }
 
 func (s *PostgresStore) UpdateRole(ctx context.Context, role Role) (Role, error) {
+	before, _ := s.GetRole(ctx, role.ID, role.TenantID)
 	const q = `UPDATE roles SET name = $2, desc = $3, updated_at = $4 WHERE id = $1 AND tenant_id = $5 RETURNING id, tenant_id, name, desc, created_at, updated_at`
 	row := s.db.QueryRow(ctx, q, role.ID, role.Name, role.Desc, time.Now().UTC(), role.TenantID)
 	var out Role
@@ -47,27 +49,38 @@ func (s *PostgresStore) UpdateRole(ctx context.Context, role Role) (Role, error)
 		s.logger.Error("UpdateRole failed", logger.ErrorField(err), logger.Any("role", role))
 		return Role{}, err
 	}
-	// Add audit log after update
-
+	s.logRBACChange(ctx, out.TenantID, "", "update", "role", out.ID, before, out)
 	return out, nil
 }
 
 func (s *PostgresStore) DeleteRole(ctx context.Context, id, tenantID string) error {
-	const q = `DELETE FROM roles WHERE id = $1 AND tenant_id = $2`
-	_, err := s.db.Exec(ctx, q, id, tenantID)
+	before, _ := s.GetRole(ctx, id, tenantID)
+	const q = `UPDATE roles SET deleted_at = $3 WHERE id = $1 AND tenant_id = $2`
+	now := time.Now().UTC()
+	_, err := s.db.Exec(ctx, q, id, tenantID, now)
 	if err != nil {
 		s.logger.Error("DeleteRole failed", logger.ErrorField(err), logger.String("id", id))
 		return err
 	}
+	s.logRBACChange(ctx, tenantID, "", "soft_delete", "role", id, before, nil)
+	return nil
+}
 
+func (s *PostgresStore) RestoreRole(ctx context.Context, id, tenantID string) error {
+	const q = `UPDATE roles SET deleted_at = NULL WHERE id = $1 AND tenant_id = $2`
+	_, err := s.db.Exec(ctx, q, id, tenantID)
+	if err != nil {
+		s.logger.Error("RestoreRole failed", logger.ErrorField(err), logger.String("id", id))
+		return err
+	}
 	return nil
 }
 
 func (s *PostgresStore) GetRole(ctx context.Context, id, tenantID string) (Role, error) {
-	const q = `SELECT id, tenant_id, name, desc, created_at, updated_at FROM roles WHERE id = $1 AND tenant_id = $2`
+	const q = `SELECT id, tenant_id, name, desc, created_at, updated_at, deleted_at FROM roles WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`
 	row := s.db.QueryRow(ctx, q, id, tenantID)
 	var out Role
-	if err := row.Scan(&out.ID, &out.TenantID, &out.Name, &out.Desc, &out.CreatedAt, &out.UpdatedAt); err != nil {
+	if err := row.Scan(&out.ID, &out.TenantID, &out.Name, &out.Desc, &out.CreatedAt, &out.UpdatedAt, &out.DeletedAt); err != nil {
 		s.logger.Error("GetRole failed", logger.ErrorField(err), logger.String("id", id))
 		return Role{}, err
 	}
@@ -81,7 +94,7 @@ func (s *PostgresStore) ListRoles(ctx context.Context, tenantID string, page, pa
 	if pageSize < 1 || pageSize > 1000 {
 		pageSize = 100
 	}
-	const q = `SELECT id, tenant_id, name, desc, created_at, updated_at FROM roles WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+	const q = `SELECT id, tenant_id, name, desc, created_at, updated_at, deleted_at FROM roles WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2 OFFSET $3`
 	offset := (page - 1) * pageSize
 	rows, err := s.db.Query(ctx, q, tenantID, pageSize, offset)
 	if err != nil {
@@ -92,7 +105,7 @@ func (s *PostgresStore) ListRoles(ctx context.Context, tenantID string, page, pa
 	var out []Role
 	for rows.Next() {
 		var r Role
-		if err := rows.Scan(&r.ID, &r.TenantID, &r.Name, &r.Desc, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.TenantID, &r.Name, &r.Desc, &r.CreatedAt, &r.UpdatedAt, &r.DeletedAt); err != nil {
 			s.logger.Error("ListRoles scan failed", logger.ErrorField(err))
 			return nil, err
 		}
@@ -112,11 +125,12 @@ func (s *PostgresStore) CreatePermission(ctx context.Context, perm Permission) (
 		s.logger.Error("CreatePermission failed", logger.ErrorField(err), logger.Any("perm", perm))
 		return Permission{}, err
 	}
-
+	s.logRBACChange(ctx, "", "", "create", "permission", out.ID, nil, out)
 	return out, nil
 }
 
 func (s *PostgresStore) UpdatePermission(ctx context.Context, perm Permission) (Permission, error) {
+	before, _ := s.GetPermission(ctx, perm.ID)
 	const q = `UPDATE permissions SET name = $2, resource = $3, action = $4, desc = $5, updated_at = $6 WHERE id = $1 RETURNING id, name, resource, action, desc, created_at, updated_at`
 	row := s.db.QueryRow(ctx, q, perm.ID, perm.Name, perm.Resource, perm.Action, perm.Desc, time.Now().UTC())
 	var out Permission
@@ -124,18 +138,19 @@ func (s *PostgresStore) UpdatePermission(ctx context.Context, perm Permission) (
 		s.logger.Error("UpdatePermission failed", logger.ErrorField(err), logger.Any("perm", perm))
 		return Permission{}, err
 	}
-
+	s.logRBACChange(ctx, "", "", "update", "permission", out.ID, before, out)
 	return out, nil
 }
 
 func (s *PostgresStore) DeletePermission(ctx context.Context, id string) error {
+	before, _ := s.GetPermission(ctx, id)
 	const q = `DELETE FROM permissions WHERE id = $1`
 	_, err := s.db.Exec(ctx, q, id)
 	if err != nil {
 		s.logger.Error("DeletePermission failed", logger.ErrorField(err), logger.String("id", id))
 		return err
 	}
-
+	s.logRBACChange(ctx, "", "", "delete", "permission", id, before, nil)
 	return nil
 }
 
@@ -274,21 +289,33 @@ func (s *PostgresStore) UpdatePolicy(ctx context.Context, policy Policy) (Policy
 }
 
 func (s *PostgresStore) DeletePolicy(ctx context.Context, id string) error {
-	const q = `DELETE FROM policies WHERE id = $1`
-	_, err := s.db.Exec(ctx, q, id)
+	before, _ := s.GetPolicy(ctx, id)
+	const q = `UPDATE policies SET deleted_at = $2 WHERE id = $1`
+	now := time.Now().UTC()
+	_, err := s.db.Exec(ctx, q, id, now)
 	if err != nil {
 		s.logger.Error("DeletePolicy failed", logger.ErrorField(err), logger.String("id", id))
 		return err
 	}
+	s.logRBACChange(ctx, "", "", "soft_delete", "policy", id, before, nil)
+	return nil
+}
 
+func (s *PostgresStore) RestorePolicy(ctx context.Context, id string) error {
+	const q = `UPDATE policies SET deleted_at = NULL WHERE id = $1`
+	_, err := s.db.Exec(ctx, q, id)
+	if err != nil {
+		s.logger.Error("RestorePolicy failed", logger.ErrorField(err), logger.String("id", id))
+		return err
+	}
 	return nil
 }
 
 func (s *PostgresStore) GetPolicy(ctx context.Context, id string) (Policy, error) {
-	const q = `SELECT id, tenant_id, name, statements, created_at, updated_at FROM policies WHERE id = $1`
+	const q = `SELECT id, tenant_id, name, statements, created_at, updated_at, deleted_at FROM policies WHERE id = $1 AND deleted_at IS NULL`
 	row := s.db.QueryRow(ctx, q, id)
 	var out Policy
-	if err := row.Scan(&out.ID, &out.TenantID, &out.Name, pq.Array(&out.Statements), &out.CreatedAt, &out.UpdatedAt); err != nil {
+	if err := row.Scan(&out.ID, &out.TenantID, &out.Name, pq.Array(&out.Statements), &out.CreatedAt, &out.UpdatedAt, &out.DeletedAt); err != nil {
 		s.logger.Error("GetPolicy failed", logger.ErrorField(err), logger.String("id", id))
 		return Policy{}, err
 	}
@@ -302,7 +329,7 @@ func (s *PostgresStore) ListPolicies(ctx context.Context, tenantID string, page,
 	if pageSize < 1 || pageSize > 1000 {
 		pageSize = 100
 	}
-	const q = `SELECT id, tenant_id, name, statements, created_at, updated_at FROM policies WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+	const q = `SELECT id, tenant_id, name, statements, created_at, updated_at, deleted_at FROM policies WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2 OFFSET $3`
 	offset := (page - 1) * pageSize
 	rows, err := s.db.Query(ctx, q, tenantID, pageSize, offset)
 	if err != nil {
@@ -313,7 +340,7 @@ func (s *PostgresStore) ListPolicies(ctx context.Context, tenantID string, page,
 	var out []Policy
 	for rows.Next() {
 		var p Policy
-		if err := rows.Scan(&p.ID, &p.TenantID, &p.Name, pq.Array(&p.Statements), &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.TenantID, &p.Name, pq.Array(&p.Statements), &p.CreatedAt, &p.UpdatedAt, &p.DeletedAt); err != nil {
 			s.logger.Error("ListPolicies scan failed", logger.ErrorField(err))
 			return nil, err
 		}
@@ -845,4 +872,97 @@ func evaluateConditions(conds map[string]interface{}, ctx map[string]interface{}
 		}
 	}
 	return true
+}
+
+func (s *PostgresStore) BulkAssignRoleBindings(ctx context.Context, tenantID, roleID string, userIDs []string) ([]RoleBinding, error) {
+	if tenantID == "" || roleID == "" || len(userIDs) == 0 {
+		return nil, ErrInvalidRBACInput
+	}
+	now := time.Now().UTC()
+	bindings := make([]RoleBinding, 0, len(userIDs))
+	batch := &pgx.Batch{}
+	for _, userID := range userIDs {
+		id := uuid.NewString()
+		batch.Queue(`INSERT INTO role_bindings (id, tenant_id, role_id, user_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING RETURNING id, tenant_id, role_id, user_id, created_at, updated_at`, id, tenantID, roleID, userID, now, now)
+	}
+	br := s.db.SendBatch(ctx, batch)
+	defer br.Close()
+	for range userIDs {
+		var b RoleBinding
+		err := br.QueryRow().Scan(&b.ID, &b.TenantID, &b.RoleID, &b.UserID, &b.CreatedAt, &b.UpdatedAt)
+		if err != nil && err.Error() != "no rows in result set" {
+			s.logger.Error("BulkAssignRoleBindings scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+		if err == nil {
+			bindings = append(bindings, b)
+		}
+	}
+	return bindings, nil
+}
+
+func (s *PostgresStore) BulkRemoveRoleBindings(ctx context.Context, tenantID, roleID string, userIDs []string) error {
+	if tenantID == "" || roleID == "" || len(userIDs) == 0 {
+		return ErrInvalidRBACInput
+	}
+	const q = `DELETE FROM role_bindings WHERE tenant_id = $1 AND role_id = $2 AND user_id = ANY($3)`
+	_, err := s.db.Exec(ctx, q, tenantID, roleID, userIDs)
+	if err != nil {
+		s.logger.Error("BulkRemoveRoleBindings failed", logger.ErrorField(err))
+		return err
+	}
+	return nil
+}
+
+// logRBACChange writes a versioning/audit record for RBAC changes
+func (s *PostgresStore) logRBACChange(ctx context.Context, tenantID, actorID, action, targetType, targetID string, before, after interface{}) {
+	const q = `INSERT INTO rbac_audit_log (id, tenant_id, actor_id, action, target_type, target_id, before, after, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	id := uuid.NewString()
+	now := time.Now().UTC()
+	beforeJSON, _ := json.Marshal(before)
+	afterJSON, _ := json.Marshal(after)
+	_, err := s.db.Exec(ctx, q, id, tenantID, actorID, action, targetType, targetID, beforeJSON, afterJSON, now)
+	if err != nil {
+		s.logger.Error("logRBACChange failed", logger.ErrorField(err), logger.String("action", action), logger.String("target_id", targetID))
+	}
+}
+
+func (s *PostgresStore) ListDistinctPermissionResources(ctx context.Context) ([]string, error) {
+	const q = `SELECT DISTINCT resource FROM permissions`
+	rows, err := s.db.Query(ctx, q)
+	if err != nil {
+		s.logger.Error("ListDistinctPermissionResources query failed", logger.ErrorField(err))
+		return nil, err
+	}
+	defer rows.Close()
+	var resources []string
+	for rows.Next() {
+		var r string
+		if err := rows.Scan(&r); err != nil {
+			s.logger.Error("ListDistinctPermissionResources scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+		resources = append(resources, r)
+	}
+	return resources, nil
+}
+
+func (s *PostgresStore) ListDistinctPermissionActions(ctx context.Context) ([]string, error) {
+	const q = `SELECT DISTINCT action FROM permissions`
+	rows, err := s.db.Query(ctx, q)
+	if err != nil {
+		s.logger.Error("ListDistinctPermissionActions query failed", logger.ErrorField(err))
+		return nil, err
+	}
+	defer rows.Close()
+	var actions []string
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			s.logger.Error("ListDistinctPermissionActions scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+		actions = append(actions, a)
+	}
+	return actions, nil
 }

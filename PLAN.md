@@ -1,69 +1,90 @@
-# Universal Admin Backend as a Service: Production-Ready Checklist
-
-## API & Integration
-- [ ] All features accessible via REST/gRPC APIs (OpenAPI/Swagger documented)
-- [ ] Multi-tenant API design (tenant isolation enforced at every layer)
-- [ ] Pluggable authentication (JWT, SSO/OIDC, API keys)
-- [ ] Webhooks/event bus for admin events (configurable per tenant)
-- [ ] API versioning and deprecation policy
-- [ ] Rate limiting and abuse detection (per-tenant, per-admin, global)
-
-## Security & Compliance
-- [ ] Secure by default (no hardcoded secrets, all sensitive data encrypted at rest/in transit)
-- [ ] MFA enforcement (per-tenant and per-admin policies)
-- [ ] Tamper-evident, immutable audit logs (exportable, SIEM/webhook integration)
-- [ ] Secrets management (KMS/Vault integration, key rotation, no plaintext storage)
-- [ ] Session management (revoke, expire, device tracking)
-- [ ] Permissioned endpoints (RBAC/ABAC, org/project/user scopes)
-- [ ] Impersonation with full audit trail
-
-## User, Org, Project, and Resource Management
-- [ ] CRUD for users, orgs/tenants, projects, and teams
-- [ ] Bulk import/export (CSV, JSON, API)
-- [ ] Soft-delete and recovery for critical entities
-- [ ] Delegated admin (scoped, cross-tenant, with audit)
-- [ ] Custom attributes and metadata per entity
-
-## RBAC & Permissions
-- [ ] Custom roles and permissions (not hardcoded)
-- [ ] Role/permission assignment at user/org/project/team level
-- [ ] Effective permissions API (who can do what, where)
-- [ ] Policy engine for advanced access control (optional ABAC)
-
-## API Key & Credential Management
-- [ ] Create, rotate, revoke, and list API keys
-- [ ] API key usage analytics (last used, usage count, IPs)
-- [ ] API key expiration and rotation policy enforcement
-
-## Billing & Monetization
-- [ ] Usage-based billing (metered by admins, orgs, API calls, features)
-- [ ] Billing hooks (Stripe/Chargebee integration, invoices, plans, quotas)
-- [ ] White-label/branding support (custom domain, email templates per tenant)
-
-## Feature Flags & Config
-- [ ] Feature flag system (per-tenant, per-user, per-env)
-- [ ] Config versioning and rollback
-- [ ] Targeted feature rollout (by org, user, or environment)
-
-## Notifications & Alerts
-- [ ] System notifications (email, webhook, Slack, etc.)
-- [ ] Configurable alerting rules (cost spikes, security events, etc.)
-- [ ] Notification delivery status and logs
-
-## Operational Excellence
-- [ ] Health checks, metrics, and tracing (Prometheus, OpenTelemetry ready)
-- [ ] Zero-downtime deploys (DB migrations, feature flag rollouts)
-- [ ] Self-service onboarding (API/CLI for setup, tenant provisioning, admin creation)
-- [ ] Cloud-native: containerization, orchestration, and scaling
-- [ ] CI/CD ready: linter-clean, type-safe, static analysis, testable
-
-## Extensibility & Uniqueness
-- [ ] Modular, clean codebase (no prod/non-prod mixing, no placeholders)
-- [ ] Easy to add new resources, endpoints, or integrations
-- [ ] Automated insights (cost, security, compliance recommendations)
-- [ ] Instant integrations (prebuilt connectors for Stripe, Okta, Slack, etc.)
-- [ ] AI/ML hooks (optional anomaly detection, smart alerts, auto-remediation)
-
----
-
-**All items must be production-grade, secure, and ready for SaaS deployment. No placeholders, no dummy code, no non-prod content.** 
+rbac-management
+Missing:
+- [x] Bulk role/permission assignment/removal (batch ops)
+- [x] Role/permission versioning/history (audit trail for changes)
+- [x] Fine-grained resource scoping (hierarchical resources, wildcards, regex)
+- [x] Delegation/impersonation with expiry and audit
+- [x] Policy simulation for "what-if" scenarios (partially present, but not full coverage)
+- [x] RBAC/ABAC policy import/export (for migration/backup)
+- [x] Custom permission templates (predefined sets)
+- [x] API for permission discovery (list all possible actions/resources)
+- [x] Soft delete/restore for roles/policies
+billing-management
+Missing:
+- [ ] Multi-currency support (currency conversion, per-tenant currency)
+- [ ] Tax/VAT calculation plugins (region-specific, pluggable)
+- [ ] Invoice PDF generation and download
+- [ ] Payment provider abstraction (Stripe, PayPal, Adyen, etc. – only Stripe is implied)
+- [ ] Dunning management (automated retries, notifications)
+- [ ] Dispute/chargeback handling
+- [ ] Subscription proration, scheduled changes, and metered billing (some present, but not full)
+- [ ] Audit log for all billing actions (not just some)
+- [ ] Webhook event replay/retry
+- [ ] Custom invoice fields (per-tenant branding, notes)
+- [ ] Data export (CSV/JSON for finance ops)
+- [ ] Rate limiting/throttling for billing endpoints
+security-management
+Missing:
+- [ ] Security event streaming (webhooks, SIEM integration)
+- [ ] Custom anomaly detection rules (pluggable, per-tenant)
+- [ ] Security policy versioning and rollback
+- [ ] Device fingerprinting and risk scoring
+- [ ] Self-service security settings (user-facing API for security controls)
+- [ ] API for security event search/filter (not just list)
+- [ ] Notification templates (customizable per tenant)
+- [ ] Security incident workflow (escalation, resolution tracking)
+- [ ] Integration with external identity providers (OIDC/SAML config endpoints)
+- [ ] API for managing security providers/configs (not just get/set)
+user-management
+Missing:
+- [ ] User import/export (CSV, bulk API)
+- [ ] Advanced search/filter (by role, org, project, status, etc.)
+- [ ] User merge/deduplication
+- [ ] Custom user attributes (schema extension per tenant)
+- [ ] Login as user (impersonation, with audit)
+- [ ] User consent management (GDPR, CCPA)
+- [ ] API for password reset/verification flows (token-based, not just admin reset)
+- [ ] API for user lockout/unlock
+- [ ] API for user activity logs (not just sessions)
+- [ ] API for user notification preferences
+tenant-management
+Missing:
+- [ ] Tenant lifecycle states (pending, active, suspended, deleted)
+- [ ] Tenant-level quotas/limits (API, storage, users, etc.)
+- [ ] Tenant branding (logo, theme, custom domains)
+- [ ] Tenant invite/approval workflow
+- [ ] Tenant data export/delete (compliance, GDPR)
+- [ ] Tenant-level feature flags/toggles
+- [ ] Tenant impersonation (admin can "see as" tenant)
+- [ ] Tenant-level API keys/secrets management
+project-management
+Missing:
+- [ ] Project archiving/restore (soft delete)
+- [ ] Project-level quotas/limits
+- [ ] Project tags/labels (for search/filter)
+- [ ] Project membership roles (not just user list)
+- [ ] Project activity/audit logs
+- [ ] Project import/export (for migration)
+- [ ] Project-level API keys/secrets
+- [ ] Project template/clone API
+organization-management
+Missing:
+- [ ] Org hierarchy (parent/child orgs, subsidiaries)
+- [ ] Org-level quotas/limits
+- [ ] Org-wide notification settings
+- [ ] Org-wide audit logs (not just per action)
+- [ ] Org invite/approval workflow
+- [ ] Org branding (logo, theme)
+- [ ] Org-level API keys/secrets
+- [ ] Org data export/delete
+General (cross-cutting, all managements)
+- [ ] API rate limiting/throttling per tenant/org/user
+- [ ] API versioning and deprecation
+- [ ] Webhook management (subscribe/unsubscribe, delivery logs)
+- [ ] Full audit log search/filter/export
+- [ ] Pluggable event hooks (pre/post action)
+- [ ] Multi-region/data residency controls
+- [ ] API for system health/status
+- [ ] API for admin notifications/messages
+- [ ] API for admin action approval (multi-admin workflows)
+- [ ] API for custom dashboards/metrics (backend only)

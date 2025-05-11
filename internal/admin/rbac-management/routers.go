@@ -4,8 +4,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-
-
 // RegisterAdminRBACRoutes allows optional RBAC middleware as a plugin.
 func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler) {
 	rbac := router.Group("/rbac-management")
@@ -25,12 +23,17 @@ func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler) {
 	rbac.Post("/role-bindings/create", handler.CreateRoleBinding)
 	rbac.Delete("/role-bindings/delete", handler.DeleteRoleBinding)
 	rbac.Get("/role-bindings/list", handler.ListRoleBindings)
+	rbac.Post("/role-bindings/bulk-assign", handler.BulkAssignRoleBindings)
+	rbac.Delete("/role-bindings/bulk-remove", handler.BulkRemoveRoleBindings)
 
 	rbac.Post("/policies/create", handler.CreatePolicy)
 	rbac.Put("/policies/update", handler.UpdatePolicy)
 	rbac.Delete("/policies/delete", handler.DeletePolicy)
 	rbac.Get("/policies/get", handler.GetPolicy)
 	rbac.Get("/policies/list", handler.ListPolicies)
+	rbac.Post("/policies/simulate", handler.SimulatePolicyWhatIf)
+	rbac.Post("/policies/import", handler.ImportPolicies)
+	rbac.Get("/policies/export", handler.ExportPolicies)
 
 	rbac.Post("/api-permissions/create", handler.CreateAPIPermission)
 	rbac.Delete("/api-permissions/delete", handler.DeleteAPIPermission)
@@ -41,4 +44,14 @@ func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler) {
 	rbac.Delete("/resources/delete", handler.DeleteResource)
 	rbac.Get("/resources/get", handler.GetResource)
 	rbac.Get("/resources/list", handler.ListResources)
+
+	rbac.Post("/delegations/delegate", handler.DelegateRoleWithExpiry)
+	rbac.Post("/delegations/revoke", handler.RevokeDelegatedRoleWithAudit)
+
+	rbac.Post("/permission-templates/create", handler.CreatePermissionTemplate)
+	rbac.Get("/permission-templates/list", handler.ListPermissionTemplates)
+	rbac.Post("/permission-templates/apply", handler.ApplyPermissionTemplate)
+
+	rbac.Post("/roles/restore", handler.RestoreRole)
+	rbac.Post("/policies/restore", handler.RestorePolicy)
 }

@@ -34,6 +34,8 @@ type RoleBindingService interface {
 	CreateRoleBinding(ctx context.Context, binding RoleBinding) (RoleBinding, error)
 	DeleteRoleBinding(ctx context.Context, id string) error
 	ListRoleBindings(ctx context.Context, tenantID, userID string, page, pageSize int) ([]RoleBinding, error)
+	BulkAssignRoleBindings(ctx context.Context, tenantID, roleID string, userIDs []string) ([]RoleBinding, error)
+	BulkRemoveRoleBindings(ctx context.Context, tenantID, roleID string, userIDs []string) error
 }
 
 type PolicyService interface {

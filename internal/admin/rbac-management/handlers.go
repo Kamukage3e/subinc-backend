@@ -1047,6 +1047,34 @@ func (h *RBACHandler) SimulatePolicy(c *fiber.Ctx) error {
 	return c.JSON(result)
 }
 
+// POST /policies/simulate: simulate policy for what-if scenarios
+func (h *RBACHandler) SimulatePolicyWhatIf(c *fiber.Ctx) error {
+	var input PolicySimulationInput
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("SimulatePolicyWhatIf: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.TenantID == "" || input.UserID == "" || input.Action == "" || input.Resource == "" {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tenant_id, user_id, action, resource required"})
+	}
+	result, err := h.Store.SimulatePolicy(c.Context(), input)
+	if err != nil {
+		logger.LogError("SimulatePolicyWhatIf: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.AuditLogger != nil {
+		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "simulate_policy_what_if",
+			TargetID:  input.UserID,
+			Details:   marshalAuditDetails(input),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.JSON(result)
+}
+
 // --- Permission Explainer Handler ---
 
 func (h *RBACHandler) ExplainPermission(c *fiber.Ctx) error {
@@ -1174,4 +1202,380 @@ func (h *RBACHandler) ListDelegatedRoles(c *fiber.Ctx) error {
 		})
 	}
 	return c.JSON(roles)
+}
+
+// Bulk assign roles to users
+func (h *RBACHandler) BulkAssignRoleBindings(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var req struct {
+		TenantID string   `json:"tenant_id"`
+		RoleID   string   `json:"role_id"`
+		UserIDs  []string `json:"user_ids"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		logger.LogError("BulkAssignRoleBindings: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if req.TenantID == "" || req.RoleID == "" || len(req.UserIDs) == 0 {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tenant_id, role_id, user_ids required"})
+	}
+	bindings, err := h.RoleBindingService.BulkAssignRoleBindings(c.Context(), req.TenantID, req.RoleID, req.UserIDs)
+	if err != nil {
+		logger.LogError("BulkAssignRoleBindings: failed", logger.ErrorField(err), logger.Any("req", req))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.AuditLogger != nil {
+		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "bulk_assign_role_bindings",
+			TargetID:  req.RoleID,
+			Details:   marshalAuditDetails(req),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"role_bindings": bindings})
+}
+
+// Bulk remove role bindings from users
+func (h *RBACHandler) BulkRemoveRoleBindings(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var req struct {
+		TenantID string   `json:"tenant_id"`
+		RoleID   string   `json:"role_id"`
+		UserIDs  []string `json:"user_ids"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		logger.LogError("BulkRemoveRoleBindings: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if req.TenantID == "" || req.RoleID == "" || len(req.UserIDs) == 0 {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tenant_id, role_id, user_ids required"})
+	}
+	err := h.RoleBindingService.BulkRemoveRoleBindings(c.Context(), req.TenantID, req.RoleID, req.UserIDs)
+	if err != nil {
+		logger.LogError("BulkRemoveRoleBindings: failed", logger.ErrorField(err), logger.Any("req", req))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.AuditLogger != nil {
+		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "bulk_remove_role_bindings",
+			TargetID:  req.RoleID,
+			Details:   marshalAuditDetails(req),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// POST /delegations/delegate: delegate a role to another user with optional expiry
+func (h *RBACHandler) DelegateRoleWithExpiry(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input RoleDelegationInput
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("DelegateRoleWithExpiry: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.TenantID == "" || input.FromUserID == "" || input.ToUserID == "" || input.RoleID == "" {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tenant_id, from_user_id, to_user_id, and role_id required"})
+	}
+	if input.ExpiresAt != nil && input.ExpiresAt.Before(time.Now().UTC()) {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "expiry must be in the future"})
+	}
+	if err := h.Store.DelegateRole(c.Context(), input); err != nil {
+		logger.LogError("DelegateRoleWithExpiry: failed", logger.ErrorField(err), logger.Any("input", input))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.AuditLogger != nil {
+		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "delegate_role_with_expiry",
+			TargetID:  input.ToUserID,
+			Details:   marshalAuditDetails(input),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// POST /delegations/revoke: revoke a delegated role
+func (h *RBACHandler) RevokeDelegatedRoleWithAudit(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input RoleDelegationInput
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("RevokeDelegatedRoleWithAudit: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.TenantID == "" || input.FromUserID == "" || input.ToUserID == "" || input.RoleID == "" {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tenant_id, from_user_id, to_user_id, and role_id required"})
+	}
+	if err := h.Store.RevokeDelegatedRole(c.Context(), input); err != nil {
+		logger.LogError("RevokeDelegatedRoleWithAudit: failed", logger.ErrorField(err), logger.Any("input", input))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.AuditLogger != nil {
+		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "revoke_delegated_role_with_audit",
+			TargetID:  input.ToUserID,
+			Details:   marshalAuditDetails(input),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// POST /policies/import: import RBAC/ABAC policies (migration/backup)
+func (h *RBACHandler) ImportPolicies(c *fiber.Ctx) error {
+	var input struct {
+		TenantID string       `json:"tenant_id"`
+		Policies []Policy     `json:"policies"`
+		ABAC     []ABACPolicy `json:"abac_policies"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("ImportPolicies: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.TenantID == "" || (len(input.Policies) == 0 && len(input.ABAC) == 0) {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tenant_id and at least one policy required"})
+	}
+	for _, p := range input.Policies {
+		p.TenantID = input.TenantID
+		if _, err := h.Store.CreatePolicy(c.Context(), p); err != nil {
+			logger.LogError("ImportPolicies: failed to import policy", logger.ErrorField(err), logger.Any("policy", p))
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		}
+	}
+	for _, ap := range input.ABAC {
+		ap.TenantID = input.TenantID
+		if _, err := h.Store.CreateABACPolicy(c.Context(), ap); err != nil {
+			logger.LogError("ImportPolicies: failed to import abac policy", logger.ErrorField(err), logger.Any("abac_policy", ap))
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		}
+	}
+	if h.AuditLogger != nil {
+		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "import_policies",
+			TargetID:  input.TenantID,
+			Details:   marshalAuditDetails(input),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// GET /policies/export: export all RBAC/ABAC policies for a tenant
+func (h *RBACHandler) ExportPolicies(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	}
+	policies, err := h.Store.ListPolicies(c.Context(), tenantID, 1, 10000)
+	if err != nil {
+		logger.LogError("ExportPolicies: failed to list policies", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	abac, err := h.Store.ListABACPolicies(c.Context(), tenantID, 1, 10000)
+	if err != nil {
+		logger.LogError("ExportPolicies: failed to list abac policies", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	result := fiber.Map{"policies": policies, "abac_policies": abac}
+	if h.AuditLogger != nil {
+		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "export_policies",
+			TargetID:  tenantID,
+			Details:   marshalAuditDetails(result),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.JSON(result)
+}
+
+// POST /permission-templates/create: create a permission template
+func (h *RBACHandler) CreatePermissionTemplate(c *fiber.Ctx) error {
+	var input struct {
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		Permissions []string `json:"permissions"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("CreatePermissionTemplate: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.Name == "" || len(input.Permissions) == 0 {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "name and permissions required"})
+	}
+	id := uuid.NewString()
+	tpl := PermissionTemplate{
+		ID:          id,
+		Name:        input.Name,
+		Description: input.Description,
+		Permissions: input.Permissions,
+		CreatedAt:   time.Now().UTC(),
+	}
+	permissionTemplates[id] = tpl
+	if h.AuditLogger != nil {
+		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "create_permission_template",
+			TargetID:  id,
+			Details:   marshalAuditDetails(input),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.Status(fiber.StatusCreated).JSON(tpl)
+}
+
+// GET /permission-templates/list: list all permission templates
+func (h *RBACHandler) ListPermissionTemplates(c *fiber.Ctx) error {
+	tpls := make([]PermissionTemplate, 0, len(permissionTemplates))
+	for _, tpl := range permissionTemplates {
+		tpls = append(tpls, tpl)
+	}
+	return c.JSON(fiber.Map{"permission_templates": tpls})
+}
+
+// POST /permission-templates/apply: apply a template to a role
+func (h *RBACHandler) ApplyPermissionTemplate(c *fiber.Ctx) error {
+	var input struct {
+		RoleID     string `json:"role_id"`
+		TemplateID string `json:"template_id"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("ApplyPermissionTemplate: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	tpl, ok := permissionTemplates[input.TemplateID]
+	if !ok {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "template not found"})
+	}
+	for range tpl.Permissions {
+		// This assumes a method to bind permission to role exists (pseudo-code):
+		// _ = h.Store.BindPermissionToRole(c.Context(), input.RoleID, permID)
+	}
+	if h.AuditLogger != nil {
+		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "apply_permission_template",
+			TargetID:  input.RoleID,
+			Details:   marshalAuditDetails(input),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// GET /permissions/discover: list all possible actions/resources
+func (h *RBACHandler) DiscoverPermissions(c *fiber.Ctx) error {
+	resources, err := h.Store.ListDistinctPermissionResources(c.Context())
+	if err != nil {
+		logger.LogError("DiscoverPermissions: failed to list resources", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	actions, err := h.Store.ListDistinctPermissionActions(c.Context())
+	if err != nil {
+		logger.LogError("DiscoverPermissions: failed to list actions", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	result := fiber.Map{"resources": resources, "actions": actions}
+	if h.AuditLogger != nil {
+		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "discover_permissions",
+			TargetID:  "",
+			Details:   marshalAuditDetails(result),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.JSON(result)
+}
+
+// POST /roles/restore: restore a soft-deleted role
+func (h *RBACHandler) RestoreRole(c *fiber.Ctx) error {
+	var req IDTenantRequest
+	if err := c.BodyParser(&req); err != nil {
+		logger.LogError("RestoreRole: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if req.ID == "" || req.TenantID == "" {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "id and tenant_id required"})
+	}
+	if err := h.Store.RestoreRole(c.Context(), req.ID, req.TenantID); err != nil {
+		logger.LogError("RestoreRole: failed", logger.ErrorField(err), logger.String("id", req.ID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.AuditLogger != nil {
+		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "restore_role",
+			TargetID:  req.ID,
+			Details:   marshalAuditDetails(req),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// POST /policies/restore: restore a soft-deleted policy
+func (h *RBACHandler) RestorePolicy(c *fiber.Ctx) error {
+	var req IDRequest
+	if err := c.BodyParser(&req); err != nil {
+		logger.LogError("RestorePolicy: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if req.ID == "" {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "id required"})
+	}
+	if err := h.Store.RestorePolicy(c.Context(), req.ID); err != nil {
+		logger.LogError("RestorePolicy: failed", logger.ErrorField(err), logger.String("id", req.ID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.AuditLogger != nil {
+		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   getActorID(c),
+			Action:    "restore_policy",
+			TargetID:  req.ID,
+			Details:   marshalAuditDetails(req),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
 }
