@@ -872,6 +872,29 @@ func (h *BillingAdminHandler) CreateCredit(c *fiber.Ctx) error {
 		logger.LogError("CreateCredit: validation failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
 	}
+	account, err := h.AccountService.GetAccount(input.AccountID)
+	if err != nil {
+		logger.LogError("CreateCredit: account not found", logger.ErrorField(err), logger.String("account_id", input.AccountID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "account not found"})
+	}
+	currency := strings.ToUpper(strings.TrimSpace(input.Currency))
+	if currency == "" {
+		currency = strings.ToUpper(strings.TrimSpace(account.Currency))
+		if currency == "" {
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "no currency set for credit or account"})
+		}
+		input.Currency = currency
+	}
+	if input.Currency != account.Currency && account.Currency != "" {
+		rate, rerr := h.Store.GetExchangeRate(c.Context(), input.Currency, account.Currency)
+		if rerr != nil || rate.Rate <= 0 {
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "no valid exchange rate from " + input.Currency + " to " + account.Currency})
+		}
+		input.OriginalAmount = input.Amount
+		input.OriginalCurrency = input.Currency
+		input.Amount = input.Amount * rate.Rate
+		input.Currency = account.Currency
+	}
 	credit, err := h.CreditService.CreateCredit(input)
 	if err != nil {
 		logger.LogError("CreateCredit: failed", logger.ErrorField(err), logger.Any("input", input))
@@ -889,7 +912,7 @@ func (h *BillingAdminHandler) CreateCredit(c *fiber.Ctx) error {
 			ActorID:   getActorID(c),
 			Action:    "create_credit",
 			TargetID:  credit.AccountID,
-			Details:   auditDetails(map[string]interface{}{"input": input}),
+			Details:   auditDetails(map[string]interface{}{"input": input, "account_currency": account.Currency}),
 			CreatedAt: time.Now(),
 		})
 		if err != nil {
@@ -3275,7 +3298,12 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 		input.Amount = input.Amount * rate.Rate
 		input.Currency = account.Currency
 	}
-	credit, err := h.CreditService.CreateCredit(input) 
+	var inputCredit Credit
+	if err := c.BodyParser(&inputCredit); err != nil {
+		logger.LogError("CreateCredit: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	credit, err := h.CreditService.CreateCredit(inputCredit)
 	if err != nil {
 		logger.LogError("CreateCredit: failed", logger.ErrorField(err), logger.Any("input", input))
 		errResp := fiber.Map{"error": err.Error()}
@@ -4039,4 +4067,65 @@ func (h *BillingAdminHandler) GetTenantCurrency(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(curr)
+}
+
+// --- TaxPlugin Handlers ---
+
+func (h *BillingAdminHandler) ListTaxPlugins(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tax_plugin", "list")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	plugins, err := h.Store.ListTaxPlugins(c.Context())
+	if err != nil {
+		logger.LogError("ListTaxPlugins: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"plugins": plugins})
+}
+
+func (h *BillingAdminHandler) SetTaxPluginConfig(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tax_plugin", "set")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		TenantID   string `json:"tenant_id"`
+		PluginName string `json:"plugin_name"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("SetTaxPluginConfig: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.TenantID == "" || input.PluginName == "" {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tenant_id and plugin_name required"})
+	}
+	if _, ok := TaxPlugins.Lookup(input.PluginName); !ok {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "plugin not found"})
+	}
+	cfg, err := h.Store.SetTaxPluginConfig(c.Context(), input.TenantID, input.PluginName)
+	if err != nil {
+		logger.LogError("SetTaxPluginConfig: failed", logger.ErrorField(err), logger.Any("input", input))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.AuditLogger != nil {
+		_, err := h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        input.TenantID,
+			ActorID:   getActorID(c),
+			Action:    "set_tax_plugin_config",
+			TargetID:  input.TenantID,
+			Details:   auditDetails(input),
+			CreatedAt: time.Now(),
+		})
+		if err != nil {
+			logger.LogError("SetTaxPluginConfig: audit log failed", logger.ErrorField(err))
+		}
+	}
+	return c.Status(fiber.StatusCreated).JSON(cfg)
 }

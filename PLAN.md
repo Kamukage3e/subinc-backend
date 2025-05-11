@@ -11,7 +11,14 @@ Missing:
 - [x] Soft delete/restore for roles/policies
 billing-management
 Missing:
-- [ ] Multi-currency support (currency conversion, per-tenant currency)
+- [x] Multi-currency support
+  - [x] Currency conversion (exchange rates)
+  - [x] Per-tenant currency config
+  - [x] Exchange rate CRUD endpoints
+  - [x] Multi-currency invoice/payment/credit/refund/adjustment
+  - [x] Original amount/currency audit fields
+  - [x] Handler/store logic for all affected resources
+  - [x] All list/get endpoints return new fields
 - [ ] Tax/VAT calculation plugins (region-specific, pluggable)
 - [ ] Invoice PDF generation and download
 - [ ] Payment provider abstraction (Stripe, PayPal, Adyen, etc. – only Stripe is implied)

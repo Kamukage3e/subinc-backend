@@ -1,6 +1,7 @@
 package billing_management
 
 import (
+	"context"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -640,3 +641,58 @@ type TenantCurrency struct {
 	Currency  string    `json:"currency"` // ISO 4217, e.g. USD
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// TaxPlugin defines a pluggable interface for tax/VAT calculation per region/country.
+type TaxPlugin interface {
+	CalculateTax(ctx context.Context, invoice Invoice, account Account, tenantID string) (taxAmount, taxRate float64, err error)
+}
+
+// TaxPluginRegistry holds registered plugins by name and region/country.
+type TaxPluginRegistry struct {
+	plugins map[string]TaxPlugin // key: plugin name
+}
+
+// Register adds a plugin to the registry.
+func (r *TaxPluginRegistry) Register(name string, plugin TaxPlugin) {
+	if r.plugins == nil {
+		r.plugins = make(map[string]TaxPlugin)
+	}
+	r.plugins[name] = plugin
+}
+
+// Lookup returns a plugin by name.
+func (r *TaxPluginRegistry) Lookup(name string) (TaxPlugin, bool) {
+	p, ok := r.plugins[name]
+	return p, ok
+}
+
+// TaxPluginConfig stores per-tenant plugin selection.
+type TaxPluginConfig struct {
+	TenantID   string    `json:"tenant_id"`
+	PluginName string    `json:"plugin_name"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// DefaultTaxPlugin applies no tax (0%).
+type DefaultTaxPlugin struct{}
+
+func (DefaultTaxPlugin) CalculateTax(ctx context.Context, invoice Invoice, account Account, tenantID string) (float64, float64, error) {
+	return 0, 0, nil
+}
+
+// EUTaxPlugin applies a flat 20% VAT for demonstration.
+type EUTaxPlugin struct{}
+
+func (EUTaxPlugin) CalculateTax(ctx context.Context, invoice Invoice, account Account, tenantID string) (float64, float64, error) {
+	amount := invoice.Amount
+	taxRate := 20.0
+	return amount * taxRate / 100, taxRate, nil
+}
+
+// TaxPlugins is the global registry for all tax plugins.
+var TaxPlugins = func() *TaxPluginRegistry {
+	r := &TaxPluginRegistry{}
+	r.Register("default", DefaultTaxPlugin{})
+	r.Register("eu_vat", EUTaxPlugin{})
+	return r
+}()

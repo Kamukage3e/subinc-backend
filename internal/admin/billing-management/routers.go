@@ -109,6 +109,9 @@ func RegisterAdminBillingRoutes(router fiber.Router, handler *BillingAdminHandle
 	billing.Post("/tenant-currency/set", handler.SetTenantCurrency)
 	billing.Get("/tenant-currency/get", handler.GetTenantCurrency)
 
+	billing.Post("/tax-plugin/list", handler.ListTaxPlugins)
+	billing.Post("/tax-plugin/set", handler.SetTaxPluginConfig)
+
 	billing.Get("/reports/revenue/get", handler.GetRevenueReport)
 	billing.Get("/reports/accounts-receivable/get", handler.GetARReport)
 	billing.Get("/reports/churn/get", handler.GetChurnReport)
