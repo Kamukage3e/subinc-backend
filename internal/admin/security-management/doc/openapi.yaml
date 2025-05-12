@@ -605,6 +605,347 @@ paths:
           description: Rate limit deleted
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: User login
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: User logout
+      operationId: logout
+      responses:
+        "204":
+          description: Logout successful
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: User registration
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /auth/verify-email:
+    post:
+      tags: [Auth]
+      summary: Verify email
+      operationId: verifyEmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailVerificationRequest"
+      responses:
+        "204":
+          description: Email verified
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /auth/resend-verification:
+    post:
+      tags: [Auth]
+      summary: Resend verification email
+      operationId: resendVerification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResendVerificationRequest"
+      responses:
+        "204":
+          description: Verification email resent
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /auth/password/change:
+    post:
+      tags: [Auth]
+      summary: Change password
+      operationId: changePassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "204":
+          description: Password changed
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/password/reset/request:
+    post:
+      tags: [Auth]
+      summary: Request password reset
+      operationId: requestPasswordReset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetRequest"
+      responses:
+        "201":
+          description: Password reset token created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasswordResetToken"
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /auth/password/reset/verify:
+    post:
+      tags: [Auth]
+      summary: Verify password reset token
+      operationId: verifyPasswordResetToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetTokenVerifyRequest"
+      responses:
+        "204":
+          description: Token valid
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /auth/password/reset/use:
+    post:
+      tags: [Auth]
+      summary: Use password reset token
+      operationId: usePasswordResetToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetTokenUseRequest"
+      responses:
+        "204":
+          description: Password reset
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /auth/token/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh session token
+      operationId: refreshSession
+      responses:
+        "200":
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/profile/get:
+    post:
+      tags: [Auth]
+      summary: Get user profile
+      operationId: getProfile
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/profile/update:
+    post:
+      tags: [Auth]
+      summary: Update user profile
+      operationId: updateProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserProfileUpdateRequest"
+      responses:
+        "200":
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/account/delete:
+    post:
+      tags: [Auth]
+      summary: Delete account
+      operationId: deleteAccount
+      responses:
+        "204":
+          description: Account deleted
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/consent:
+    post:
+      tags: [Auth]
+      summary: Consent management
+      operationId: consent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsentRequest"
+      responses:
+        "204":
+          description: Consent updated
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/invite/send:
+    post:
+      tags: [Auth]
+      summary: Send invite
+      operationId: sendInvite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteSendRequest"
+      responses:
+        "204":
+          description: Invite sent
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /auth/invite/accept:
+    post:
+      tags: [Auth]
+      summary: Accept invite
+      operationId: acceptInvite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteAcceptRequest"
+      responses:
+        "201":
+          description: User registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /auth/device/trust:
+    post:
+      tags: [Auth]
+      summary: Trust device
+      operationId: trustDevice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceTrustRequest"
+      responses:
+        "204":
+          description: Device trusted
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/account/recover:
+    post:
+      tags: [Auth]
+      summary: Account recovery
+      operationId: accountRecover
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountRecoveryRequest"
+      responses:
+        "204":
+          description: Recovery email sent
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /auth/mfa/challenge:
+    post:
+      tags: [Auth]
+      summary: Start MFA challenge
+      operationId: mfaChallenge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MFAChallengeRequest"
+      responses:
+        "200":
+          description: MFA challenge started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MFAChallengeResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /auth/mfa/verify:
+    post:
+      tags: [Auth]
+      summary: Verify MFA code
+      operationId: mfaVerify
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MFAVerifyRequest"
+      responses:
+        "204":
+          description: MFA verified
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /auth/sso/google:
+    get:
+      tags: [Auth]
+      summary: Google OAuth start
+      operationId: authGoogle
+      responses:
+        "302":
+          description: Redirect to Google
+  /auth/sso/google/callback:
+    get:
+      tags: [Auth]
+      summary: Google OAuth callback
+      operationId: authGoogleCallback
+      responses:
+        "200":
+          description: OAuth callback handled
+  /auth/sso/saml:
+    get:
+      tags: [Auth]
+      summary: SAML start
+      operationId: authSAML
+      responses:
+        "302":
+          description: Redirect to SAML provider
+  /auth/sso/saml/callback:
+    get:
+      tags: [Auth]
+      summary: SAML callback
+      operationId: authSAMLCallback
+      responses:
+        "200":
+          description: SAML callback handled
 components:
   securitySchemes:
     bearerAuth:
@@ -757,6 +1098,93 @@ components:
       type: object
     RateLimitDeleteRequest:
       type: object
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password }
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password }
+    EmailVerificationRequest:
+      type: object
+      required: [user_id, token]
+      properties:
+        user_id: { type: string }
+        token: { type: string }
+    ResendVerificationRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+    ChangePasswordRequest:
+      type: object
+      required: [user_id, old_password, new_password]
+      properties:
+        user_id: { type: string }
+        old_password: { type: string, format: password }
+        new_password: { type: string, format: password }
+    UserProfile:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    UserProfileUpdateRequest:
+      type: object
+      properties:
+        email: { type: string, format: email }
+    ConsentRequest:
+      type: object
+      required: [user_id, consent]
+      properties:
+        user_id: { type: string }
+        consent: { type: string }
+    InviteSendRequest:
+      type: object
+      required: [email, role]
+      properties:
+        email: { type: string, format: email }
+        role: { type: string }
+    InviteAcceptRequest:
+      type: object
+      required: [token, email, password]
+      properties:
+        token: { type: string }
+        email: { type: string, format: email }
+        password: { type: string, format: password }
+    DeviceTrustRequest:
+      type: object
+      required: [user_id, device_id]
+      properties:
+        user_id: { type: string }
+        device_id: { type: string }
+    AccountRecoveryRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+    MFAChallengeRequest:
+      type: object
+      required: [user_id]
+      properties:
+        user_id: { type: string }
+    MFAChallengeResponse:
+      type: object
+      properties:
+        challenge: { type: string }
+        setup: { type: boolean }
+    MFAVerifyRequest:
+      type: object
+      required: [user_id, code]
+      properties:
+        user_id: { type: string }
+        code: { type: string }
   responses:
     Unauthorized:
       description: Unauthorized

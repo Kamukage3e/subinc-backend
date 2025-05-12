@@ -162,4 +162,51 @@ table "anomalies" {
   column "details"    { type = text; null = false }
   column "detected_at"{ type = timestamptz; null = false }
   primary_key { columns = [column.id] }
+}
+
+table "invites" {
+  schema      = schema.public
+  column "id"         { type = uuid; null = false }
+  column "email"      { type = varchar(256); null = false }
+  column "role"       { type = varchar(64); null = false }
+  column "token"      { type = varchar(128); null = false }
+  column "created_at" { type = timestamptz; null = false; default = sql("now()") }
+  primary_key { columns = [column.id] }
+  index { columns = [column.email] }
+}
+
+table "consents" {
+  schema      = schema.public
+  column "id"         { type = uuid; null = false }
+  column "user_id"    { type = uuid; null = false }
+  column "consent"    { type = varchar(128); null = false }
+  column "created_at" { type = timestamptz; null = false; default = sql("now()") }
+  primary_key { columns = [column.id] }
+  index { columns = [column.user_id] }
+}
+
+table "account_recoveries" {
+  schema      = schema.public
+  column "id"         { type = uuid; null = false }
+  column "user_id"    { type = uuid; null = false }
+  column "token"      { type = varchar(128); null = false }
+  column "expires_at" { type = timestamptz; null = false }
+  column "used"       { type = boolean; null = false; default = false }
+  column "created_at" { type = timestamptz; null = false; default = sql("now()") }
+  primary_key { columns = [column.id] }
+  index { columns = [column.user_id] }
+}
+
+alter table "users" {
+  add column "mfa_enabled" boolean not null default false;
+  add column "mfa_secret" varchar(128);
+  add column "deleted_at" timestamptz;
+}
+
+alter table "devices" {
+  add column "trusted" boolean not null default false;
+}
+
+alter table "sessions" {
+  alter column "id" set type varchar(128);
 } 

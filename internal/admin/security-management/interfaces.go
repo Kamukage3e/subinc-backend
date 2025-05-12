@@ -16,15 +16,32 @@ type LoginHistoryService interface {
 type MFAService interface {
 	EnableMFA(ctx context.Context, userID string) error
 	DisableMFA(ctx context.Context, userID string) error
+	GenerateChallenge(ctx context.Context, userID string) (map[string]interface{}, error)
+	VerifyChallenge(ctx context.Context, userID, code string) error
 }
 
 type PasswordService interface {
 	ResetUserPassword(ctx context.Context, userID, newPassword string) error
+	AuthenticateUser(ctx context.Context, email, password string) (User, error)
+	RegisterUser(ctx context.Context, email, password string) (User, error)
+	VerifyEmail(ctx context.Context, userID, token string) error
+	ResendVerification(ctx context.Context, email string) error
+	ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error
+	GetProfile(ctx context.Context, userID string) (map[string]interface{}, error)
+	UpdateProfile(ctx context.Context, userID string, input map[string]interface{}) (map[string]interface{}, error)
+	DeleteAccount(ctx context.Context, userID string) error
+	Consent(ctx context.Context, userID, consent string) error
+	SendInvite(ctx context.Context, email, role string) error
+	AcceptInvite(ctx context.Context, token, email, password string) (User, error)
+	AccountRecover(ctx context.Context, email string) error
 }
 
 type SessionService interface {
 	ListUserSessions(ctx context.Context, userID string) ([]Session, error)
 	RevokeUserSession(ctx context.Context, userID, sessionID string) error
+	CreateSession(ctx context.Context, userID, ip, device string, expiresIn time.Duration) (Session, error)
+	RefreshSession(ctx context.Context, sessionID string, expiresIn time.Duration) (Session, error)
+	LogoutSession(ctx context.Context, sessionID string) error
 }
 
 type SecurityAuditLogService interface {
@@ -41,6 +58,7 @@ type APIKeyService interface {
 type DeviceService interface {
 	ListUserDevices(ctx context.Context, userID string) ([]Device, error)
 	RevokeUserDevice(ctx context.Context, userID, deviceID string) error
+	TrustDevice(ctx context.Context, userID, deviceID string) error
 }
 
 type BreachService interface {

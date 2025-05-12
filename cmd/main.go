@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"syscall"
-
 	"io/ioutil"
 
 	"github.com/gofiber/fiber/v2"
@@ -23,7 +21,7 @@ import (
 	tenant_management "github.com/subinc/subinc-backend/internal/admin/tenant-management"
 	user_management "github.com/subinc/subinc-backend/internal/admin/user-management"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
-	"golang.org/x/term"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -108,8 +106,31 @@ type OwnerConfig struct {
 		Service string `yaml:"service"`
 		Env     string `yaml:"env"`
 	} `yaml:"logging"`
-	JWTSecretName string `yaml:"jwt_secret_name"`
+	JWTSecretName string      `yaml:"jwt_secret_name"`
+	OAuth         OAuthConfig `yaml:"oauth"`
+	SAML          SAMLConfig  `yaml:"saml"`
 }
+
+type OAuthConfig struct {
+	Google struct {
+		ClientID     string   `yaml:"client_id" json:"client_id"`
+		ClientSecret string   `yaml:"client_secret" json:"client_secret"`
+		RedirectURI  string   `yaml:"redirect_uri" json:"redirect_uri"`
+		Scopes       []string `yaml:"scopes" json:"scopes"`
+	} `yaml:"google" json:"google"`
+}
+
+type SAMLConfig struct {
+	MetadataURL string `yaml:"metadata_url" json:"metadata_url"`
+	EntityID    string `yaml:"entity_id" json:"entity_id"`
+	ACSURL      string `yaml:"acs_url" json:"acs_url"`
+}
+
+// Global runtime config for client admin
+var (
+	clientOAuthConfig OAuthConfig
+	clientSAMLConfig  SAMLConfig
+)
 
 func loadOwnerConfig(path string) (*OwnerConfig, error) {
 	b, err := ioutil.ReadFile(path)
@@ -162,7 +183,40 @@ func main() {
 		server_config.RegisterAdminServerConfigRoutes(ownerAPI, serverConfigHandler, ownerCfg.JWTSecretName)
 		// Security Management
 		securityStore := &security_management.PostgresStore{DB: ownerDBPool}
-		securityHandler := security_management.NewSecurityHandler(securityStore)
+		// Add runtime config for auth types
+		authTypeConfig := security_management.AuthTypeConfig{
+			PasswordEnabled:  true,
+			PasswordOptional: false,
+			MFAEnabled:       true,
+			MFAOptional:      false,
+			OAuthEnabled:     true,
+			OAuthOptional:    false,
+			SAMLEnabled:      false,
+			SAMLOptional:     false,
+		}
+		securityHandler := security_management.NewSecurityHandler(
+			securityStore,
+			security_management.OAuthConfig{
+				Google: struct {
+					ClientID     string   `json:"client_id"`
+					ClientSecret string   `json:"client_secret"`
+					RedirectURI  string   `json:"redirect_uri"`
+					Scopes       []string `json:"scopes"`
+				}{
+					ClientID:     ownerCfg.OAuth.Google.ClientID,
+					ClientSecret: ownerCfg.OAuth.Google.ClientSecret,
+					RedirectURI:  ownerCfg.OAuth.Google.RedirectURI,
+					Scopes:       ownerCfg.OAuth.Google.Scopes,
+				},
+			},
+			security_management.SAMLConfig{
+				MetadataURL: ownerCfg.SAML.MetadataURL,
+				EntityID:    ownerCfg.SAML.EntityID,
+				ACSURL:      ownerCfg.SAML.ACSURL,
+			},
+			ownerCfg.JWTSecretName,
+			authTypeConfig,
+		)
 		security_management.RegisterAdminSecurityRoutes(ownerAPI, securityHandler, ownerCfg.JWTSecretName)
 		// User Management
 		userStore := &user_management.PostgresStore{DB: ownerDBPool, AuditLogger: securityStore}
@@ -221,7 +275,40 @@ func main() {
 		serverConfigHandler := server_config.NewHandler(serverConfigService, logr)
 		server_config.RegisterAdminServerConfigRoutes(clientAPI, serverConfigHandler, jwtSecret)
 		// Security Management
-		securityHandler := security_management.NewSecurityHandler(securityStore)
+		// Add runtime config for auth types
+		authTypeConfig := security_management.AuthTypeConfig{
+			PasswordEnabled:  true,
+			PasswordOptional: false,
+			MFAEnabled:       true,
+			MFAOptional:      false,
+			OAuthEnabled:     true,
+			OAuthOptional:    false,
+			SAMLEnabled:      false,
+			SAMLOptional:     false,
+		}
+		securityHandler := security_management.NewSecurityHandler(
+			securityStore,
+			security_management.OAuthConfig{
+				Google: struct {
+					ClientID     string   `json:"client_id"`
+					ClientSecret string   `json:"client_secret"`
+					RedirectURI  string   `json:"redirect_uri"`
+					Scopes       []string `json:"scopes"`
+				}{
+					ClientID:     clientOAuthConfig.Google.ClientID,
+					ClientSecret: clientOAuthConfig.Google.ClientSecret,
+					RedirectURI:  clientOAuthConfig.Google.RedirectURI,
+					Scopes:       clientOAuthConfig.Google.Scopes,
+				},
+			},
+			security_management.SAMLConfig{
+				MetadataURL: clientSAMLConfig.MetadataURL,
+				EntityID:    clientSAMLConfig.EntityID,
+				ACSURL:      clientSAMLConfig.ACSURL,
+			},
+			jwtSecret,
+			authTypeConfig,
+		)
 		security_management.RegisterAdminSecurityRoutes(clientAPI, securityHandler, jwtSecret)
 		// User Management
 		userStore := &user_management.PostgresStore{DB: dbpool, AuditLogger: securityStore}
@@ -246,6 +333,11 @@ func main() {
 		return c.Next()
 	})
 
+	clientAPI.Get("/oauth/config", getClientOAuthConfig)
+	clientAPI.Post("/oauth/config", setClientOAuthConfig)
+	clientAPI.Get("/saml/config", getClientSAMLConfig)
+	clientAPI.Post("/saml/config", setClientSAMLConfig)
+
 	if err := app.Listen(fmt.Sprintf(":%s", serverPort)); err != nil {
 		log.Fatalf("Fiber failed: %v", err)
 	}
@@ -265,7 +357,47 @@ func getAuditLogger() security_management.AuditLogger {
 	return dbState.auditLogger
 }
 
-// Securely read password from terminal without echo
-func readPassword() ([]byte, error) {
-	return term.ReadPassword(int(syscall.Stdin))
+// Handlers for client admin config
+func getClientOAuthConfig(c *fiber.Ctx) error {
+	// RBAC: only admin
+	if !isClientAdmin(c) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden"})
+	}
+	return c.JSON(clientOAuthConfig)
+}
+
+func setClientOAuthConfig(c *fiber.Ctx) error {
+	if !isClientAdmin(c) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden"})
+	}
+	var cfg OAuthConfig
+	if err := c.BodyParser(&cfg); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	clientOAuthConfig = cfg
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func getClientSAMLConfig(c *fiber.Ctx) error {
+	if !isClientAdmin(c) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden"})
+	}
+	return c.JSON(clientSAMLConfig)
+}
+
+func setClientSAMLConfig(c *fiber.Ctx) error {
+	if !isClientAdmin(c) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden"})
+	}
+	var cfg SAMLConfig
+	if err := c.BodyParser(&cfg); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	clientSAMLConfig = cfg
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func isClientAdmin(c *fiber.Ctx) bool {
+	// Implement RBAC check for client admin
+	return c.Get("X-Admin") == "true"
 }

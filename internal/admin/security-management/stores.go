@@ -16,16 +16,15 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 
-
+	"github.com/pquerna/otp/totp"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var (
 	ErrMissingID       = errors.New("missing id for audit log")
 	ErrInvalidAuditLog = errors.New("invalid audit log: missing required fields")
 )
-
-
 
 func (s *PostgresStore) ListUserSecurityEvents(ctx context.Context, userID string) ([]SecurityEvent, error) {
 	rows, err := s.DB.Query(ctx, `SELECT id, user_id, event_type, details, created_at FROM security_events WHERE user_id=$1 ORDER BY created_at DESC`, userID)
@@ -46,11 +45,10 @@ func (s *PostgresStore) ListUserSecurityEvents(ctx context.Context, userID strin
 	return events, nil
 }
 
-
 func (s *PostgresStore) ListUserLoginHistory(ctx context.Context, userID string) ([]LoginHistory, error) {
 	rows, err := s.DB.Query(ctx, `SELECT id, user_id, ip, device, location, success, created_at FROM login_history WHERE user_id=$1 ORDER BY created_at DESC`, userID)
 	if err != nil {
-		logger.LogError("ListUserLoginHistory query failed", logger.ErrorField(err), logger.String("user_id", userID)) 
+		logger.LogError("ListUserLoginHistory query failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return nil, wrapDBErr("list_user_login_history", err)
 	}
 	defer rows.Close()
@@ -66,12 +64,10 @@ func (s *PostgresStore) ListUserLoginHistory(ctx context.Context, userID string)
 	return history, nil
 }
 
-
-
 func (s *PostgresStore) EnableMFA(ctx context.Context, userID string) error {
 	_, err := s.DB.Exec(ctx, `UPDATE users SET mfa_enabled=TRUE WHERE id=$1`, userID)
 	if err != nil {
-		logger.LogError("EnableMFA failed", logger.ErrorField(err), logger.String("user_id", userID)) 
+		logger.LogError("EnableMFA failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return wrapDBErr("enable_mfa", err)
 	}
 	return nil
@@ -86,18 +82,14 @@ func (s *PostgresStore) DisableMFA(ctx context.Context, userID string) error {
 	return nil
 }
 
-
-
 func (s *PostgresStore) ResetUserPassword(ctx context.Context, userID, newPassword string) error {
 	_, err := s.DB.Exec(ctx, `UPDATE users SET password_hash=$1 WHERE id=$2`, newPassword, userID)
 	if err != nil {
-		logger.LogError("ResetUserPassword failed", logger.ErrorField(err), logger.String("user_id", userID))	
+		logger.LogError("ResetUserPassword failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return wrapDBErr("reset_user_password", err)
 	}
 	return nil
 }
-
-
 
 func (s *PostgresStore) ListUserSessions(ctx context.Context, userID string) ([]Session, error) {
 	rows, err := s.DB.Query(ctx, `SELECT id, user_id, ip, device, created_at, expires_at FROM sessions WHERE user_id=$1 ORDER BY created_at DESC`, userID)
@@ -126,8 +118,6 @@ func (s *PostgresStore) RevokeUserSession(ctx context.Context, userID, sessionID
 	}
 	return nil
 }
-
-
 
 func (s *PostgresStore) ListSecurityAuditLogs(ctx context.Context, page, pageSize int) ([]SecurityAuditLog, error) {
 	offset := (page - 1) * pageSize
@@ -167,7 +157,6 @@ func (s *PostgresStore) CreateSecurityAuditLog(ctx context.Context, log Security
 }
 
 // --- API Key Store ---
-
 
 func (s *PostgresStore) ListUserAPIKeys(ctx context.Context, userID string) ([]APIKey, error) {
 	rows, err := s.DB.Query(ctx, `SELECT id, user_id, name, key, created_at, revoked_at FROM api_keys WHERE user_id=$1 ORDER BY created_at DESC`, userID)
@@ -212,7 +201,6 @@ func (s *PostgresStore) RevokeUserAPIKey(ctx context.Context, userID, keyID stri
 	return nil
 }
 
-
 func (s *PostgresStore) ListUserDevices(ctx context.Context, userID string) ([]Device, error) {
 	rows, err := s.DB.Query(ctx, `SELECT id, user_id, type, name, ip, created_at, revoked_at FROM devices WHERE user_id=$1 ORDER BY created_at DESC`, userID)
 	if err != nil {
@@ -245,12 +233,11 @@ func (s *PostgresStore) RevokeUserDevice(ctx context.Context, userID, deviceID s
 
 // --- Breach Store ---
 
-
 func (s *PostgresStore) ListBreaches(ctx context.Context, page, pageSize int) ([]Breach, error) {
 	offset := (page - 1) * pageSize
 	rows, err := s.DB.Query(ctx, `SELECT id, type, details, detected_at FROM breaches ORDER BY detected_at DESC LIMIT $1 OFFSET $2`, pageSize, offset)
 	if err != nil {
-		logger.LogError("ListBreaches query failed", logger.ErrorField(err)) 
+		logger.LogError("ListBreaches query failed", logger.ErrorField(err))
 		return nil, wrapDBErr("list_breaches", err)
 	}
 	defer rows.Close()
@@ -268,11 +255,10 @@ func (s *PostgresStore) ListBreaches(ctx context.Context, page, pageSize int) ([
 
 // --- Security Policy Store ---
 
-
 func (s *PostgresStore) ListSecurityPolicies(ctx context.Context) ([]SecurityPolicy, error) {
 	rows, err := s.DB.Query(ctx, `SELECT id, name, rules, created_at, updated_at FROM security_policies ORDER BY created_at DESC`)
 	if err != nil {
-		logger.LogError("ListSecurityPolicies query failed", logger.ErrorField(err)) 
+		logger.LogError("ListSecurityPolicies query failed", logger.ErrorField(err))
 		return nil, wrapDBErr("list_security_policies", err)
 	}
 	defer rows.Close()
@@ -939,6 +925,256 @@ func (s *PostgresStore) DeleteRateLimit(ctx context.Context, id string) error {
 	_, err := s.DB.Exec(ctx, q, id)
 	if err != nil {
 		return errors.New("failed to delete rate limit")
+	}
+	return nil
+}
+
+// --- PasswordService extensions ---
+func hashPassword(password string) (string, error) {
+	if password == "" {
+		return "", errors.New("password required")
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hash), nil
+}
+
+func checkPassword(hash, password string) error {
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+}
+
+func (s *PostgresStore) RegisterUser(ctx context.Context, email, password string) (User, error) {
+	hash, err := hashPassword(password)
+	if err != nil {
+		logger.LogError("RegisterUser hash failed", logger.ErrorField(err), logger.String("email", email))
+		return User{}, wrapDBErr("register_user_hash", err)
+	}
+	const q = `INSERT INTO users (email, password_hash, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) RETURNING id, email, created_at, updated_at`
+	var u User
+	err = s.DB.QueryRow(ctx, q, email, hash).Scan(&u.ID, &u.Email, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		logger.LogError("RegisterUser failed", logger.ErrorField(err), logger.String("email", email))
+		return User{}, wrapDBErr("register_user", err)
+	}
+	return u, nil
+}
+
+func (s *PostgresStore) AuthenticateUser(ctx context.Context, email, password string) (User, error) {
+	const q = `SELECT id, email, password_hash, created_at, updated_at FROM users WHERE email=$1 AND deleted_at IS NULL`
+	var u User
+	var hash string
+	err := s.DB.QueryRow(ctx, q, email).Scan(&u.ID, &u.Email, &hash, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		logger.LogError("AuthenticateUser failed", logger.ErrorField(err), logger.String("email", email))
+		return User{}, wrapDBErr("authenticate_user", err)
+	}
+	if err := checkPassword(hash, password); err != nil {
+		return User{}, errors.New("invalid credentials")
+	}
+	return u, nil
+}
+
+func generateToken(n int) (string, error) {
+	b := make([]byte, n)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(b), nil
+}
+
+func (s *PostgresStore) ResendVerification(ctx context.Context, email string) error {
+	const q = `SELECT id FROM users WHERE email=$1 AND deleted_at IS NULL`
+	var userID string
+	err := s.DB.QueryRow(ctx, q, email).Scan(&userID)
+	if err != nil {
+		logger.LogError("ResendVerification failed", logger.ErrorField(err), logger.String("email", email))
+		return wrapDBErr("resend_verification", err)
+	}
+	token, err := generateToken(32)
+	if err != nil {
+		return wrapDBErr("resend_verification_token", err)
+	}
+	_, err = s.DB.Exec(ctx, `UPDATE users SET email_verification_token=$1 WHERE id=$2`, token, userID)
+	if err != nil {
+		return wrapDBErr("resend_verification_update", err)
+	}
+	details := map[string]interface{}{"token": token, "user_id": userID}
+	_ = sendEmailProvider("smtp", []string{email}, "Verify your email", details)
+	return nil
+}
+
+func (s *PostgresStore) VerifyEmail(ctx context.Context, userID, token string) error {
+	const q = `UPDATE users SET email_verified=TRUE, updated_at=NOW() WHERE id=$1 AND email_verification_token=$2 AND deleted_at IS NULL`
+	res, err := s.DB.Exec(ctx, q, userID, token)
+	if err != nil {
+		logger.LogError("VerifyEmail failed", logger.ErrorField(err), logger.String("user_id", userID))
+		return wrapDBErr("verify_email", err)
+	}
+	if res.RowsAffected() == 0 {
+		return errors.New("invalid token or user")
+	}
+	return nil
+}
+
+func (s *PostgresStore) AccountRecover(ctx context.Context, email string) error {
+	const q = `SELECT id FROM users WHERE email=$1 AND deleted_at IS NULL`
+	var userID string
+	err := s.DB.QueryRow(ctx, q, email).Scan(&userID)
+	if err != nil {
+		logger.LogError("AccountRecover failed", logger.ErrorField(err), logger.String("email", email))
+		return wrapDBErr("account_recover", err)
+	}
+	token, err := generateToken(32)
+	if err != nil {
+		return wrapDBErr("account_recover_token", err)
+	}
+	_ = sendEmailProvider("smtp", []string{email}, "Account recovery", map[string]interface{}{"token": token, "user_id": userID})
+	return nil
+}
+
+func (s *PostgresStore) SendInvite(ctx context.Context, email, role string) error {
+	token, err := generateToken(32)
+	if err != nil {
+		return wrapDBErr("send_invite_token", err)
+	}
+	const q = `INSERT INTO invites (email, role, token, created_at) VALUES ($1, $2, $3, NOW())`
+	_, err = s.DB.Exec(ctx, q, email, role, token)
+	if err != nil {
+		logger.LogError("SendInvite failed", logger.ErrorField(err), logger.String("email", email))
+		return wrapDBErr("send_invite", err)
+	}
+	_ = sendEmailProvider("smtp", []string{email}, "You're invited", map[string]interface{}{"token": token, "role": role})
+	return nil
+}
+
+func (s *PostgresStore) AcceptInvite(ctx context.Context, token, email, password string) (User, error) {
+	const q = `SELECT email FROM invites WHERE token=$1 AND email=$2`
+	var foundEmail string
+	err := s.DB.QueryRow(ctx, q, token, email).Scan(&foundEmail)
+	if err != nil {
+		logger.LogError("AcceptInvite lookup failed", logger.ErrorField(err), logger.String("email", email))
+		return User{}, wrapDBErr("accept_invite_lookup", err)
+	}
+	// Register user
+	return s.RegisterUser(ctx, email, password)
+}
+
+// --- MFAService extensions ---
+func (s *PostgresStore) GenerateChallenge(ctx context.Context, userID string) (map[string]interface{}, error) {
+	const getSecretQ = `SELECT mfa_secret FROM users WHERE id=$1 AND deleted_at IS NULL`
+	var secret string
+	err := s.DB.QueryRow(ctx, getSecretQ, userID).Scan(&secret)
+	if err != nil {
+		return nil, wrapDBErr("generate_challenge_lookup", err)
+	}
+	if secret == "" {
+		key, err := totp.Generate(totp.GenerateOpts{
+			Issuer:      "Subinc",
+			AccountName: userID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		_, err = s.DB.Exec(ctx, `UPDATE users SET mfa_secret=$1 WHERE id=$2`, key.Secret(), userID)
+		if err != nil {
+			return nil, wrapDBErr("generate_challenge_set_secret", err)
+		}
+		return map[string]interface{}{
+			"qr":     key.URL(),
+			"secret": key.Secret(),
+			"setup":  true,
+		}, nil
+	}
+	code, err := totp.GenerateCode(secret, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{"challenge": code, "setup": false}, nil
+}
+
+func (s *PostgresStore) VerifyChallenge(ctx context.Context, userID, code string) error {
+	const getSecretQ = `SELECT mfa_secret FROM users WHERE id=$1 AND deleted_at IS NULL`
+	var secret string
+	err := s.DB.QueryRow(ctx, getSecretQ, userID).Scan(&secret)
+	if err != nil {
+		return wrapDBErr("verify_challenge_lookup", err)
+	}
+	if secret == "" {
+		return errors.New("MFA not setup")
+	}
+	valid := totp.Validate(code, secret)
+	if !valid {
+		return errors.New("invalid code")
+	}
+	return nil
+}
+
+// --- DeviceService extensions ---
+func (s *PostgresStore) TrustDevice(ctx context.Context, userID, deviceID string) error {
+	const q = `UPDATE devices SET trusted=TRUE, updated_at=NOW() WHERE id=$1 AND user_id=$2`
+	res, err := s.DB.Exec(ctx, q, deviceID, userID)
+	if err != nil {
+		logger.LogError("TrustDevice failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("device_id", deviceID))
+		return wrapDBErr("trust_device", err)
+	}
+	if res.RowsAffected() == 0 {
+		return errors.New("device not found")
+	}
+	return nil
+}
+
+func generateSessionToken() (string, error) {
+	b := make([]byte, 32)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+func (s *PostgresStore) CreateSession(ctx context.Context, userID, ip, device string, expiresIn time.Duration) (Session, error) {
+	token, err := generateSessionToken()
+	if err != nil {
+		logger.LogError("CreateSession token failed", logger.ErrorField(err), logger.String("user_id", userID))
+		return Session{}, wrapDBErr("create_session_token", err)
+	}
+	sess := Session{
+		ID:        token,
+		UserID:    userID,
+		IP:        ip,
+		Device:    device,
+		CreatedAt: time.Now().UTC(),
+		ExpiresAt: time.Now().Add(expiresIn).UTC(),
+	}
+	const q = `INSERT INTO sessions (id, user_id, ip, device, created_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6)`
+	_, err = s.DB.Exec(ctx, q, sess.ID, sess.UserID, sess.IP, sess.Device, sess.CreatedAt, sess.ExpiresAt)
+	if err != nil {
+		logger.LogError("CreateSession failed", logger.ErrorField(err), logger.String("user_id", userID))
+		return Session{}, wrapDBErr("create_session", err)
+	}
+	return sess, nil
+}
+
+func (s *PostgresStore) RefreshSession(ctx context.Context, sessionID string, expiresIn time.Duration) (Session, error) {
+	const q = `UPDATE sessions SET expires_at=NOW()+$1*interval '1 second' WHERE id=$2 RETURNING id, user_id, ip, device, created_at, expires_at`
+	var sess Session
+	err := s.DB.QueryRow(ctx, q, int64(expiresIn.Seconds()), sessionID).Scan(&sess.ID, &sess.UserID, &sess.IP, &sess.Device, &sess.CreatedAt, &sess.ExpiresAt)
+	if err != nil {
+		logger.LogError("RefreshSession failed", logger.ErrorField(err), logger.String("session_id", sessionID))
+		return Session{}, wrapDBErr("refresh_session", err)
+	}
+	return sess, nil
+}
+
+func (s *PostgresStore) LogoutSession(ctx context.Context, sessionID string) error {
+	const q = `DELETE FROM sessions WHERE id=$1`
+	_, err := s.DB.Exec(ctx, q, sessionID)
+	if err != nil {
+		logger.LogError("LogoutSession failed", logger.ErrorField(err), logger.String("session_id", sessionID))
+		return wrapDBErr("logout_session", err)
 	}
 	return nil
 }

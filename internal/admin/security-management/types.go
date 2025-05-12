@@ -7,7 +7,7 @@ import (
 )
 
 type PostgresStore struct {
-	DB     *pgxpool.Pool
+	DB          *pgxpool.Pool
 	AuditLogger AuditLogger
 }
 
@@ -37,6 +37,9 @@ type SecurityHandler struct {
 	SecurityAnalyticsService    SecurityAnalyticsService
 	NotificationService         NotificationService
 	SecurityModuleConfigService SecurityModuleConfigService
+	OwnerOAuthConfig            OAuthConfig
+	OwnerSAMLConfig             SAMLConfig
+	AuthTypeConfig              AuthTypeConfig
 }
 
 type SecurityEvent struct {
@@ -45,6 +48,13 @@ type SecurityEvent struct {
 	EventType string    `json:"event_type"`
 	Details   string    `json:"details"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type User struct {
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type LoginHistory struct {
@@ -185,4 +195,31 @@ type RateLimitConfig struct {
 	WindowSeconds int       `json:"window_seconds"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+type OAuthConfig struct {
+	Google struct {
+		ClientID     string   `json:"client_id"`
+		ClientSecret string   `json:"client_secret"`
+		RedirectURI  string   `json:"redirect_uri"`
+		Scopes       []string `json:"scopes"`
+	} `json:"google"`
+}
+
+type SAMLConfig struct {
+	MetadataURL string `json:"metadata_url"`
+	EntityID    string `json:"entity_id"`
+	ACSURL      string `json:"acs_url"`
+}
+
+// AuthTypeConfig controls which auth types are enabled/optional/disabled at runtime.
+type AuthTypeConfig struct {
+	PasswordEnabled  bool
+	PasswordOptional bool
+	MFAEnabled       bool
+	MFAOptional      bool
+	OAuthEnabled     bool
+	OAuthOptional    bool
+	SAMLEnabled      bool
+	SAMLOptional     bool
 }
