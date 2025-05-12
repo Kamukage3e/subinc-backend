@@ -199,7 +199,7 @@ func (h *ProjectHandler) GetSettings(c *fiber.Ctx) error {
 		logger.LogError("GetSettings: project_id required", logger.String("project_id", input.ProjectID))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project_id required"})
 	}
-	settings, err := h.ProjectSettingsService.GetSettings(c.Context(), input.ProjectID)
+	settings, err := h.Store.GetSettings(c.Context(), input.ProjectID)
 	if err != nil {
 		logger.LogError("GetSettings: failed", logger.ErrorField(err), logger.String("project_id", input.ProjectID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
@@ -216,14 +216,15 @@ func (h *ProjectHandler) UpdateSettings(c *fiber.Ctx) error {
 		}
 	}
 	var input struct {
-		ProjectID string `json:"project_id"`
-		Settings  string `json:"settings"`
+		ProjectID string                 `json:"project_id"`
+		Settings  map[string]interface{} `json:"settings"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.ProjectID == "" || input.Settings == "" {
+	if err := c.BodyParser(&input); err != nil || input.ProjectID == "" || input.Settings == nil {
 		logger.LogError("UpdateSettings: missing required fields", logger.String("project_id", input.ProjectID))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project_id and settings required"})
 	}
-	if err := h.ProjectSettingsService.UpdateSettings(c.Context(), input.ProjectID, input.Settings); err != nil {
+	err := h.Store.UpdateSettings(c.Context(), input.ProjectID, input.Settings)
+	if err != nil {
 		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.String("project_id", input.ProjectID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -237,7 +238,8 @@ func (h *ProjectHandler) UpdateSettings(c *fiber.Ctx) error {
 			CreatedAt: time.Now(),
 		})
 	}
-	return c.SendStatus(fiber.StatusNoContent)
+	// Optionally: test connection/feature if settings include credentials, return result
+	return c.JSON(fiber.Map{"ok": true})
 }
 
 // getActorID extracts the actor/user id from the request context or headers for audit logging

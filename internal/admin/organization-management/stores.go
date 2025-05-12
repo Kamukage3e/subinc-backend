@@ -2,13 +2,13 @@ package organization_management
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
-
-
 
 // OrganizationService
 func (s *PostgresStore) CreateOrganization(ctx context.Context, org Organization) (Organization, error) {
@@ -135,22 +135,43 @@ func (s *PostgresStore) ListDomains(ctx context.Context, orgID string) ([]OrgDom
 }
 
 // OrgSettingsService
-func (s *PostgresStore) GetSettings(ctx context.Context, orgID string) (OrgSettings, error) {
-	const q = `SELECT org_id, settings, updated_at FROM org_settings WHERE org_id = $1`
-	row := s.DB.QueryRow(ctx, q, orgID)
-	var out OrgSettings
-	if err := row.Scan(&out.OrgID, &out.Settings, &out.UpdatedAt); err != nil {
-		logger.LogError("GetSettings failed", logger.ErrorField(err), logger.String("org_id", orgID))
-		return OrgSettings{}, err
+func (s *PostgresStore) GetSettings(ctx context.Context, orgID string) (map[string]interface{}, error) {
+	if orgID == "" {
+		logger.LogError("org id required")
+		return nil, errors.New("org id required")
 	}
-	return out, nil
+	key := "org_settings_" + orgID
+	cfg, err := s.ServerConfigService.Get(ctx, key)
+	if err != nil {
+		if err.Error() == "config not found" {
+			return map[string]interface{}{}, nil
+		}
+		logger.LogError("failed to get org settings", logger.ErrorField(err), logger.String("org_id", orgID))
+		return nil, err
+	}
+	var settings map[string]interface{}
+	if err := json.Unmarshal([]byte(cfg.Value), &settings); err != nil {
+		logger.LogError("invalid org settings json", logger.ErrorField(err), logger.String("org_id", orgID))
+		return nil, errors.New("invalid org settings json")
+	}
+	return settings, nil
 }
 
-func (s *PostgresStore) UpdateSettings(ctx context.Context, orgID, settings string) error {
-	const q = `UPDATE org_settings SET settings = $2, updated_at = $3 WHERE org_id = $1`
-	_, err := s.DB.Exec(ctx, q, orgID, settings, time.Now().UTC())
-	if err != nil {
-		logger.LogError("UpdateSettings failed", logger.ErrorField(err), logger.String("org_id", orgID))
+func (s *PostgresStore) UpdateSettings(ctx context.Context, orgID string, settings map[string]interface{}) error {
+	if orgID == "" {
+		logger.LogError("org id required")
+		return errors.New("org id required")
 	}
-	return err
+	key := "org_settings_" + orgID
+	b, err := json.Marshal(settings)
+	if err != nil {
+		logger.LogError("marshal org settings failed", logger.ErrorField(err), logger.String("org_id", orgID))
+		return errors.New("invalid org settings")
+	}
+	_, err = s.ServerConfigService.Set(ctx, key, string(b), "system")
+	if err != nil {
+		logger.LogError("failed to set org settings", logger.ErrorField(err), logger.String("org_id", orgID))
+		return err
+	}
+	return nil
 }

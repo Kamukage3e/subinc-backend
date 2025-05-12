@@ -151,6 +151,8 @@ paths:
   /settings/get:
     post:
       summary: Get project settings
+      description: |
+        Project settings are stored in the server_config table (key: project_settings_{projectID}), are runtime, DB-backed, hot-reloadable, and immediately effective. All changes are auditable.
       security:
         - bearerAuth: []
       requestBody:
@@ -180,6 +182,8 @@ paths:
   /settings/update:
     put:
       summary: Update project settings
+      description: |
+        Project settings are stored in the server_config table (key: project_settings_{projectID}), are runtime, DB-backed, hot-reloadable, and immediately effective. All changes are auditable.
       security:
         - bearerAuth: []
       requestBody:
@@ -195,7 +199,8 @@ paths:
                 project_id:
                   type: string
                 settings:
-                  type: string
+                  type: object
+                  additionalProperties: true
       responses:
         "200":
           description: Project settings updated
@@ -284,7 +289,8 @@ components:
         project_id:
           type: string
         settings:
-          type: string
+          type: object
+          additionalProperties: true
         updated_at:
           type: string
           format: date-time

@@ -209,8 +209,8 @@ func (h *UserHandler) GetSettings(c *fiber.Ctx) error {
 
 func (h *UserHandler) UpdateSettings(c *fiber.Ctx) error {
 	var input struct {
-		UserID   string `json:"user_id"`
-		Settings string `json:"settings"`
+		UserID   string                 `json:"user_id"`
+		Settings map[string]interface{} `json:"settings"`
 	}
 	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
@@ -219,7 +219,8 @@ func (h *UserHandler) UpdateSettings(c *fiber.Ctx) error {
 		logger.LogError("failed to update settings", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update settings"})
 	}
-	return c.SendStatus(http.StatusNoContent)
+	// Optionally: test connection/feature if settings include credentials, return result
+	return c.JSON(fiber.Map{"ok": true})
 }
 
 // --- UserSession Handlers ---

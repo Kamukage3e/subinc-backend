@@ -26,14 +26,7 @@ table "user_profiles" {
   foreign_key { columns = [column.user_id]; ref_table = table.users; ref_columns = [table.users.column.id]; on_delete = CASCADE }
 }
 
-table "user_settings" {
-  schema      = schema.public
-  column "user_id"   { type = uuid; null = false }
-  column "settings"  { type = text; null = false }
-  column "updated_at"{ type = timestamptz; null = false; default = sql("now()") }
-  primary_key { columns = [column.user_id] }
-  foreign_key { columns = [column.user_id]; ref_table = table.users; ref_columns = [table.users.column.id]; on_delete = CASCADE }
-}
+# All user settings are now runtime, DB-backed, and managed via server_config (key: user_settings_{userID})
 
 table "user_sessions" {
   schema      = schema.public

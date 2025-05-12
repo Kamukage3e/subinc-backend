@@ -144,6 +144,8 @@ paths:
   /settings/get:
     get:
       summary: Get org settings
+      description: |
+        Org settings are stored in the server_config table (key: org_settings_{orgID}), are runtime, DB-backed, hot-reloadable, and immediately effective. All changes are auditable.
       security:
         - bearerAuth: []
       parameters:
@@ -168,6 +170,8 @@ paths:
   /settings/update:
     put:
       summary: Update org settings
+      description: |
+        Org settings are stored in the server_config table (key: org_settings_{orgID}), are runtime, DB-backed, hot-reloadable, and immediately effective. All changes are auditable.
       security:
         - bearerAuth: []
       requestBody:
@@ -184,6 +188,7 @@ paths:
                   type: string
                 settings:
                   type: object
+                  additionalProperties: true
       responses:
         "200":
           description: Org settings updated
@@ -339,6 +344,7 @@ components:
           type: string
         settings:
           type: object
+          additionalProperties: true
         updated_at:
           type: string
           format: date-time

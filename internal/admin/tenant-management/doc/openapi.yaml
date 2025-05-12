@@ -10,6 +10,8 @@ paths:
     post:
       tags: [Tenants]
       summary: Create tenant
+      description: |
+        All tenant settings are now managed via the /tenants/get-settings and /tenants/update-settings endpoints, and stored in the server_config table (key: tenant_settings_{tenantID}).
       operationId: createTenant
       security:
         - bearerAuth: []
@@ -25,7 +27,6 @@ paths:
                 value:
                   name: "Acme Corp"
                   status: "active"
-                  settings: "{}"
       responses:
         "201":
           description: Tenant created
@@ -39,7 +40,6 @@ paths:
                     id: "uuid"
                     name: "Acme Corp"
                     status: "active"
-                    settings: "{}"
                     created_at: "2024-01-01T00:00:00Z"
                     updated_at: "2024-01-01T00:00:00Z"
         "400": { $ref: "#/components/responses/BadRequest" }
@@ -49,6 +49,8 @@ paths:
     post:
       tags: [Tenants]
       summary: Update tenant
+      description: |
+        All tenant settings are now managed via the /tenants/get-settings and /tenants/update-settings endpoints, and stored in the server_config table (key: tenant_settings_{tenantID}).
       operationId: updateTenant
       security:
         - bearerAuth: []
@@ -65,7 +67,6 @@ paths:
                   id: "uuid"
                   name: "Acme Corp Updated"
                   status: "active"
-                  settings: '{"policy":true}'
       responses:
         "200":
           description: Tenant updated
@@ -79,7 +80,6 @@ paths:
                     id: "uuid"
                     name: "Acme Corp Updated"
                     status: "active"
-                    settings: '{"policy":true}'
                     created_at: "2024-01-01T00:00:00Z"
                     updated_at: "2024-01-02T00:00:00Z"
         "400": { $ref: "#/components/responses/BadRequest" }
@@ -113,6 +113,8 @@ paths:
     post:
       tags: [Tenants]
       summary: Get tenant by ID
+      description: |
+        All tenant settings are now managed via the /tenants/get-settings and /tenants/update-settings endpoints, and stored in the server_config table (key: tenant_settings_{tenantID}).
       operationId: getTenant
       security:
         - bearerAuth: []
@@ -140,7 +142,6 @@ paths:
                     id: "uuid"
                     name: "Acme Corp"
                     status: "active"
-                    settings: "{}"
                     created_at: "2024-01-01T00:00:00Z"
                     updated_at: "2024-01-01T00:00:00Z"
         "400": { $ref: "#/components/responses/BadRequest" }
@@ -150,6 +151,8 @@ paths:
     post:
       tags: [Tenants]
       summary: List tenants
+      description: |
+        All tenant settings are now managed via the /tenants/get-settings and /tenants/update-settings endpoints, and stored in the server_config table (key: tenant_settings_{tenantID}).
       operationId: listTenants
       security:
         - bearerAuth: []
@@ -189,7 +192,6 @@ paths:
                       - id: "uuid"
                         name: "Acme Corp"
                         status: "active"
-                        settings: "{}"
                         created_at: "2024-01-01T00:00:00Z"
                         updated_at: "2024-01-01T00:00:00Z"
                     total: 1
@@ -199,6 +201,8 @@ paths:
     post:
       tags: [TenantSettings]
       summary: Get tenant settings
+      description: |
+        Tenant settings are stored in the server_config table (key: tenant_settings_{tenantID}), are runtime, DB-backed, hot-reloadable, and immediately effective. All changes are auditable.
       operationId: getTenantSettings
       security:
         - bearerAuth: []
@@ -231,6 +235,8 @@ paths:
     post:
       tags: [TenantSettings]
       summary: Update tenant settings
+      description: |
+        Tenant settings are stored in the server_config table (key: tenant_settings_{tenantID}), are runtime, DB-backed, hot-reloadable, and immediately effective. All changes are auditable.
       operationId: updateTenantSettings
       security:
         - bearerAuth: []
@@ -335,34 +341,32 @@ components:
           type: string
         status:
           type: string
-        settings:
-          type: string
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
+      description: |
+        All tenant settings are now managed via the /tenants/get-settings and /tenants/update-settings endpoints, and stored in the server_config table (key: tenant_settings_{tenantID}).
     TenantCreateRequest:
       type: object
       required:
         - name
         - status
-        - settings
       properties:
         name:
           type: string
         status:
           type: string
-        settings:
-          type: string
+      description: |
+        All tenant settings are now managed via the /tenants/get-settings and /tenants/update-settings endpoints, and stored in the server_config table (key: tenant_settings_{tenantID}).
     TenantUpdateRequest:
       type: object
       required:
         - id
         - name
         - status
-        - settings
       properties:
         id:
           type: string
@@ -370,8 +374,8 @@ components:
           type: string
         status:
           type: string
-        settings:
-          type: string
+      description: |
+        All tenant settings are now managed via the /tenants/get-settings and /tenants/update-settings endpoints, and stored in the server_config table (key: tenant_settings_{tenantID}).
     TenantIDRequest:
       type: object
       required:

@@ -1,3 +1,9 @@
+// NOTE: All runtime configuration, secrets, and feature flags for security-management are managed via the server_config table/service (DB-backed, hot-reloadable, multi-tenant). No direct DB columns or static config files are used for runtime config. All config endpoints read/write via server_config using key patterns (e.g., security_mfa_{tenantID}, provider_config_{channel}_{provider}_{tenantID}, etc.).
+//
+// Deprecated: notification_configs, provider_configs, and any other config tables/columns. Remove if present.
+//
+// See OpenAPI doc for config key patterns and schemas.
+
 schema "public" {
   comment = "Security management tables for SaaS. All tables are multi-tenant, type-safe, and production-grade."
 }
@@ -145,16 +151,6 @@ table "security_analytics" {
   primary_key { columns = [column.tenant_id, column.generated_at] }
 }
 
-table "notification_configs" {
-  schema      = schema.public
-  column "tenant_id"   { type = uuid; null = false }
-  column "channels"    { type = text; null = false } // comma-separated or JSON string
-  column "recipients"  { type = text; null = false } // comma-separated or JSON string
-  column "events"      { type = text; null = false } // comma-separated or JSON string
-  column "enabled"     { type = boolean; null = false; default = true }
-  primary_key { columns = [column.tenant_id] }
-}
-
 table "anomalies" {
   schema      = schema.public
   column "id"         { type = uuid; null = false }
@@ -197,10 +193,20 @@ table "account_recoveries" {
   index { columns = [column.user_id] }
 }
 
-alter table "users" {
-  add column "mfa_enabled" boolean not null default false;
-  add column "mfa_secret" varchar(128);
-  add column "deleted_at" timestamptz;
+table "notification_queue" {
+  schema      = schema.public
+  column "id"         { type = uuid; null = false }
+  column "provider"   { type = varchar(64); null = false }
+  column "to"         { type = jsonb; null = false }
+  column "event"      { type = varchar(128); null = false }
+  column "details"    { type = jsonb; null = false }
+  column "retry"      { type = integer; null = false }
+  column "max_retry"  { type = integer; null = false }
+  column "status"     { type = varchar(32); null = false }
+  column "last_error" { type = text; null = false }
+  column "created_at" { type = timestamptz; null = false; default = sql("now()") }
+  column "updated_at" { type = timestamptz; null = false; default = sql("now()") }
+  primary_key { columns = [column.id] }
 }
 
 alter table "devices" {

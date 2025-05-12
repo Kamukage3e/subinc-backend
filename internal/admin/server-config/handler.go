@@ -1,11 +1,16 @@
 package server_config
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"time"
+
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	redis "github.com/redis/go-redis/v9"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
@@ -219,7 +224,18 @@ func (h *Handler) SetOwnerDBConfig(c *fiber.Ctx) error {
 		h.log.Error("set_owner_db_config failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(cfg)
+	// Validate DB connection
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", input.User, input.Password, input.Host, input.Port, input.Name, input.SSLMode)
+	dbpool, dbErr := pgxpool.New(c.Context(), dsn)
+	if dbErr == nil {
+		defer dbpool.Close()
+		dbErr = dbpool.Ping(c.Context())
+	}
+	result := fiber.Map{"config": cfg, "db_connection_ok": dbErr == nil}
+	if dbErr != nil {
+		result["db_error"] = dbErr.Error()
+	}
+	return c.JSON(result)
 }
 
 // GetOwnerLoggingConfig returns the current owner-admin logging config (runtime, hot-reloadable)
@@ -419,7 +435,24 @@ func (h *Handler) SetOwnerRedisConfig(c *fiber.Ctx) error {
 		h.log.Error("set_owner_redis_config failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(cfg)
+	// Validate Redis connection
+	addr := fmt.Sprintf("%s:%d", input.Host, input.Port)
+	client := redis.NewClient(&redis.Options{
+		Addr:         addr,
+		Password:     input.Password,
+		DB:           input.DB,
+		PoolSize:     input.PoolSize,
+		MinIdleConns: input.MinIdle,
+	})
+	ctx, cancel := context.WithTimeout(c.Context(), 2*time.Second)
+	defer cancel()
+	pingErr := client.Ping(ctx).Err()
+	_ = client.Close()
+	result := fiber.Map{"config": cfg, "redis_connection_ok": pingErr == nil}
+	if pingErr != nil {
+		result["redis_error"] = pingErr.Error()
+	}
+	return c.JSON(result)
 }
 
 // GetOwnerAWSConfig returns the current owner-admin AWS config (runtime, hot-reloadable)

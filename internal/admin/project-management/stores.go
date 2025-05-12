@@ -2,12 +2,12 @@ package project_management
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-
 
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
@@ -95,22 +95,43 @@ func (s *PostgresStore) ListProjects(ctx context.Context, orgID string, page, pa
 }
 
 // --- ProjectSettingsService ---
-func (s *PostgresStore) GetSettings(ctx context.Context, projectID string) (ProjectSettings, error) {
-	var ps ProjectSettings
-	row := s.DB.QueryRow(ctx, `SELECT project_id, settings, updated_at FROM project_settings WHERE project_id=$1`, projectID)
-	err := row.Scan(&ps.ProjectID, &ps.Settings, &ps.UpdatedAt)
-	if err != nil {
-		logger.LogError("GetSettings: failed", logger.ErrorField(err), logger.Any("project_id", projectID))
-		return ProjectSettings{}, wrapDBErr("get_settings", err)
+func (s *PostgresStore) GetSettings(ctx context.Context, projectID string) (map[string]interface{}, error) {
+	if projectID == "" {
+		logger.LogError("project id required")
+		return nil, errors.New("project id required")
 	}
-	return ps, nil
+	key := "project_settings_" + projectID
+	cfg, err := s.ServerConfigService.Get(ctx, key)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) || err.Error() == "config not found" {
+			return map[string]interface{}{}, nil
+		}
+		logger.LogError("failed to get project settings", logger.ErrorField(err), logger.String("project_id", projectID))
+		return nil, err
+	}
+	var settings map[string]interface{}
+	if err := json.Unmarshal([]byte(cfg.Value), &settings); err != nil {
+		logger.LogError("invalid project settings json", logger.ErrorField(err), logger.String("project_id", projectID))
+		return nil, errors.New("invalid project settings json")
+	}
+	return settings, nil
 }
 
-func (s *PostgresStore) UpdateSettings(ctx context.Context, projectID, settings string) error {
-	_, err := s.DB.Exec(ctx, `UPDATE project_settings SET settings=$1, updated_at=$2 WHERE project_id=$3`, settings, time.Now(), projectID)
+func (s *PostgresStore) UpdateSettings(ctx context.Context, projectID string, settings map[string]interface{}) error {
+	if projectID == "" {
+		logger.LogError("project id required")
+		return errors.New("project id required")
+	}
+	key := "project_settings_" + projectID
+	b, err := json.Marshal(settings)
 	if err != nil {
-		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.Any("project_id", projectID))
-		return wrapDBErr("update_settings", err)
+		logger.LogError("marshal project settings failed", logger.ErrorField(err), logger.String("project_id", projectID))
+		return errors.New("invalid project settings")
+	}
+	_, err = s.ServerConfigService.Set(ctx, key, string(b), "system")
+	if err != nil {
+		logger.LogError("failed to set project settings", logger.ErrorField(err), logger.String("project_id", projectID))
+		return err
 	}
 	return nil
 }
@@ -127,5 +148,3 @@ func (e *DBError) Error() string {
 func generateUUID() string {
 	return uuid.NewString()
 }
-
-

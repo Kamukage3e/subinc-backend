@@ -615,34 +615,54 @@ func (s *PostgresStore) SendNotification(ctx context.Context, tenantID string, c
 // --- NotificationService ---
 
 func (s *PostgresStore) GetNotificationConfig(ctx context.Context, tenantID string) (NotificationConfig, error) {
-	const q = `SELECT channels, recipients, events, enabled FROM notification_configs WHERE tenant_id = $1`
-	row := s.DB.QueryRow(ctx, q, tenantID)
-	var cfg NotificationConfig
-	var channels, events []string
-	if err := row.Scan(&channels, &cfg.Recipients, &events, &cfg.Enabled); err != nil {
-		logger.LogError("GetNotificationConfig failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+	if tenantID == "" {
+		logger.LogError("tenant id required")
+		return NotificationConfig{}, errors.New("tenant id required")
+	}
+	key := "security_notification_config_" + tenantID
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Get(context.Context, string) (struct{ Value string }, error)
+	})
+	if !ok {
+		return NotificationConfig{}, errors.New("server config service not available")
+	}
+	cfg, err := serverConfigService.Get(ctx, key)
+	if err != nil {
+		if err.Error() == "config not found" {
+			return NotificationConfig{}, nil
+		}
+		logger.LogError("failed to get notification config", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return NotificationConfig{}, err
 	}
-	cfg.TenantID = tenantID
-	for _, ch := range channels {
-		cfg.Channels = append(cfg.Channels, NotificationChannel(ch))
+	var config NotificationConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &config); err != nil {
+		logger.LogError("invalid notification config json", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return NotificationConfig{}, errors.New("invalid notification config json")
 	}
-	cfg.Events = events
-	return cfg, nil
+	config.TenantID = tenantID
+	return config, nil
 }
 
-func (s *PostgresStore) UpdateNotificationConfig(ctx context.Context, cfg NotificationConfig) error {
-	const q = `INSERT INTO notification_configs (tenant_id, channels, recipients, events, enabled) VALUES ($1, $2, $3, $4, $5)
-	ON CONFLICT (tenant_id) DO UPDATE SET channels = $2, recipients = $3, events = $4, enabled = $5`
-	channels := make([]string, len(cfg.Channels))
-	for i, ch := range cfg.Channels {
-		channels[i] = string(ch)
-	}
-	_, err := s.DB.Exec(ctx, q, cfg.TenantID, channels, cfg.Recipients, cfg.Events, cfg.Enabled)
-	if err != nil {
-		logger.LogError("UpdateNotificationConfig failed", logger.ErrorField(err), logger.String("tenant_id", cfg.TenantID))
+func (s *PostgresStore) SetNotificationConfig(ctx context.Context, tenantID string, config NotificationConfig) error {
+	if err := config.Validate(); err != nil {
 		return err
 	}
+	key := "security_notification_config_" + tenantID
+	b, err := json.Marshal(config)
+	if err != nil {
+		return errors.New("invalid notification config")
+	}
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Set(context.Context, string, string, string) (struct{}, error)
+	})
+	if !ok {
+		return errors.New("server config service not available")
+	}
+	_, err = serverConfigService.Set(ctx, key, string(b), "system")
+	if err != nil {
+		return err
+	}
+	// hot-reload stub
 	return nil
 }
 
@@ -650,13 +670,20 @@ type SMTPProvider struct{}
 
 func (p *SMTPProvider) Name() string { return "smtp" }
 func (p *SMTPProvider) Send(ctx context.Context, to []string, event string, details map[string]interface{}) error {
+	store, ok := ctx.Value("store").(*PostgresStore)
+	if !ok {
+		return errors.New("store not found in context")
+	}
 	tenantID := details["tenant_id"].(string)
-	cfg := emailConfig[tenantID]
-	host := cfg["host"]
-	port := cfg["port"]
-	user := cfg["user"]
-	pass := cfg["pass"]
-	from := cfg["from"]
+	cfg, err := store.GetProviderConfig(ctx, tenantID, "email", "smtp")
+	if err != nil {
+		return err
+	}
+	host := cfg.Config["host"]
+	port := cfg.Config["port"]
+	user := cfg.Config["user"]
+	pass := cfg.Config["pass"]
+	from := cfg.Config["from"]
 	if host == "" || port == "" || user == "" || pass == "" || from == "" {
 		return errors.New("email provider config missing")
 	}
@@ -675,11 +702,18 @@ type TwilioProvider struct{}
 
 func (p *TwilioProvider) Name() string { return "twilio" }
 func (p *TwilioProvider) Send(ctx context.Context, to []string, event string, details map[string]interface{}) error {
+	store, ok := ctx.Value("store").(*PostgresStore)
+	if !ok {
+		return errors.New("store not found in context")
+	}
 	tenantID := details["tenant_id"].(string)
-	cfg := smsConfig[tenantID]
-	twilioSID := cfg["sid"]
-	twilioToken := cfg["token"]
-	twilioFrom := cfg["from"]
+	cfg, err := store.GetProviderConfig(ctx, tenantID, "sms", "twilio")
+	if err != nil {
+		return err
+	}
+	twilioSID := cfg.Config["sid"]
+	twilioToken := cfg.Config["token"]
+	twilioFrom := cfg.Config["from"]
 	if twilioSID == "" || twilioToken == "" || twilioFrom == "" {
 		return errors.New("sms provider config missing")
 	}
@@ -705,9 +739,16 @@ type SlackProvider struct{}
 
 func (p *SlackProvider) Name() string { return "slack" }
 func (p *SlackProvider) Send(ctx context.Context, to []string, event string, details map[string]interface{}) error {
+	store, ok := ctx.Value("store").(*PostgresStore)
+	if !ok {
+		return errors.New("store not found in context")
+	}
 	tenantID := details["tenant_id"].(string)
-	cfg := chatConfig[tenantID]
-	webhook := cfg["webhook"]
+	cfg, err := store.GetProviderConfig(ctx, tenantID, "chat", "slack")
+	if err != nil {
+		return err
+	}
+	webhook := cfg.Config["webhook"]
 	if webhook == "" {
 		return errors.New("slack webhook config missing")
 	}
@@ -1341,4 +1382,419 @@ func (s *PostgresStore) UpdateNotificationQueueItem(ctx context.Context, item No
 		logger.LogError("UpdateNotificationQueueItem failed", logger.ErrorField(err))
 	}
 	return err
+}
+
+// --- MFAConfig Service ---
+func (s *PostgresStore) GetMFAConfig(ctx context.Context, tenantID string) (MFAConfig, error) {
+	if tenantID == "" {
+		return MFAConfig{}, errors.New("tenant_id required")
+	}
+	key := "security_mfa_" + tenantID
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Get(context.Context, string) (struct{ Value string }, error)
+	})
+	if !ok {
+		return MFAConfig{}, errors.New("server config service not available")
+	}
+	cfg, err := serverConfigService.Get(ctx, key)
+	if err != nil {
+		if err.Error() == "config not found" {
+			return MFAConfig{}, nil
+		}
+		return MFAConfig{}, err
+	}
+	var config MFAConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &config); err != nil {
+		return MFAConfig{}, errors.New("invalid mfa config json")
+	}
+	return config, nil
+}
+
+func (s *PostgresStore) SetMFAConfig(ctx context.Context, tenantID string, config MFAConfig) error {
+	if err := config.Validate(); err != nil {
+		return err
+	}
+	key := "security_mfa_" + tenantID
+	b, err := json.Marshal(config)
+	if err != nil {
+		return errors.New("invalid mfa config")
+	}
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Set(context.Context, string, string, string) (struct{}, error)
+	})
+	if !ok {
+		return errors.New("server config service not available")
+	}
+	_, err = serverConfigService.Set(ctx, key, string(b), "system")
+	if err != nil {
+		return err
+	}
+	// hot-reload stub
+	return nil
+}
+
+// --- ProviderConfig Service ---
+func (s *PostgresStore) GetProviderConfig(ctx context.Context, tenantID, channel, provider string) (ProviderConfig, error) {
+	if tenantID == "" || channel == "" || provider == "" {
+		return ProviderConfig{}, errors.New("tenant_id, channel, provider required")
+	}
+	key := "security_provider_" + channel + "_" + provider + "_" + tenantID
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Get(context.Context, string) (struct{ Value string }, error)
+	})
+	if !ok {
+		return ProviderConfig{}, errors.New("server config service not available")
+	}
+	cfg, err := serverConfigService.Get(ctx, key)
+	if err != nil {
+		if err.Error() == "config not found" {
+			return ProviderConfig{}, nil
+		}
+		return ProviderConfig{}, err
+	}
+	var config ProviderConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &config); err != nil {
+		return ProviderConfig{}, errors.New("invalid provider config json")
+	}
+	return config, nil
+}
+
+func (s *PostgresStore) SetProviderConfig(ctx context.Context, config ProviderConfig) error {
+	if err := config.Validate(); err != nil {
+		return err
+	}
+	key := "security_provider_" + config.Channel + "_" + config.Provider + "_" + config.TenantID
+	b, err := json.Marshal(config)
+	if err != nil {
+		return errors.New("invalid provider config")
+	}
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Set(context.Context, string, string, string) (struct{}, error)
+	})
+	if !ok {
+		return errors.New("server config service not available")
+	}
+	_, err = serverConfigService.Set(ctx, key, string(b), "system")
+	if err != nil {
+		return err
+	}
+	// hot-reload stub
+	return nil
+}
+
+// --- PasswordPolicyConfig Service ---
+func (s *PostgresStore) GetPasswordPolicyConfig(ctx context.Context, tenantID string) (PasswordPolicyConfig, error) {
+	if tenantID == "" {
+		return PasswordPolicyConfig{}, errors.New("tenant_id required")
+	}
+	key := "security_password_policy_" + tenantID
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Get(context.Context, string) (struct{ Value string }, error)
+	})
+	if !ok {
+		return PasswordPolicyConfig{}, errors.New("server config service not available")
+	}
+	cfg, err := serverConfigService.Get(ctx, key)
+	if err != nil {
+		if err.Error() == "config not found" {
+			return PasswordPolicyConfig{}, nil
+		}
+		return PasswordPolicyConfig{}, err
+	}
+	var config PasswordPolicyConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &config); err != nil {
+		return PasswordPolicyConfig{}, errors.New("invalid password policy config json")
+	}
+	return config, nil
+}
+
+func (s *PostgresStore) SetPasswordPolicyConfig(ctx context.Context, tenantID string, config PasswordPolicyConfig) error {
+	if err := config.Validate(); err != nil {
+		return err
+	}
+	key := "security_password_policy_" + tenantID
+	b, err := json.Marshal(config)
+	if err != nil {
+		return errors.New("invalid password policy config")
+	}
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Set(context.Context, string, string, string) (struct{}, error)
+	})
+	if !ok {
+		return errors.New("server config service not available")
+	}
+	_, err = serverConfigService.Set(ctx, key, string(b), "system")
+	if err != nil {
+		return err
+	}
+	// hot-reload stub
+	return nil
+}
+
+// --- SessionConfig Service ---
+func (s *PostgresStore) GetSessionConfig(ctx context.Context, tenantID string) (SessionConfig, error) {
+	if tenantID == "" {
+		return SessionConfig{}, errors.New("tenant_id required")
+	}
+	key := "security_session_" + tenantID
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Get(context.Context, string) (struct{ Value string }, error)
+	})
+	if !ok {
+		return SessionConfig{}, errors.New("server config service not available")
+	}
+	cfg, err := serverConfigService.Get(ctx, key)
+	if err != nil {
+		if err.Error() == "config not found" {
+			return SessionConfig{}, nil
+		}
+		return SessionConfig{}, err
+	}
+	var config SessionConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &config); err != nil {
+		return SessionConfig{}, errors.New("invalid session config json")
+	}
+	return config, nil
+}
+
+func (s *PostgresStore) SetSessionConfig(ctx context.Context, tenantID string, config SessionConfig) error {
+	if err := config.Validate(); err != nil {
+		return err
+	}
+	key := "security_session_" + tenantID
+	b, err := json.Marshal(config)
+	if err != nil {
+		return errors.New("invalid session config")
+	}
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Set(context.Context, string, string, string) (struct{}, error)
+	})
+	if !ok {
+		return errors.New("server config service not available")
+	}
+	_, err = serverConfigService.Set(ctx, key, string(b), "system")
+	if err != nil {
+		return err
+	}
+	// hot-reload stub
+	return nil
+}
+
+func (s *PostgresStore) SetRateLimitConfig(ctx context.Context, config RateLimitConfig) error {
+	if err := config.Validate(); err != nil {
+		return err
+	}
+	key := "security_rate_limit_" + config.Scope + "_" + config.ScopeID
+	b, err := json.Marshal(config)
+	if err != nil {
+		return errors.New("invalid rate limit config")
+	}
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Set(context.Context, string, string, string) (struct{}, error)
+	})
+	if !ok {
+		return errors.New("server config service not available")
+	}
+	_, err = serverConfigService.Set(ctx, key, string(b), "system")
+	if err != nil {
+		return err
+	}
+	// hot-reload stub
+	return nil
+}
+
+// --- NotificationChannelEnabledConfig Service ---
+func (s *PostgresStore) GetNotificationChannelEnabledConfig(ctx context.Context, tenantID, channel, provider string) (NotificationChannelEnabledConfig, error) {
+	if tenantID == "" || channel == "" || provider == "" {
+		return NotificationChannelEnabledConfig{}, errors.New("tenant_id, channel, provider required")
+	}
+	key := "notification_channel_enabled_" + tenantID + "_" + channel + "_" + provider
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Get(context.Context, string) (struct{ Value string }, error)
+	})
+	if !ok {
+		return NotificationChannelEnabledConfig{}, errors.New("server config service not available")
+	}
+	cfg, err := serverConfigService.Get(ctx, key)
+	if err != nil {
+		if err.Error() == "config not found" {
+			return NotificationChannelEnabledConfig{}, nil
+		}
+		return NotificationChannelEnabledConfig{}, err
+	}
+	var config NotificationChannelEnabledConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &config); err != nil {
+		return NotificationChannelEnabledConfig{}, errors.New("invalid notification channel enabled config json")
+	}
+	return config, nil
+}
+
+func (s *PostgresStore) SetNotificationChannelEnabledConfig(ctx context.Context, config NotificationChannelEnabledConfig) error {
+	if err := config.Validate(); err != nil {
+		return err
+	}
+	key := "notification_channel_enabled_" + config.TenantID + "_" + config.Channel + "_" + config.Provider
+	b, err := json.Marshal(config)
+	if err != nil {
+		return errors.New("invalid notification channel enabled config")
+	}
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Set(context.Context, string, string, string) (struct{}, error)
+	})
+	if !ok {
+		return errors.New("server config service not available")
+	}
+	_, err = serverConfigService.Set(ctx, key, string(b), "system")
+	if err != nil {
+		return err
+	}
+	// hot-reload stub
+	return nil
+}
+
+// --- OAuthConfigDB Service ---
+func (s *PostgresStore) GetOAuthConfig(ctx context.Context, tenantID string) (OAuthConfigDB, error) {
+	if tenantID == "" {
+		return OAuthConfigDB{}, errors.New("tenant_id required")
+	}
+	key := "oauth_config_" + tenantID
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Get(context.Context, string) (struct{ Value string }, error)
+	})
+	if !ok {
+		return OAuthConfigDB{}, errors.New("server config service not available")
+	}
+	cfg, err := serverConfigService.Get(ctx, key)
+	if err != nil {
+		if err.Error() == "config not found" {
+			return OAuthConfigDB{}, nil
+		}
+		return OAuthConfigDB{}, err
+	}
+	var config OAuthConfigDB
+	if err := json.Unmarshal([]byte(cfg.Value), &config); err != nil {
+		return OAuthConfigDB{}, errors.New("invalid oauth config json")
+	}
+	return config, nil
+}
+
+func (s *PostgresStore) SetOAuthConfig(ctx context.Context, tenantID string, config OAuthConfigDB) error {
+	if err := config.Validate(); err != nil {
+		return err
+	}
+	key := "oauth_config_" + tenantID
+	b, err := json.Marshal(config)
+	if err != nil {
+		return errors.New("invalid oauth config")
+	}
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Set(context.Context, string, string, string) (struct{}, error)
+	})
+	if !ok {
+		return errors.New("server config service not available")
+	}
+	_, err = serverConfigService.Set(ctx, key, string(b), "system")
+	if err != nil {
+		return err
+	}
+	// hot-reload stub
+	return nil
+}
+
+// --- SAMLConfigDB Service ---
+func (s *PostgresStore) GetSAMLConfig(ctx context.Context, tenantID string) (SAMLConfigDB, error) {
+	if tenantID == "" {
+		return SAMLConfigDB{}, errors.New("tenant_id required")
+	}
+	key := "saml_config_" + tenantID
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Get(context.Context, string) (struct{ Value string }, error)
+	})
+	if !ok {
+		return SAMLConfigDB{}, errors.New("server config service not available")
+	}
+	cfg, err := serverConfigService.Get(ctx, key)
+	if err != nil {
+		if err.Error() == "config not found" {
+			return SAMLConfigDB{}, nil
+		}
+		return SAMLConfigDB{}, err
+	}
+	var config SAMLConfigDB
+	if err := json.Unmarshal([]byte(cfg.Value), &config); err != nil {
+		return SAMLConfigDB{}, errors.New("invalid saml config json")
+	}
+	return config, nil
+}
+
+func (s *PostgresStore) SetSAMLConfig(ctx context.Context, tenantID string, config SAMLConfigDB) error {
+	if err := config.Validate(); err != nil {
+		return err
+	}
+	key := "saml_config_" + tenantID
+	b, err := json.Marshal(config)
+	if err != nil {
+		return errors.New("invalid saml config")
+	}
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Set(context.Context, string, string, string) (struct{}, error)
+	})
+	if !ok {
+		return errors.New("server config service not available")
+	}
+	_, err = serverConfigService.Set(ctx, key, string(b), "system")
+	if err != nil {
+		return err
+	}
+	// hot-reload stub
+	return nil
+}
+
+// --- AuthTypeConfigDB Service ---
+func (s *PostgresStore) GetAuthTypeConfig(ctx context.Context, tenantID string) (AuthTypeConfigDB, error) {
+	if tenantID == "" {
+		return AuthTypeConfigDB{}, errors.New("tenant_id required")
+	}
+	key := "auth_type_config_" + tenantID
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Get(context.Context, string) (struct{ Value string }, error)
+	})
+	if !ok {
+		return AuthTypeConfigDB{}, errors.New("server config service not available")
+	}
+	cfg, err := serverConfigService.Get(ctx, key)
+	if err != nil {
+		if err.Error() == "config not found" {
+			return AuthTypeConfigDB{}, nil
+		}
+		return AuthTypeConfigDB{}, err
+	}
+	var config AuthTypeConfigDB
+	if err := json.Unmarshal([]byte(cfg.Value), &config); err != nil {
+		return AuthTypeConfigDB{}, errors.New("invalid auth type config json")
+	}
+	return config, nil
+}
+
+func (s *PostgresStore) SetAuthTypeConfig(ctx context.Context, tenantID string, config AuthTypeConfigDB) error {
+	if err := config.Validate(); err != nil {
+		return err
+	}
+	key := "auth_type_config_" + tenantID
+	b, err := json.Marshal(config)
+	if err != nil {
+		return errors.New("invalid auth type config")
+	}
+	serverConfigService, ok := s.ServerConfigService.(interface {
+		Set(context.Context, string, string, string) (struct{}, error)
+	})
+	if !ok {
+		return errors.New("server config service not available")
+	}
+	_, err = serverConfigService.Set(ctx, key, string(b), "system")
+	if err != nil {
+		return err
+	}
+	// hot-reload stub
+	return nil
 }

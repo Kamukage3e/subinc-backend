@@ -2,7 +2,8 @@ openapi: 3.1.0
 info:
   title: Security Management API
   version: 1.0.0
-  description: Production-grade API for SaaS security management. All endpoints are secure, RBAC-protected, rate-limited, and auditable.
+  description: |
+    All configuration, secrets, and feature flags are managed via the server_config service (DB-backed, hot-reloadable, multi-tenant). No static config files or direct DB columns are used for runtime config. All config endpoints read/write via server_config using key patterns (e.g., security_mfa_{tenantID}, provider_config_{channel}_{provider}_{tenantID}, etc.).
 servers:
   - url: /api/v1/admin/security-management
 paths:
@@ -946,6 +947,265 @@ paths:
       responses:
         "200":
           description: SAML callback handled
+  /mfa/config:
+    get:
+      tags: [MFA]
+      summary: Get MFA config
+      operationId: getMFAConfig
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tenant_id:
+                  type: string
+      responses:
+        "200":
+          description: MFA config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MFAConfig"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [MFA]
+      summary: Set MFA config
+      operationId: setMFAConfig
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MFAConfig"
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /password-policy/config:
+    get:
+      tags: [PasswordPolicy]
+      summary: Get password policy config
+      operationId: getPasswordPolicyConfig
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tenant_id:
+                  type: string
+      responses:
+        "200":
+          description: Password policy config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasswordPolicyConfig"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [PasswordPolicy]
+      summary: Set password policy config
+      operationId: setPasswordPolicyConfig
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordPolicyConfig"
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /session/config:
+    get:
+      tags: [Session]
+      summary: Get session config
+      operationId: getSessionConfig
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tenant_id:
+                  type: string
+      responses:
+        "200":
+          description: Session config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionConfig"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Session]
+      summary: Set session config
+      operationId: setSessionConfig
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionConfig"
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /rate-limit/config:
+    get:
+      tags: [RateLimit]
+      summary: Get rate limit config
+      operationId: getRateLimitConfig
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scope:
+                  type: string
+                scope_id:
+                  type: string
+      responses:
+        "200":
+          description: Rate limit config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitConfig"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [RateLimit]
+      summary: Set rate limit config
+      operationId: setRateLimitConfig
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RateLimitConfig"
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /notification/channel/enabled:
+    get:
+      tags: [Notification]
+      summary: Get notification channel enabled state
+      operationId: getNotificationChannelEnabled
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tenant_id:
+                  type: string
+                channel:
+                  type: string
+                provider:
+                  type: string
+      responses:
+        "200":
+          description: Channel enabled state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Notification]
+      summary: Set notification channel enabled state
+      operationId: setNotificationChannelEnabled
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationChannelEnabledConfig"
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1185,6 +1445,56 @@ components:
       properties:
         user_id: { type: string }
         code: { type: string }
+    MFAConfig:
+      type: object
+    PasswordPolicyConfig:
+      type: object
+    SessionConfig:
+      type: object
+    NotificationChannelEnabledConfig:
+      type: object
+    AuthTypeConfigDB:
+      type: object
+      properties:
+        tenant_id: { type: string }
+        mfa_enabled: { type: boolean }
+        password_enabled: { type: boolean }
+        oauth_enabled: { type: boolean }
+        saml_enabled: { type: boolean }
+        auth_types: { type: array, items: { type: string } }
+        primary: { type: string }
+        fallback: { type: array, items: { type: string } }
+        updated_at: { type: string, format: date-time }
+    OAuthConfigDB:
+      type: object
+      properties:
+        tenant_id: { type: string }
+        client_id: { type: string }
+        client_secret: { type: string }
+        redirect_uri: { type: string }
+        scopes: { type: array, items: { type: string } }
+    SAMLConfigDB:
+      type: object
+      properties:
+        tenant_id: { type: string }
+        metadata_url: { type: string }
+        entity_id: { type: string }
+        acs_url: { type: string }
+    NotificationConfig:
+      type: object
+      properties:
+        tenant_id: { type: string }
+        channels: { type: array, items: { type: string } }
+        recipients: { type: array, items: { type: string } }
+        events: { type: array, items: { type: string } }
+        enabled: { type: boolean }
+    ProviderConfig:
+      type: object
+      properties:
+        tenant_id: { type: string }
+        channel: { type: string }
+        provider: { type: string }
+        config: { type: object, additionalProperties: { type: string } }
   responses:
     Unauthorized:
       description: Unauthorized

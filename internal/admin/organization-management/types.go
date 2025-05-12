@@ -7,6 +7,7 @@ import (
 	project_management "github.com/subinc/subinc-backend/internal/admin/project-management"
 	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	user_management "github.com/subinc/subinc-backend/internal/admin/user-management"
 )
 
@@ -45,8 +46,9 @@ type OrgAuditLog struct {
 }
 
 type PostgresStore struct {
-	DB          *pgxpool.Pool
-	AuditLogger security_management.AuditLogger
+	DB                  *pgxpool.Pool
+	AuditLogger         security_management.AuditLogger
+	ServerConfigService *server_config.Service
 }
 
 type OrganizationHandler struct {

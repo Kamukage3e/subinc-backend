@@ -22,7 +22,7 @@ type UserProfileService interface {
 }
 
 type UserSettingsService interface {
-	GetSettings(ctx context.Context, userID string) (UserSettings, error)
+	GetSettings(ctx context.Context, userID string) (map[string]interface{}, error)
 	UpdateSettings(ctx context.Context, userID, settings string) error
 }
 

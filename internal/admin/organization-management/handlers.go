@@ -265,7 +265,7 @@ func (h *OrganizationHandler) GetSettings(c *fiber.Ctx) error {
 		logger.LogError("GetSettings: org_id required", logger.String("org_id", input.OrgID))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org_id required"})
 	}
-	settings, err := h.OrgSettingsService.GetSettings(c.Context(), input.OrgID)
+	settings, err := h.Store.GetSettings(c.Context(), input.OrgID)
 	if err != nil {
 		logger.LogError("GetSettings: failed", logger.ErrorField(err), logger.String("org_id", input.OrgID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
@@ -295,18 +295,18 @@ func (h *OrganizationHandler) UpdateSettings(c *fiber.Ctx) error {
 		}
 	}
 	var input struct {
-		OrgID    string `json:"org_id"`
-		Settings string `json:"settings"`
+		OrgID    string                 `json:"org_id"`
+		Settings map[string]interface{} `json:"settings"`
 	}
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateSettings: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	if input.OrgID == "" || input.Settings == "" {
-		logger.LogError("UpdateSettings: missing required fields", logger.String("org_id", input.OrgID), logger.String("settings", input.Settings))
+	if input.OrgID == "" || input.Settings == nil {
+		logger.LogError("UpdateSettings: missing required fields", logger.String("org_id", input.OrgID))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org_id and settings required"})
 	}
-	if err := h.OrgSettingsService.UpdateSettings(c.Context(), input.OrgID, input.Settings); err != nil {
+	if err := h.Store.UpdateSettings(c.Context(), input.OrgID, input.Settings); err != nil {
 		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.String("org_id", input.OrgID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -320,5 +320,6 @@ func (h *OrganizationHandler) UpdateSettings(c *fiber.Ctx) error {
 			CreatedAt: time.Now(),
 		})
 	}
-	return c.SendStatus(fiber.StatusNoContent)
+	// Optionally: test connection/feature if settings include credentials, return result
+	return c.JSON(fiber.Map{"ok": true})
 }

@@ -17,14 +17,7 @@ table "projects" {
   index { columns = [column.name] }
 }
 
-table "project_settings" {
-  schema      = schema.public
-  column "project_id" { type = uuid; null = false }
-  column "settings"   { type = jsonb; null = false }
-  column "updated_at" { type = timestamptz; null = false; default = sql("now()") }
-  primary_key { columns = [column.project_id] }
-  foreign_key { columns = [column.project_id]; ref_table = table.projects; ref_columns = [table.projects.column.id]; on_delete = CASCADE }
-}
+// All project settings are now runtime, DB-backed, and managed via server_config (key: project_settings_{projectID})
 
 table "project_audit_log" {
   schema      = schema.public

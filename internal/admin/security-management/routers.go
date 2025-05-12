@@ -77,4 +77,12 @@ func RegisterAdminSecurityRoutes(router fiber.Router, handler *SecurityHandler, 
 	sec.Get("/notification/channel/enabled", generalLimiter.middleware(), handler.GetNotificationChannelEnabled)
 	sec.Post("/notification/provider/config", strictLimiter.middleware(), handler.SetProviderConfig)
 	sec.Get("/notification/provider/config", generalLimiter.middleware(), handler.GetProviderConfig)
+	sec.Get("/mfa/config", generalLimiter.middleware(), handler.GetMFAConfig)
+	sec.Post("/mfa/config", strictLimiter.middleware(), handler.SetMFAConfig)
+	sec.Get("/password-policy/config", generalLimiter.middleware(), handler.GetPasswordPolicyConfig)
+	sec.Post("/password-policy/config", strictLimiter.middleware(), handler.SetPasswordPolicyConfig)
+	sec.Get("/session/config", generalLimiter.middleware(), handler.GetSessionConfig)
+	sec.Post("/session/config", strictLimiter.middleware(), handler.SetSessionConfig)
+	sec.Get("/rate-limit/config", generalLimiter.middleware(), handler.GetRateLimitConfig)
+	sec.Post("/rate-limit/config", strictLimiter.middleware(), handler.SetRateLimitConfig)
 }

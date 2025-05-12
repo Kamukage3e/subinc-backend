@@ -97,13 +97,17 @@ This repo is backend-only. No frontend code, no UI scaffolding, no non-prod cont
 
 For expert-level backend SaaS engineers only. All code and documentation are production-grade, secure, and ready for real-world deployment.
 
+## Configuration
+
+All configuration, feature flags, and credentials are DB-backed and hot-reloadable at runtime. No static config files or YAML are used. The only exception is the initial database bootstrap, which requires the OWNER_DB_DSN environment variable to connect to the owner database. All other config is managed via the `server_config` table (for owner-admin) and the `settings` column in the `tenants` table (for client-admin), and can be updated at runtime via API. All changes are immediately effective and auditable.
+
 ## Configuration Keys, Secrets, and Credentials
 
-All configuration, secrets, and credentials are loaded securely from environment variables, config files, HTTP headers, or secret stores. No secrets are hardcoded. This section documents all required keys for production deployment.
+> **Standard:** All credentials/settings (DB, Redis, AWS, SMTP, payment, etc.) must be runtime-configurable via HTTP API for both owner-admin and client-admin. After update, the app must test the connection and return the result. All config is DB-backed and hot-reloadable. No static config except OWNER_DB_DSN.
 
 | Key / Header / Config         | Source                | Purpose / Usage                                 | Security Notes                                  |
 |------------------------------|-----------------------|-------------------------------------------------|-------------------------------------------------|
-| OWNER_CONFIG_PATH            | Env                   | Path to owner config YAML                       | Must be set for owner-admin boot                |
+| OWNER_DB_DSN                | Env                   | Owner DB bootstrap DSN (only required static config) | Must be set for owner-admin boot                |
 | PORT                         | Env                   | HTTP server port                                | Defaults to 8080 if unset                       |
 | X-DB-Host                    | HTTP Header           | DB host (client-admin)                          | Required for multi-tenant DB routing            |
 | X-DB-Port                    | HTTP Header           | DB port (client-admin)                          | Required for multi-tenant DB routing            |

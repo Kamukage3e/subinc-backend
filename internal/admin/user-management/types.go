@@ -3,14 +3,16 @@ package user_management
 import (
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-	"github.com/jackc/pgx/v5/pgxpool"
+	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 )
 
 type PostgresStore struct {
-	DB *pgxpool.Pool
-	AuditLogger security_management.AuditLogger
+	DB                  *pgxpool.Pool
+	AuditLogger         security_management.AuditLogger
+	ServerConfigService *server_config.Service
 }
 type User struct {
 	ID        string    `json:"id"`
@@ -27,12 +29,6 @@ type UserProfile struct {
 	AvatarURL string    `json:"avatar_url"`
 	Bio       string    `json:"bio"`
 	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-type UserSettings struct {
-	UserID    string    `json:"user_id"`
-	Settings  string    `json:"settings"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 

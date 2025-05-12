@@ -12,31 +12,23 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-
-
 // GetTenantSettings fetches settings JSON for a tenant by id
 func (s *PostgresStore) GetTenantSettings(ctx context.Context, tenantID string) (map[string]interface{}, error) {
 	if tenantID == "" {
 		logger.LogError("tenant id required")
 		return nil, errors.New("tenant id required")
 	}
-	const q = `SELECT settings FROM tenants WHERE id = $1`
-	var settingsStr string
-	row := s.DB.QueryRow(ctx, q, tenantID)
-	err := row.Scan(&settingsStr)
+	key := "tenant_settings_" + tenantID
+	cfg, err := s.ServerConfigService.Get(ctx, key)
 	if err != nil {
-		if strings.Contains(err.Error(), "no rows") {
-			logger.LogError("tenant not found", logger.String("tenant_id", tenantID))
-			return nil, errors.New("tenant not found")
+		if strings.Contains(err.Error(), "not found") {
+			return map[string]interface{}{}, nil
 		}
-		logger.LogError("failed to get tenant settings", logger.ErrorField(err), logger.String("tenant_id", tenantID)) 
+		logger.LogError("failed to get tenant settings", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return nil, err
 	}
-	if settingsStr == "" {
-		return map[string]interface{}{}, nil
-	}
 	var settings map[string]interface{}
-	if err := json.Unmarshal([]byte(settingsStr), &settings); err != nil {
+	if err := json.Unmarshal([]byte(cfg.Value), &settings); err != nil {
 		logger.LogError("invalid settings JSON", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return nil, errors.New("invalid settings JSON")
 	}
@@ -54,19 +46,14 @@ func (s *PostgresStore) UpdateTenantSettings(ctx context.Context, tenantID strin
 		logger.LogError("invalid settings input", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return nil, errors.New("invalid settings input")
 	}
-	const q = `UPDATE tenants SET settings = $1, updated_at = $2 WHERE id = $3`
-	res, err := s.DB.Exec(ctx, q, string(settingsBytes), time.Now().UTC(), tenantID)
+	key := "tenant_settings_" + tenantID
+	_, err = s.ServerConfigService.Set(ctx, key, string(settingsBytes), "system")
 	if err != nil {
 		logger.LogError("failed to update tenant settings", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return nil, err
 	}
-	if res.RowsAffected() == 0 {
-		logger.LogError("tenant not found", logger.String("tenant_id", tenantID))
-		return nil, errors.New("tenant not found")
-	}
 	return input, nil
 }
-
 
 func (s *PostgresStore) CreateTenant(ctx context.Context, tenant *Tenant) error {
 	if tenant.ID == "" {

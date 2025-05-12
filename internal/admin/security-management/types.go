@@ -1,14 +1,16 @@
 package security_management
 
 import (
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PostgresStore struct {
-	DB          *pgxpool.Pool
-	AuditLogger AuditLogger
+	DB                  *pgxpool.Pool
+	AuditLogger         AuditLogger
+	ServerConfigService interface{}
 }
 
 // Define RBACService interface locally to avoid import cycle
@@ -37,9 +39,6 @@ type SecurityHandler struct {
 	SecurityAnalyticsService    SecurityAnalyticsService
 	NotificationService         NotificationService
 	SecurityModuleConfigService SecurityModuleConfigService
-	OwnerOAuthConfig            OAuthConfig
-	OwnerSAMLConfig             SAMLConfig
-	AuthTypeConfig              AuthTypeConfig
 }
 
 type SecurityEvent struct {
@@ -212,18 +211,193 @@ type SAMLConfig struct {
 	ACSURL      string `json:"acs_url"`
 }
 
-// AuthTypeConfig controls which auth types are enabled/optional/disabled at runtime.
-type AuthTypeConfig struct {
-	PasswordEnabled  bool
-	PasswordOptional bool
-	MFAEnabled       bool
-	MFAOptional      bool
-	OAuthEnabled     bool
-	OAuthOptional    bool
-	SAMLEnabled      bool
-	SAMLOptional     bool
+// NotificationConfig, RateLimitConfig, etc. already present, add Validate() methods
+func (c NotificationConfig) Validate() error {
+	if c.TenantID == "" {
+		return errors.New("tenant_id required")
+	}
+	if len(c.Channels) == 0 {
+		return errors.New("at least one channel required")
+	}
+	if len(c.Recipients) == 0 {
+		return errors.New("at least one recipient required")
+	}
+	return nil
 }
 
+func (c RateLimitConfig) Validate() error {
+	if c.Scope == "" {
+		return errors.New("scope required")
+	}
+	if c.ScopeID == "" {
+		return errors.New("scope_id required")
+	}
+	if c.Limit <= 0 {
+		return errors.New("limit must be > 0")
+	}
+	if c.WindowSeconds <= 0 {
+		return errors.New("window_seconds must be > 0")
+	}
+	return nil
+}
+
+// NotificationChannelEnabledConfig holds enabled/disabled state for a notification channel/provider/tenant
+// Key: notification_channel_enabled_{tenantID}_{channel}_{provider}
+type NotificationChannelEnabledConfig struct {
+	TenantID string `json:"tenant_id"`
+	Channel  string `json:"channel"`
+	Provider string `json:"provider"`
+	Enabled  bool   `json:"enabled"`
+}
+
+func (c NotificationChannelEnabledConfig) Validate() error {
+	if c.TenantID == "" {
+		return errors.New("tenant_id required")
+	}
+	if c.Channel == "" {
+		return errors.New("channel required")
+	}
+	if c.Provider == "" {
+		return errors.New("provider required")
+	}
+	return nil
+}
+
+// OAuthConfigDB holds OAuth config for a tenant (DB-backed)
+type OAuthConfigDB struct {
+	TenantID     string   `json:"tenant_id"`
+	ClientID     string   `json:"client_id"`
+	ClientSecret string   `json:"client_secret"`
+	RedirectURI  string   `json:"redirect_uri"`
+	Scopes       []string `json:"scopes"`
+}
+
+func (c OAuthConfigDB) Validate() error {
+	if c.TenantID == "" {
+		return errors.New("tenant_id required")
+	}
+	if c.ClientID == "" {
+		return errors.New("client_id required")
+	}
+	if c.ClientSecret == "" {
+		return errors.New("client_secret required")
+	}
+	if c.RedirectURI == "" {
+		return errors.New("redirect_uri required")
+	}
+	return nil
+}
+
+// SAMLConfigDB holds SAML config for a tenant (DB-backed)
+type SAMLConfigDB struct {
+	TenantID    string `json:"tenant_id"`
+	MetadataURL string `json:"metadata_url"`
+	EntityID    string `json:"entity_id"`
+	ACSURL      string `json:"acs_url"`
+}
+
+func (c SAMLConfigDB) Validate() error {
+	if c.TenantID == "" {
+		return errors.New("tenant_id required")
+	}
+	if c.MetadataURL == "" {
+		return errors.New("metadata_url required")
+	}
+	if c.EntityID == "" {
+		return errors.New("entity_id required")
+	}
+	if c.ACSURL == "" {
+		return errors.New("acs_url required")
+	}
+	return nil
+}
+
+// MFAConfig holds MFA settings for a tenant
+type MFAConfig struct {
+	TenantID  string   `json:"tenant_id"`
+	Enabled   bool     `json:"enabled"`
+	Required  bool     `json:"required"`
+	Providers []string `json:"providers"`
+}
+
+func (c MFAConfig) Validate() error {
+	if c.TenantID == "" {
+		return errors.New("tenant_id required")
+	}
+	if len(c.Providers) == 0 {
+		return errors.New("at least one provider required")
+	}
+	return nil
+}
+
+// ProviderConfig holds provider settings for a tenant/channel
+type ProviderConfig struct {
+	TenantID string            `json:"tenant_id"`
+	Channel  string            `json:"channel"`
+	Provider string            `json:"provider"`
+	Config   map[string]string `json:"config"`
+}
+
+func (c ProviderConfig) Validate() error {
+	if c.TenantID == "" {
+		return errors.New("tenant_id required")
+	}
+	if c.Channel == "" {
+		return errors.New("channel required")
+	}
+	if c.Provider == "" {
+		return errors.New("provider required")
+	}
+	if len(c.Config) == 0 {
+		return errors.New("config required")
+	}
+	return nil
+}
+
+// PasswordPolicyConfig holds password policy for a tenant
+type PasswordPolicyConfig struct {
+	TenantID       string `json:"tenant_id"`
+	MinLength      int    `json:"min_length"`
+	RequireNumbers bool   `json:"require_numbers"`
+	RequireSpecial bool   `json:"require_special"`
+	RequireUpper   bool   `json:"require_upper"`
+	RequireLower   bool   `json:"require_lower"`
+}
+
+func (c PasswordPolicyConfig) Validate() error {
+	if c.TenantID == "" {
+		return errors.New("tenant_id required")
+	}
+	if c.MinLength < 8 {
+		return errors.New("min_length must be >= 8")
+	}
+	return nil
+}
+
+// SessionConfig holds session settings for a tenant
+type SessionConfig struct {
+	TenantID              string `json:"tenant_id"`
+	SessionTimeoutMinutes int    `json:"session_timeout_minutes"`
+	IdleTimeoutMinutes    int    `json:"idle_timeout_minutes"`
+}
+
+func (c SessionConfig) Validate() error {
+	if c.TenantID == "" {
+		return errors.New("tenant_id required")
+	}
+	if c.SessionTimeoutMinutes < 5 {
+		return errors.New("session_timeout_minutes must be >= 5")
+	}
+	if c.IdleTimeoutMinutes < 1 {
+		return errors.New("idle_timeout_minutes must be >= 1")
+	}
+	return nil
+}
+
+// NotificationQueueItem represents an item in the notification queue
+// This struct must match the notification_queue table columns and usage in stores.go
+// Details is a map for arbitrary notification data
+// To is a slice of recipient addresses (email, phone, etc.)
 type NotificationQueueItem struct {
 	ID        string                 `json:"id"`
 	Provider  string                 `json:"provider"`
@@ -232,8 +406,44 @@ type NotificationQueueItem struct {
 	Details   map[string]interface{} `json:"details"`
 	Retry     int                    `json:"retry"`
 	MaxRetry  int                    `json:"max_retry"`
-	Status    string                 `json:"status"` // pending, sent, failed, dead
+	Status    string                 `json:"status"`
 	LastError string                 `json:"last_error"`
 	CreatedAt time.Time              `json:"created_at"`
 	UpdatedAt time.Time              `json:"updated_at"`
+}
+
+// AuthTypeConfigDB represents DB-backed config for authentication type (e.g., password, SSO, etc.)
+// This is speculative, as no definition was found in the codebase. Adjust as needed.
+type AuthTypeConfigDB struct {
+	TenantID        string    `json:"tenant_id"`
+	MFAEnabled      bool      `json:"mfa_enabled"`
+	PasswordEnabled bool      `json:"password_enabled"`
+	OAuthEnabled    bool      `json:"oauth_enabled"`
+	SAMLEnabled     bool      `json:"saml_enabled"`
+	AuthTypes       []string  `json:"auth_types"` // e.g., ["password", "saml", "oauth"]
+	Primary         string    `json:"primary"`    // e.g., "password"
+	Fallback        []string  `json:"fallback"`   // e.g., ["otp"]
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+func (c AuthTypeConfigDB) Validate() error {
+	if c.TenantID == "" {
+		return errors.New("tenant_id required")
+	}
+	if !c.MFAEnabled && !c.PasswordEnabled && !c.OAuthEnabled && !c.SAMLEnabled {
+		return errors.New("at least one auth method must be enabled")
+	}
+	if c.Primary != "" {
+		found := false
+		for _, t := range c.AuthTypes {
+			if t == c.Primary {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return errors.New("primary auth type must be in auth_types")
+		}
+	}
+	return nil
 }

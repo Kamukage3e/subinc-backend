@@ -2,14 +2,11 @@ package user_management
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
-
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
-
 )
-
-
 
 // UserService
 func (s *PostgresStore) CreateUser(ctx context.Context, user User) (User, error) {
@@ -125,23 +122,43 @@ func (s *PostgresStore) GetProfile(ctx context.Context, userID string) (UserProf
 }
 
 // UserSettingsService
-func (s *PostgresStore) GetSettings(ctx context.Context, userID string) (UserSettings, error) {
-	const q = `SELECT user_id, settings, updated_at FROM user_settings WHERE user_id=$1`
-	row := s.DB.QueryRow(ctx, q, userID)
-	var sng UserSettings
-	if err := row.Scan(&sng.UserID, &sng.Settings, &sng.UpdatedAt); err != nil {
-		logger.LogError("failed to get user settings", logger.ErrorField(err), logger.String("user_id", userID))
-		return UserSettings{}, errors.New("failed to get user settings: " + err.Error())
+func (s *PostgresStore) GetSettings(ctx context.Context, userID string) (map[string]interface{}, error) {
+	if userID == "" {
+		logger.LogError("user id required")
+		return nil, errors.New("user id required")
 	}
-	return sng, nil
+	key := "user_settings_" + userID
+	cfg, err := s.ServerConfigService.Get(ctx, key)
+	if err != nil {
+		if err.Error() == "config not found" {
+			return map[string]interface{}{}, nil
+		}
+		logger.LogError("failed to get user settings", logger.ErrorField(err), logger.String("user_id", userID))
+		return nil, err
+	}
+	var settings map[string]interface{}
+	if err := json.Unmarshal([]byte(cfg.Value), &settings); err != nil {
+		logger.LogError("invalid user settings json", logger.ErrorField(err), logger.String("user_id", userID))
+		return nil, errors.New("invalid user settings json")
+	}
+	return settings, nil
 }
 
-func (s *PostgresStore) UpdateSettings(ctx context.Context, userID, settings string) error {
-	const q = `UPDATE user_settings SET settings=$1, updated_at=now() WHERE user_id=$2`
-	_, err := s.DB.Exec(ctx, q, settings, userID)
+func (s *PostgresStore) UpdateSettings(ctx context.Context, userID string, settings map[string]interface{}) error {
+	if userID == "" {
+		logger.LogError("user id required")
+		return errors.New("user id required")
+	}
+	key := "user_settings_" + userID
+	b, err := json.Marshal(settings)
 	if err != nil {
-		logger.LogError("failed to update user settings", logger.ErrorField(err), logger.String("user_id", userID))
-		return errors.New("failed to update user settings: " + err.Error())
+		logger.LogError("marshal user settings failed", logger.ErrorField(err), logger.String("user_id", userID))
+		return errors.New("invalid user settings")
+	}
+	_, err = s.ServerConfigService.Set(ctx, key, string(b), "system")
+	if err != nil {
+		logger.LogError("failed to set user settings", logger.ErrorField(err), logger.String("user_id", userID))
+		return err
 	}
 	return nil
 }

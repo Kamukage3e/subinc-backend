@@ -271,6 +271,8 @@ paths:
   /settings/get:
     post:
       summary: Get user settings
+      description: |
+        User settings are stored in the server_config table (key: user_settings_{userID}), are runtime, DB-backed, hot-reloadable, and immediately effective. All changes are auditable.
       security:
         - bearerAuth: []
       requestBody:
@@ -278,7 +280,12 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UserIDRequest"
+              type: object
+              required:
+                - user_id
+              properties:
+                user_id:
+                  type: string
       responses:
         "200":
           description: User settings
@@ -295,6 +302,8 @@ paths:
   /settings/update:
     post:
       summary: Update user settings
+      description: |
+        User settings are stored in the server_config table (key: user_settings_{userID}), are runtime, DB-backed, hot-reloadable, and immediately effective. All changes are auditable.
       security:
         - bearerAuth: []
       requestBody:
@@ -302,7 +311,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UserSettingsUpdateRequest"
+              type: object
+              required:
+                - user_id
+                - settings
+              properties:
+                user_id:
+                  type: string
+                settings:
+                  type: object
+                  additionalProperties: true
       responses:
         "200":
           description: User settings updated
@@ -797,6 +815,7 @@ components:
           type: string
         settings:
           type: object
+          additionalProperties: true
         updated_at:
           type: string
           format: date-time

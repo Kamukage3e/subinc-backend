@@ -15,23 +15,9 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-func NewSecurityHandler(store *PostgresStore, ownerOAuthConfig OAuthConfig, ownerSAMLConfig SAMLConfig, jwtSecretName string, authTypeConfig AuthTypeConfig) *SecurityHandler {
-	return &SecurityHandler{
-		Store:            store,
-		OwnerOAuthConfig: ownerOAuthConfig,
-		OwnerSAMLConfig:  ownerSAMLConfig,
-		AuthTypeConfig:   authTypeConfig,
-	}
+func NewSecurityHandler(store *PostgresStore) *SecurityHandler {
+	return &SecurityHandler{Store: store}
 }
-
-var (
-	emailEnabled = map[string]bool{"smtp": true, "sendgrid": true}
-	smsEnabled   = map[string]bool{"twilio": true, "nexmo": true}
-	chatEnabled  = map[string]bool{"slack": true, "teams": true}
-	emailConfig  = map[string]map[string]string{}
-	smsConfig    = map[string]map[string]string{}
-	chatConfig   = map[string]map[string]string{}
-)
 
 func getActorID(c *fiber.Ctx) string {
 	id := c.Get("X-Actor-ID")
@@ -126,7 +112,9 @@ func (h *SecurityHandler) ListUserLoginHistory(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) EnableMFA(c *fiber.Ctx) error {
-	if !h.AuthTypeConfig.MFAEnabled {
+	tenantID := getTenantID(c)
+	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
+	if err != nil || !cfg.MFAEnabled {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "MFA disabled"})
 	}
 	if h.RBACService != nil {
@@ -163,7 +151,9 @@ func (h *SecurityHandler) EnableMFA(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) DisableMFA(c *fiber.Ctx) error {
-	if !h.AuthTypeConfig.MFAEnabled {
+	tenantID := getTenantID(c)
+	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
+	if err != nil || !cfg.MFAEnabled {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "MFA disabled"})
 	}
 	if h.RBACService != nil {
@@ -873,25 +863,15 @@ func (h *SecurityHandler) SetSecurityModuleConfig(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) SetNotificationChannelEnabled(c *fiber.Ctx) error {
-	var input struct {
-		Channel  string `json:"channel"`
-		Provider string `json:"provider"`
-		Enabled  bool   `json:"enabled"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.Channel == "" || input.Provider == "" {
+	var input NotificationChannelEnabledConfig
+	if err := c.BodyParser(&input); err != nil || input.TenantID == "" || input.Channel == "" || input.Provider == "" {
 		logger.LogError("SetNotificationChannelEnabled: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "channel and provider required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id, channel and provider required"})
 	}
-	switch input.Channel {
-	case "email":
-		emailEnabled[input.Provider] = input.Enabled
-	case "sms":
-		smsEnabled[input.Provider] = input.Enabled
-	case "chat":
-		chatEnabled[input.Provider] = input.Enabled
-	default:
-		logger.LogError("SetNotificationChannelEnabled: invalid channel", logger.String("channel", input.Channel))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid channel"})
+	err := h.Store.SetNotificationChannelEnabledConfig(c.Context(), input)
+	if err != nil {
+		logger.LogError("SetNotificationChannelEnabled: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	if h.SecurityAuditLogService != nil {
 		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
@@ -903,29 +883,23 @@ func (h *SecurityHandler) SetNotificationChannelEnabled(c *fiber.Ctx) error {
 			CreatedAt: time.Now().UTC(),
 		})
 	}
-	return c.SendStatus(fiber.StatusNoContent)
+	return c.JSON(fiber.Map{"success": true})
 }
 
 func (h *SecurityHandler) GetNotificationChannelEnabled(c *fiber.Ctx) error {
 	var input struct {
+		TenantID string `json:"tenant_id"`
 		Channel  string `json:"channel"`
 		Provider string `json:"provider"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.Channel == "" || input.Provider == "" {
+	if err := c.BodyParser(&input); err != nil || input.TenantID == "" || input.Channel == "" || input.Provider == "" {
 		logger.LogError("GetNotificationChannelEnabled: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "channel and provider required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id, channel and provider required"})
 	}
-	var enabled bool
-	switch input.Channel {
-	case "email":
-		enabled = emailEnabled[input.Provider]
-	case "sms":
-		enabled = smsEnabled[input.Provider]
-	case "chat":
-		enabled = chatEnabled[input.Provider]
-	default:
-		logger.LogError("GetNotificationChannelEnabled: invalid channel", logger.String("channel", input.Channel))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid channel"})
+	cfg, err := h.Store.GetNotificationChannelEnabledConfig(c.Context(), input.TenantID, input.Channel, input.Provider)
+	if err != nil {
+		logger.LogError("GetNotificationChannelEnabled: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	if h.SecurityAuditLogService != nil {
 		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
@@ -937,29 +911,19 @@ func (h *SecurityHandler) GetNotificationChannelEnabled(c *fiber.Ctx) error {
 			CreatedAt: time.Now().UTC(),
 		})
 	}
-	return c.JSON(fiber.Map{"enabled": enabled})
+	return c.JSON(fiber.Map{"enabled": cfg.Enabled})
 }
 
 func (h *SecurityHandler) SetProviderConfig(c *fiber.Ctx) error {
-	var input struct {
-		Channel  string            `json:"channel"`
-		Provider string            `json:"provider"`
-		Config   map[string]string `json:"config"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.Channel == "" || input.Provider == "" || input.Config == nil {
+	var input ProviderConfig
+	if err := c.BodyParser(&input); err != nil || input.TenantID == "" || input.Channel == "" || input.Provider == "" || input.Config == nil {
 		logger.LogError("SetProviderConfig: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "channel, provider, and config required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id, channel, provider, and config required"})
 	}
-	switch input.Channel {
-	case "email":
-		emailConfig[input.Provider] = input.Config
-	case "sms":
-		smsConfig[input.Provider] = input.Config
-	case "chat":
-		chatConfig[input.Provider] = input.Config
-	default:
-		logger.LogError("SetProviderConfig: invalid channel", logger.String("channel", input.Channel))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid channel"})
+	err := h.Store.SetProviderConfig(c.Context(), input)
+	if err != nil {
+		logger.LogError("SetProviderConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	if h.SecurityAuditLogService != nil {
 		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
@@ -971,29 +935,23 @@ func (h *SecurityHandler) SetProviderConfig(c *fiber.Ctx) error {
 			CreatedAt: time.Now().UTC(),
 		})
 	}
-	return c.SendStatus(fiber.StatusNoContent)
+	return c.JSON(fiber.Map{"success": true})
 }
 
 func (h *SecurityHandler) GetProviderConfig(c *fiber.Ctx) error {
 	var input struct {
+		TenantID string `json:"tenant_id"`
 		Channel  string `json:"channel"`
 		Provider string `json:"provider"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.Channel == "" || input.Provider == "" {
+	if err := c.BodyParser(&input); err != nil || input.TenantID == "" || input.Channel == "" || input.Provider == "" {
 		logger.LogError("GetProviderConfig: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "channel and provider required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id, channel, and provider required"})
 	}
-	var cfg map[string]string
-	switch input.Channel {
-	case "email":
-		cfg = emailConfig[input.Provider]
-	case "sms":
-		cfg = smsConfig[input.Provider]
-	case "chat":
-		cfg = chatConfig[input.Provider]
-	default:
-		logger.LogError("GetProviderConfig: invalid channel", logger.String("channel", input.Channel))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid channel"})
+	cfg, err := h.Store.GetProviderConfig(c.Context(), input.TenantID, input.Channel, input.Provider)
+	if err != nil {
+		logger.LogError("GetProviderConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	if h.SecurityAuditLogService != nil {
 		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
@@ -1274,9 +1232,10 @@ func (h *SecurityHandler) DeleteRateLimit(c *fiber.Ctx) error {
 // --- Auth Endpoints ---
 
 func (h *SecurityHandler) Login(c *fiber.Ctx) error {
-	if !h.AuthTypeConfig.PasswordEnabled {
-		logger.LogError("Login: password auth disabled")
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "password auth disabled"})
+	tenantID := getTenantID(c)
+	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
+	if err != nil || !cfg.PasswordEnabled {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "password login disabled"})
 	}
 	var input struct {
 		Email    string `json:"email"`
@@ -1363,8 +1322,9 @@ func (h *SecurityHandler) Logout(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) Register(c *fiber.Ctx) error {
-	if !h.AuthTypeConfig.PasswordEnabled {
-		logger.LogError("Register: registration disabled")
+	tenantID := getTenantID(c)
+	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
+	if err != nil || !cfg.PasswordEnabled {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "registration disabled"})
 	}
 	var input struct {
@@ -1753,9 +1713,14 @@ func generateStateToken() string {
 }
 
 func (h *SecurityHandler) AuthGoogle(c *fiber.Ctx) error {
-	if !h.AuthTypeConfig.OAuthEnabled {
-		logger.LogError("AuthGoogle: OAuth disabled")
+	tenantID := getTenantID(c)
+	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
+	if err != nil || !cfg.OAuthEnabled {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "OAuth disabled"})
+	}
+	oauthCfg, err := h.Store.GetOAuthConfig(c.Context(), tenantID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "OAuth config not found"})
 	}
 	state := generateStateToken()
 	c.Cookie(&fiber.Cookie{
@@ -1767,10 +1732,10 @@ func (h *SecurityHandler) AuthGoogle(c *fiber.Ctx) error {
 		Path:     "/",
 	})
 	params := url.Values{}
-	params.Set("client_id", h.OwnerOAuthConfig.Google.ClientID)
-	params.Set("redirect_uri", h.OwnerOAuthConfig.Google.RedirectURI)
+	params.Set("client_id", oauthCfg.ClientID)
+	params.Set("redirect_uri", oauthCfg.RedirectURI)
 	params.Set("response_type", "code")
-	params.Set("scope", strings.Join(h.OwnerOAuthConfig.Google.Scopes, " "))
+	params.Set("scope", strings.Join(oauthCfg.Scopes, " "))
 	params.Set("state", state)
 	oauthURL := "https://accounts.google.com/o/oauth2/v2/auth?" + params.Encode()
 	if h.SecurityAuditLogService != nil {
@@ -1787,27 +1752,29 @@ func (h *SecurityHandler) AuthGoogle(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) AuthGoogleCallback(c *fiber.Ctx) error {
-	if !h.AuthTypeConfig.OAuthEnabled {
-		logger.LogError("AuthGoogleCallback: OAuth disabled")
+	tenantID := getTenantID(c)
+	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
+	if err != nil || !cfg.OAuthEnabled {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "OAuth disabled"})
+	}
+	oauthCfg, err := h.Store.GetOAuthConfig(c.Context(), tenantID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "OAuth config not found"})
 	}
 	state := c.Query("state")
 	code := c.Query("code")
 	cookieState := c.Cookies("oauth_state")
 	if state == "" || code == "" || state != cookieState {
-		logger.LogError("AuthGoogleCallback: invalid state or code", logger.String("state", state))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid state or code"})
 	}
-	// Exchange code for token
 	tokenResp, err := http.PostForm("https://oauth2.googleapis.com/token", url.Values{
 		"code":          {code},
-		"client_id":     {h.OwnerOAuthConfig.Google.ClientID},
-		"client_secret": {h.OwnerOAuthConfig.Google.ClientSecret},
-		"redirect_uri":  {h.OwnerOAuthConfig.Google.RedirectURI},
+		"client_id":     {oauthCfg.ClientID},
+		"client_secret": {oauthCfg.ClientSecret},
+		"redirect_uri":  {oauthCfg.RedirectURI},
 		"grant_type":    {"authorization_code"},
 	})
 	if err != nil {
-		logger.LogError("AuthGoogleCallback: token exchange failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": "token exchange failed"})
 	}
 	defer tokenResp.Body.Close()
@@ -1817,15 +1784,12 @@ func (h *SecurityHandler) AuthGoogleCallback(c *fiber.Ctx) error {
 		IdToken     string `json:"id_token"`
 	}
 	if err := json.Unmarshal(body, &tokenData); err != nil || tokenData.AccessToken == "" {
-		logger.LogError("AuthGoogleCallback: invalid token response", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": "invalid token response"})
 	}
-	// Fetch user info
 	req, _ := http.NewRequest("GET", "https://www.googleapis.com/oauth2/v2/userinfo", nil)
 	req.Header.Set("Authorization", "Bearer "+tokenData.AccessToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		logger.LogError("AuthGoogleCallback: userinfo fetch failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": "userinfo fetch failed"})
 	}
 	defer resp.Body.Close()
@@ -1873,11 +1837,16 @@ func (h *SecurityHandler) AuthGoogleCallback(c *fiber.Ctx) error {
 
 // SAML SSO (minimal, robust, but assumes SAML config is correct and SAMLResponse is valid)
 func (h *SecurityHandler) AuthSAML(c *fiber.Ctx) error {
-	if !h.AuthTypeConfig.SAMLEnabled {
-		logger.LogError("AuthSAML: SAML disabled")
+	tenantID := getTenantID(c)
+	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
+	if err != nil || !cfg.SAMLEnabled {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "SAML disabled"})
 	}
-	samlRequest := base64.StdEncoding.EncodeToString([]byte("<SAMLRequest>")) // Replace with real SAMLRequest builder
+	samlCfg, err := h.Store.GetSAMLConfig(c.Context(), tenantID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "SAML config not found"})
+	}
+	samlRequest := base64.StdEncoding.EncodeToString([]byte("<SAMLRequest>"))
 	relayState := generateStateToken()
 	c.Cookie(&fiber.Cookie{
 		Name:     "saml_relay_state",
@@ -1887,11 +1856,10 @@ func (h *SecurityHandler) AuthSAML(c *fiber.Ctx) error {
 		SameSite: "Lax",
 		Path:     "/",
 	})
-	idpURL := h.OwnerSAMLConfig.MetadataURL
 	params := url.Values{}
 	params.Set("SAMLRequest", samlRequest)
 	params.Set("RelayState", relayState)
-	samlURL := idpURL + "?" + params.Encode()
+	samlURL := samlCfg.MetadataURL + "?" + params.Encode()
 	if h.SecurityAuditLogService != nil {
 		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
 			ID:        generateStateToken(),
@@ -1906,24 +1874,21 @@ func (h *SecurityHandler) AuthSAML(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) AuthSAMLCallback(c *fiber.Ctx) error {
-	if !h.AuthTypeConfig.SAMLEnabled {
-		logger.LogError("AuthSAMLCallback: SAML disabled")
+	tenantID := getTenantID(c)
+	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
+	if err != nil || !cfg.SAMLEnabled {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "SAML disabled"})
 	}
 	samlResponse := c.FormValue("SAMLResponse")
 	relayState := c.FormValue("RelayState")
 	cookieRelay := c.Cookies("saml_relay_state")
 	if samlResponse == "" || relayState == "" || relayState != cookieRelay {
-		logger.LogError("AuthSAMLCallback: invalid relay state or SAMLResponse")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid relay state or SAMLResponse"})
 	}
-	// Parse SAMLResponse (in real code, use a SAML library)
 	decoded, err := base64.StdEncoding.DecodeString(samlResponse)
 	if err != nil {
-		logger.LogError("AuthSAMLCallback: decode failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid SAMLResponse"})
 	}
-	// Extract email from decoded SAMLResponse (stub: look for <Email> tag)
 	email := ""
 	if idx := strings.Index(string(decoded), "<Email>"); idx != -1 {
 		end := strings.Index(string(decoded)[idx:], "</Email>")
@@ -1932,19 +1897,15 @@ func (h *SecurityHandler) AuthSAMLCallback(c *fiber.Ctx) error {
 		}
 	}
 	if email == "" {
-		logger.LogError("AuthSAMLCallback: email not found in SAMLResponse")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email not found in SAMLResponse"})
 	}
-	// Find or create user
 	user, err := h.PasswordService.RegisterUser(c.Context(), email, "")
 	if err != nil && !strings.Contains(err.Error(), "duplicate") {
-		logger.LogError("AuthSAMLCallback: user create failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "user create failed"})
 	}
 	if err != nil && strings.Contains(err.Error(), "duplicate") {
 		user, err = h.PasswordService.AuthenticateUser(c.Context(), email, "")
 		if err != nil {
-			logger.LogError("AuthSAMLCallback: user lookup failed", logger.ErrorField(err))
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "user lookup failed"})
 		}
 	}
@@ -1952,7 +1913,6 @@ func (h *SecurityHandler) AuthSAMLCallback(c *fiber.Ctx) error {
 	device := c.Get("User-Agent")
 	sess, err := h.SessionService.CreateSession(c.Context(), user.ID, ip, device, 24*time.Hour)
 	if err != nil {
-		logger.LogError("AuthSAMLCallback: session create failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "session create failed"})
 	}
 	if h.SecurityAuditLogService != nil {
@@ -1968,9 +1928,6 @@ func (h *SecurityHandler) AuthSAMLCallback(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"token": sess.ID, "expires_at": sess.ExpiresAt})
 }
 
-// --- Runtime AuthTypeConfig Setter/Getters ---
-func (h *SecurityHandler) SetAuthTypeConfig(cfg AuthTypeConfig) { h.AuthTypeConfig = cfg }
-func (h *SecurityHandler) GetAuthTypeConfig() AuthTypeConfig    { return h.AuthTypeConfig }
 
 func (h *SecurityHandler) GetNotificationProvidersStatus(c *fiber.Ctx) error {
 	statuses := make(map[string]string)
@@ -2011,4 +1968,129 @@ func (h *SecurityHandler) RetryNotificationQueue(c *fiber.Ctx) error {
 		})
 	}
 	return c.JSON(fiber.Map{"status": "retry triggered"})
+}
+
+// --- MFAConfig Handlers ---
+func (h *SecurityHandler) GetMFAConfig(c *fiber.Ctx) error {
+	var input struct {
+		TenantID string `json:"tenant_id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
+		logger.LogError("GetMFAConfig: tenant_id required", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	}
+	cfg, err := h.Store.GetMFAConfig(c.Context(), input.TenantID)
+	if err != nil {
+		logger.LogError("GetMFAConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(cfg)
+}
+
+func (h *SecurityHandler) SetMFAConfig(c *fiber.Ctx) error {
+	var input MFAConfig
+	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
+		logger.LogError("SetMFAConfig: tenant_id required", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	}
+	err := h.Store.SetMFAConfig(c.Context(), input.TenantID, input)
+	if err != nil {
+		logger.LogError("SetMFAConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"success": true})
+}
+
+// --- PasswordPolicyConfig Handlers ---
+func (h *SecurityHandler) GetPasswordPolicyConfig(c *fiber.Ctx) error {
+	var input struct {
+		TenantID string `json:"tenant_id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
+		logger.LogError("GetPasswordPolicyConfig: tenant_id required", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	}
+	cfg, err := h.Store.GetPasswordPolicyConfig(c.Context(), input.TenantID)
+	if err != nil {
+		logger.LogError("GetPasswordPolicyConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(cfg)
+}
+
+func (h *SecurityHandler) SetPasswordPolicyConfig(c *fiber.Ctx) error {
+	var input PasswordPolicyConfig
+	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
+		logger.LogError("SetPasswordPolicyConfig: tenant_id required", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	}
+	err := h.Store.SetPasswordPolicyConfig(c.Context(), input.TenantID, input)
+	if err != nil {
+		logger.LogError("SetPasswordPolicyConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"success": true})
+}
+
+// --- SessionConfig Handlers ---
+func (h *SecurityHandler) GetSessionConfig(c *fiber.Ctx) error {
+	var input struct {
+		TenantID string `json:"tenant_id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
+		logger.LogError("GetSessionConfig: tenant_id required", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	}
+	cfg, err := h.Store.GetSessionConfig(c.Context(), input.TenantID)
+	if err != nil {
+		logger.LogError("GetSessionConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(cfg)
+}
+
+func (h *SecurityHandler) SetSessionConfig(c *fiber.Ctx) error {
+	var input SessionConfig
+	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
+		logger.LogError("SetSessionConfig: tenant_id required", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	}
+	err := h.Store.SetSessionConfig(c.Context(), input.TenantID, input)
+	if err != nil {
+		logger.LogError("SetSessionConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"success": true})
+}
+
+// --- RateLimitConfig Handlers ---
+func (h *SecurityHandler) SetRateLimitConfig(c *fiber.Ctx) error {
+	var input RateLimitConfig
+	if err := c.BodyParser(&input); err != nil || input.Scope == "" || input.ScopeID == "" {
+		logger.LogError("SetRateLimitConfig: scope and scope_id required", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "scope and scope_id required"})
+	}
+	err := h.Store.SetRateLimitConfig(c.Context(), input)
+	if err != nil {
+		logger.LogError("SetRateLimitConfig: failed", logger.ErrorField(err), logger.String("scope", input.Scope), logger.String("scope_id", input.ScopeID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"success": true})
+}
+
+func (h *SecurityHandler) GetRateLimitConfig(c *fiber.Ctx) error {
+	var input struct {
+		Scope   string `json:"scope"`
+		ScopeID string `json:"scope_id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.Scope == "" || input.ScopeID == "" {
+		logger.LogError("GetRateLimitConfig: scope and scope_id required", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "scope and scope_id required"})
+	}
+	cfg, err := h.Store.GetRateLimit(c.Context(), input.Scope, input.ScopeID)
+	if err != nil {
+		logger.LogError("GetRateLimitConfig: failed", logger.ErrorField(err), logger.String("scope", input.Scope), logger.String("scope_id", input.ScopeID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(cfg)
 }

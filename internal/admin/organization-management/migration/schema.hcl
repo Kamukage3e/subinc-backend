@@ -16,14 +16,7 @@ table "organizations" {
   index { columns = [column.owner_id] }
 }
 
-table "org_settings" {
-  schema      = schema.public
-  column "org_id"    { type = uuid; null = false }
-  column "settings"  { type = jsonb; null = false }
-  column "updated_at"{ type = timestamptz; null = false; default = sql("now()") }
-  primary_key { columns = [column.org_id] }
-  foreign_key { columns = [column.org_id]; ref_table = table.organizations; ref_columns = [table.organizations.column.id]; on_delete = CASCADE }
-}
+# All org settings are now runtime, DB-backed, and managed via server_config (key: org_settings_{orgID})
 
 table "org_audit_log" {
   schema      = schema.public
