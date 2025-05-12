@@ -23,6 +23,32 @@ table "server_config_history" {
   index { columns = [column.key] }
 }
 
+table "tenant_server_config" {
+  schema      = schema.public
+  column "tenant_id"  { type = varchar(128); null = false }
+  column "key"        { type = varchar(128); null = false }
+  column "value"      { type = text; null = false }
+  column "version"    { type = integer; null = false }
+  column "updated_at" { type = timestamptz; null = false; default = sql("now()") }
+  primary_key { columns = [column.tenant_id, column.key] }
+  index { columns = [column.tenant_id] }
+  index { columns = [column.key] }
+}
+
+table "tenant_server_config_history" {
+  schema      = schema.public
+  column "id"         { type = serial; null = false }
+  column "tenant_id"  { type = varchar(128); null = false }
+  column "key"        { type = varchar(128); null = false }
+  column "value"      { type = text; null = false }
+  column "version"    { type = integer; null = false }
+  column "updated_at" { type = timestamptz; null = false; default = sql("now()") }
+  column "updated_by" { type = varchar(128); null = false }
+  primary_key { columns = [column.id] }
+  index { columns = [column.tenant_id] }
+  index { columns = [column.key] }
+}
+
 table "migration_status" {
   schema      = schema.public
   column "name"         { type = varchar(128); null = false }
