@@ -4,13 +4,12 @@ import (
 	"context"
 	"errors"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
+
 )
 
-type PostgresStore struct {
-	DB *pgxpool.Pool
-}
+
 
 // UserService
 func (s *PostgresStore) CreateUser(ctx context.Context, user User) (User, error) {

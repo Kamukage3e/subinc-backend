@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
@@ -92,4 +94,62 @@ func (s *Store) History(ctx context.Context, key string) ([]ServerConfigHistory,
 		out = append(out, h)
 	}
 	return out, nil
+}
+
+func (s *Store) ListMigrationStatus(ctx context.Context) ([]MigrationStatus, error) {
+	rows, err := s.db.Query(ctx, `SELECT name, version, status, started_at, completed_at, error FROM migration_status`)
+	if err != nil {
+		s.log.Error("migration_status list failed", logger.ErrorField(err))
+		return nil, err
+	}
+	defer rows.Close()
+	var result []MigrationStatus
+	for rows.Next() {
+		var ms MigrationStatus
+		var completedAt pgtype.Timestamptz
+		var errStr *string
+		if err := rows.Scan(&ms.Name, &ms.Version, &ms.Status, &ms.StartedAt, &completedAt, &errStr); err != nil {
+			s.log.Error("migration_status scan failed", logger.ErrorField(err))
+			return nil, errors.New("failed to scan migration status")
+		}
+		if completedAt.Valid {
+			t := completedAt.Time
+			ms.CompletedAt = &t
+		}
+		ms.Error = errStr
+		result = append(result, ms)
+	}
+	return result, nil
+}
+
+func (s *Store) GetMigrationStatus(ctx context.Context, name string) (*MigrationStatus, error) {
+	row := s.db.QueryRow(ctx, `SELECT name, version, status, started_at, completed_at, error FROM migration_status WHERE name = $1`, name)
+	var ms MigrationStatus
+	var completedAt pgtype.Timestamptz
+	var errStr *string
+	if err := row.Scan(&ms.Name, &ms.Version, &ms.Status, &ms.StartedAt, &completedAt, &errStr); err != nil {
+		if err == pgx.ErrNoRows {
+			s.log.Error("migration_status get failed", logger.ErrorField(err), logger.String("name", name))
+			return nil, nil
+		}
+		return nil, errors.New("failed to get migration status")
+	}
+	if completedAt.Valid {
+		t := completedAt.Time
+		ms.CompletedAt = &t
+	}
+	ms.Error = errStr
+	return &ms, nil
+}
+
+func (s *Store) SetMigrationStatus(ctx context.Context, status *MigrationStatus) (*MigrationStatus, error) {
+	_, err := s.db.Exec(ctx, `INSERT INTO migration_status (name, version, status, started_at, completed_at, error)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (name) DO UPDATE SET version = $2, status = $3, started_at = $4, completed_at = $5, error = $6`,
+		status.Name, status.Version, status.Status, status.StartedAt, status.CompletedAt, status.Error)
+	if err != nil {
+		s.log.Error("migration_status set failed", logger.ErrorField(err), logger.String("name", status.Name))
+		return nil, errors.New("failed to set migration status")
+	}
+	return status, nil
 }

@@ -4,12 +4,11 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
 type PostgresStore struct {
-	db     *pgxpool.Pool
-	logger *logger.Logger
+	DB     *pgxpool.Pool
+	AuditLogger AuditLogger
 }
 
 // Define RBACService interface locally to avoid import cycle
@@ -19,7 +18,7 @@ type RBACService interface {
 	CheckPermission(ctx interface{}, actorID, resource, action string) (bool, error)
 }
 
-type SecurityAdminHandler struct {
+type SecurityHandler struct {
 	SecurityEventService        SecurityEventService
 	SecurityEventWebhookService SecurityEventWebhookService
 	LoginHistoryService         LoginHistoryService
@@ -34,6 +33,7 @@ type SecurityAdminHandler struct {
 	BreachService               BreachService
 	SecurityPolicyService       SecurityPolicyService
 	RBACService                 RBACService
+	Store                       *PostgresStore
 	SecurityAnalyticsService    SecurityAnalyticsService
 	NotificationService         NotificationService
 	SecurityModuleConfigService SecurityModuleConfigService

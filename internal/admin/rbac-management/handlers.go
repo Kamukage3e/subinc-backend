@@ -10,6 +10,10 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
+func NewRBACHandler(store *PostgresStore) *RBACHandler { 
+	return &RBACHandler{Store: store}
+}
+
 func getActorID(c *fiber.Ctx) string {
 	id := c.Get("X-Actor-ID")
 	if id != "" {
@@ -1579,3 +1583,5 @@ func (h *RBACHandler) RestorePolicy(c *fiber.Ctx) error {
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
+
+

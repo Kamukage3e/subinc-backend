@@ -7,7 +7,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
 // BillingAdminHandler is a struct that contains all the services for the billing admin
@@ -634,8 +633,8 @@ type ExchangeRate struct {
 }
 
 type PostgresStore struct {
-	db     *pgxpool.Pool
-	logger *logger.Logger
+	DB     *pgxpool.Pool
+	AuditLogger security_management.AuditLogger
 }
 
 // TenantCurrency represents the default billing currency for a tenant.

@@ -9,6 +9,11 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
+func NewSecurityHandler(store *PostgresStore) *SecurityHandler {
+	return &SecurityHandler{Store: store}
+}
+
+
 var (
 	emailEnabled = map[string]bool{"smtp": true, "sendgrid": true}
 	smsEnabled   = map[string]bool{"twilio": true, "nexmo": true}
@@ -38,7 +43,7 @@ func marshalAuditDetails(v interface{}) string {
 	return string(b)
 }
 
-func (h *SecurityAdminHandler) ListUserSecurityEvents(c *fiber.Ctx) error {
+func (h *SecurityHandler) ListUserSecurityEvents(c *fiber.Ctx) error {
 	var input struct {
 		UserID string `json:"user_id"`
 	}
@@ -66,7 +71,7 @@ func (h *SecurityAdminHandler) ListUserSecurityEvents(c *fiber.Ctx) error {
 	return c.JSON(events)
 }
 
-func (h *SecurityAdminHandler) ListUserLoginHistory(c *fiber.Ctx) error {
+func (h *SecurityHandler) ListUserLoginHistory(c *fiber.Ctx) error {
 	var input struct {
 		UserID string `json:"user_id"`
 	}
@@ -94,7 +99,7 @@ func (h *SecurityAdminHandler) ListUserLoginHistory(c *fiber.Ctx) error {
 	return c.JSON(history)
 }
 
-func (h *SecurityAdminHandler) EnableMFA(c *fiber.Ctx) error {
+func (h *SecurityHandler) EnableMFA(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := getActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "mfa", "enable")
@@ -128,7 +133,7 @@ func (h *SecurityAdminHandler) EnableMFA(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *SecurityAdminHandler) DisableMFA(c *fiber.Ctx) error {
+func (h *SecurityHandler) DisableMFA(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := getActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "mfa", "disable")
@@ -162,7 +167,7 @@ func (h *SecurityAdminHandler) DisableMFA(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *SecurityAdminHandler) ResetUserPassword(c *fiber.Ctx) error {
+func (h *SecurityHandler) ResetUserPassword(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := getActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "user_password", "reset")
@@ -197,7 +202,7 @@ func (h *SecurityAdminHandler) ResetUserPassword(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *SecurityAdminHandler) ListUserSessions(c *fiber.Ctx) error {
+func (h *SecurityHandler) ListUserSessions(c *fiber.Ctx) error {
 	var input struct {
 		UserID string `json:"user_id"`
 	}
@@ -225,7 +230,7 @@ func (h *SecurityAdminHandler) ListUserSessions(c *fiber.Ctx) error {
 	return c.JSON(sessions)
 }
 
-func (h *SecurityAdminHandler) RevokeUserSession(c *fiber.Ctx) error {
+func (h *SecurityHandler) RevokeUserSession(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := getActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "session", "revoke")
@@ -260,7 +265,7 @@ func (h *SecurityAdminHandler) RevokeUserSession(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *SecurityAdminHandler) ListSecurityAuditLogs(c *fiber.Ctx) error {
+func (h *SecurityHandler) ListSecurityAuditLogs(c *fiber.Ctx) error {
 	var input struct {
 		Page     int `json:"page"`
 		PageSize int `json:"page_size"`
@@ -289,7 +294,7 @@ func (h *SecurityAdminHandler) ListSecurityAuditLogs(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"audit_logs": logs, "page": input.Page, "page_size": input.PageSize})
 }
 
-func (h *SecurityAdminHandler) ListUserAPIKeys(c *fiber.Ctx) error {
+func (h *SecurityHandler) ListUserAPIKeys(c *fiber.Ctx) error {
 	var input struct {
 		UserID string `json:"user_id"`
 	}
@@ -317,7 +322,7 @@ func (h *SecurityAdminHandler) ListUserAPIKeys(c *fiber.Ctx) error {
 	return c.JSON(keys)
 }
 
-func (h *SecurityAdminHandler) CreateUserAPIKey(c *fiber.Ctx) error {
+func (h *SecurityHandler) CreateUserAPIKey(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := getActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "api_key", "create")
@@ -353,7 +358,7 @@ func (h *SecurityAdminHandler) CreateUserAPIKey(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(key)
 }
 
-func (h *SecurityAdminHandler) RevokeUserAPIKey(c *fiber.Ctx) error {
+func (h *SecurityHandler) RevokeUserAPIKey(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := getActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "api_key", "revoke")
@@ -388,7 +393,7 @@ func (h *SecurityAdminHandler) RevokeUserAPIKey(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *SecurityAdminHandler) ListUserDevices(c *fiber.Ctx) error {
+func (h *SecurityHandler) ListUserDevices(c *fiber.Ctx) error {
 	var input struct {
 		UserID string `json:"user_id"`
 	}
@@ -416,7 +421,7 @@ func (h *SecurityAdminHandler) ListUserDevices(c *fiber.Ctx) error {
 	return c.JSON(devices)
 }
 
-func (h *SecurityAdminHandler) RevokeUserDevice(c *fiber.Ctx) error {
+func (h *SecurityHandler) RevokeUserDevice(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := getActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "device", "revoke")
@@ -451,7 +456,7 @@ func (h *SecurityAdminHandler) RevokeUserDevice(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *SecurityAdminHandler) ListBreaches(c *fiber.Ctx) error {
+func (h *SecurityHandler) ListBreaches(c *fiber.Ctx) error {
 	var input struct {
 		Page     int `json:"page"`
 		PageSize int `json:"page_size"`
@@ -480,7 +485,7 @@ func (h *SecurityAdminHandler) ListBreaches(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"breaches": breaches, "page": input.Page, "page_size": input.PageSize})
 }
 
-func (h *SecurityAdminHandler) ListSecurityPolicies(c *fiber.Ctx) error {
+func (h *SecurityHandler) ListSecurityPolicies(c *fiber.Ctx) error {
 	policies, err := h.SecurityPolicyService.ListSecurityPolicies(c.Context())
 	if err != nil {
 		logger.LogError("ListSecurityPolicies: failed", logger.ErrorField(err))
@@ -501,7 +506,7 @@ func (h *SecurityAdminHandler) ListSecurityPolicies(c *fiber.Ctx) error {
 	return c.JSON(policies)
 }
 
-func (h *SecurityAdminHandler) CreateSecurityPolicy(c *fiber.Ctx) error {
+func (h *SecurityHandler) CreateSecurityPolicy(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := getActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "security_policy", "create")
@@ -534,7 +539,7 @@ func (h *SecurityAdminHandler) CreateSecurityPolicy(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(policy)
 }
 
-func (h *SecurityAdminHandler) UpdateSecurityPolicy(c *fiber.Ctx) error {
+func (h *SecurityHandler) UpdateSecurityPolicy(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := getActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "security_policy", "update")
@@ -567,7 +572,7 @@ func (h *SecurityAdminHandler) UpdateSecurityPolicy(c *fiber.Ctx) error {
 	return c.JSON(policy)
 }
 
-func (h *SecurityAdminHandler) DeleteSecurityPolicy(c *fiber.Ctx) error {
+func (h *SecurityHandler) DeleteSecurityPolicy(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := getActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "security_policy", "delete")
@@ -603,7 +608,7 @@ func (h *SecurityAdminHandler) DeleteSecurityPolicy(c *fiber.Ctx) error {
 
 // --- Security Analytics Handlers ---
 
-func (h *SecurityAdminHandler) GetSecurityAnalytics(c *fiber.Ctx) error {
+func (h *SecurityHandler) GetSecurityAnalytics(c *fiber.Ctx) error {
 	var input struct {
 		TenantID string `json:"tenant_id"`
 	}
@@ -629,7 +634,7 @@ func (h *SecurityAdminHandler) GetSecurityAnalytics(c *fiber.Ctx) error {
 	return c.JSON(analytics)
 }
 
-func (h *SecurityAdminHandler) ListAnomalies(c *fiber.Ctx) error {
+func (h *SecurityHandler) ListAnomalies(c *fiber.Ctx) error {
 	var input struct {
 		TenantID string `json:"tenant_id"`
 		Page     int    `json:"page"`
@@ -665,7 +670,7 @@ func (h *SecurityAdminHandler) ListAnomalies(c *fiber.Ctx) error {
 
 // --- Self-Service Security Portal Handlers ---
 
-func (h *SecurityAdminHandler) GetSelfServiceSecurity(c *fiber.Ctx) error {
+func (h *SecurityHandler) GetSelfServiceSecurity(c *fiber.Ctx) error {
 	userID := getActorID(c)
 	if userID == "" {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
@@ -702,7 +707,7 @@ func (h *SecurityAdminHandler) GetSelfServiceSecurity(c *fiber.Ctx) error {
 
 // --- Notification/Alerting Handlers ---
 
-func (h *SecurityAdminHandler) GetNotificationConfig(c *fiber.Ctx) error {
+func (h *SecurityHandler) GetNotificationConfig(c *fiber.Ctx) error {
 	var input struct {
 		TenantID string `json:"tenant_id"`
 	}
@@ -728,7 +733,7 @@ func (h *SecurityAdminHandler) GetNotificationConfig(c *fiber.Ctx) error {
 	return c.JSON(cfg)
 }
 
-func (h *SecurityAdminHandler) UpdateNotificationConfig(c *fiber.Ctx) error {
+func (h *SecurityHandler) UpdateNotificationConfig(c *fiber.Ctx) error {
 	var input NotificationConfig
 	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
 		logger.LogError("UpdateNotificationConfig: tenant_id required", logger.ErrorField(err))
@@ -753,7 +758,7 @@ func (h *SecurityAdminHandler) UpdateNotificationConfig(c *fiber.Ctx) error {
 
 // --- Runtime Notification Test Handler ---
 
-func (h *SecurityAdminHandler) SendTestNotification(c *fiber.Ctx) error {
+func (h *SecurityHandler) SendTestNotification(c *fiber.Ctx) error {
 	var input struct {
 		Channel    string                 `json:"channel"`
 		Provider   string                 `json:"provider"`
@@ -785,7 +790,7 @@ func (h *SecurityAdminHandler) SendTestNotification(c *fiber.Ctx) error {
 
 // --- Runtime Enable/Disable Handler ---
 
-func (h *SecurityAdminHandler) GetSecurityModuleConfig(c *fiber.Ctx) error {
+func (h *SecurityHandler) GetSecurityModuleConfig(c *fiber.Ctx) error {
 	var input struct {
 		TenantID string `json:"tenant_id"`
 	}
@@ -811,7 +816,7 @@ func (h *SecurityAdminHandler) GetSecurityModuleConfig(c *fiber.Ctx) error {
 	return c.JSON(cfg)
 }
 
-func (h *SecurityAdminHandler) SetSecurityModuleConfig(c *fiber.Ctx) error {
+func (h *SecurityHandler) SetSecurityModuleConfig(c *fiber.Ctx) error {
 	var input struct {
 		TenantID string `json:"tenant_id"`
 		Enabled  bool   `json:"enabled"`
@@ -837,7 +842,7 @@ func (h *SecurityAdminHandler) SetSecurityModuleConfig(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *SecurityAdminHandler) SetNotificationChannelEnabled(c *fiber.Ctx) error {
+func (h *SecurityHandler) SetNotificationChannelEnabled(c *fiber.Ctx) error {
 	var input struct {
 		Channel  string `json:"channel"`
 		Provider string `json:"provider"`
@@ -860,7 +865,7 @@ func (h *SecurityAdminHandler) SetNotificationChannelEnabled(c *fiber.Ctx) error
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *SecurityAdminHandler) GetNotificationChannelEnabled(c *fiber.Ctx) error {
+func (h *SecurityHandler) GetNotificationChannelEnabled(c *fiber.Ctx) error {
 	var input struct {
 		Channel  string `json:"channel"`
 		Provider string `json:"provider"`
@@ -883,7 +888,7 @@ func (h *SecurityAdminHandler) GetNotificationChannelEnabled(c *fiber.Ctx) error
 	return c.JSON(fiber.Map{"enabled": enabled})
 }
 
-func (h *SecurityAdminHandler) SetProviderConfig(c *fiber.Ctx) error {
+func (h *SecurityHandler) SetProviderConfig(c *fiber.Ctx) error {
 	var input struct {
 		Channel  string            `json:"channel"`
 		Provider string            `json:"provider"`
@@ -906,7 +911,7 @@ func (h *SecurityAdminHandler) SetProviderConfig(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *SecurityAdminHandler) GetProviderConfig(c *fiber.Ctx) error {
+func (h *SecurityHandler) GetProviderConfig(c *fiber.Ctx) error {
 	var input struct {
 		Channel  string `json:"channel"`
 		Provider string `json:"provider"`
@@ -931,7 +936,7 @@ func (h *SecurityAdminHandler) GetProviderConfig(c *fiber.Ctx) error {
 
 // --- Security Event Webhook Handlers ---
 
-func (h *SecurityAdminHandler) CreateWebhook(c *fiber.Ctx) error {
+func (h *SecurityHandler) CreateWebhook(c *fiber.Ctx) error {
 	var input SecurityEventWebhook
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
@@ -956,7 +961,7 @@ func (h *SecurityAdminHandler) CreateWebhook(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(w)
 }
 
-func (h *SecurityAdminHandler) ListWebhooks(c *fiber.Ctx) error {
+func (h *SecurityHandler) ListWebhooks(c *fiber.Ctx) error {
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
@@ -968,7 +973,7 @@ func (h *SecurityAdminHandler) ListWebhooks(c *fiber.Ctx) error {
 	return c.JSON(list)
 }
 
-func (h *SecurityAdminHandler) DeleteWebhook(c *fiber.Ctx) error {
+func (h *SecurityHandler) DeleteWebhook(c *fiber.Ctx) error {
 	id := c.Query("id")
 	tenantID := c.Query("tenant_id")
 	if id == "" || tenantID == "" {
@@ -991,7 +996,7 @@ func (h *SecurityAdminHandler) DeleteWebhook(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *SecurityAdminHandler) TriggerWebhook(c *fiber.Ctx) error {
+func (h *SecurityHandler) TriggerWebhook(c *fiber.Ctx) error {
 	id := c.Query("id")
 	tenantID := c.Query("tenant_id")
 	eventType := c.Query("event_type")
@@ -1019,7 +1024,7 @@ func (h *SecurityAdminHandler) TriggerWebhook(c *fiber.Ctx) error {
 
 // --- Password Reset/Verification Token Handlers ---
 
-func (h *SecurityAdminHandler) RequestPasswordResetToken(c *fiber.Ctx) error {
+func (h *SecurityHandler) RequestPasswordResetToken(c *fiber.Ctx) error {
 	var input struct {
 		UserID    string        `json:"user_id"`
 		ExpiresIn time.Duration `json:"expires_in"`
@@ -1044,7 +1049,7 @@ func (h *SecurityAdminHandler) RequestPasswordResetToken(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(token)
 }
 
-func (h *SecurityAdminHandler) VerifyPasswordResetToken(c *fiber.Ctx) error {
+func (h *SecurityHandler) VerifyPasswordResetToken(c *fiber.Ctx) error {
 	var input struct {
 		Token string `json:"token"`
 	}
@@ -1058,7 +1063,7 @@ func (h *SecurityAdminHandler) VerifyPasswordResetToken(c *fiber.Ctx) error {
 	return c.JSON(token)
 }
 
-func (h *SecurityAdminHandler) UsePasswordResetToken(c *fiber.Ctx) error {
+func (h *SecurityHandler) UsePasswordResetToken(c *fiber.Ctx) error {
 	var input struct {
 		Token   string `json:"token"`
 		UserID  string `json:"user_id"`
@@ -1088,7 +1093,7 @@ func (h *SecurityAdminHandler) UsePasswordResetToken(c *fiber.Ctx) error {
 
 // --- Rate Limit Config Handlers ---
 
-func (h *SecurityAdminHandler) SetRateLimit(c *fiber.Ctx) error {
+func (h *SecurityHandler) SetRateLimit(c *fiber.Ctx) error {
 	var input RateLimitConfig
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
@@ -1110,7 +1115,7 @@ func (h *SecurityAdminHandler) SetRateLimit(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(cfg)
 }
 
-func (h *SecurityAdminHandler) GetRateLimit(c *fiber.Ctx) error {
+func (h *SecurityHandler) GetRateLimit(c *fiber.Ctx) error {
 	scope := c.Query("scope")
 	scopeID := c.Query("scope_id")
 	if scope == "" || scopeID == "" {
@@ -1133,7 +1138,7 @@ func (h *SecurityAdminHandler) GetRateLimit(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(cfg)
 }
 
-func (h *SecurityAdminHandler) DeleteRateLimit(c *fiber.Ctx) error {
+func (h *SecurityHandler) DeleteRateLimit(c *fiber.Ctx) error {
 	var input struct {
 		ID string `json:"id"`
 	}

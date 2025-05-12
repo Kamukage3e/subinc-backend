@@ -53,6 +53,6 @@ type DBError struct {
 }
 
 type PostgresStore struct {
-	db          *pgxpool.Pool
+	DB          *pgxpool.Pool
 	AuditLogger security_management.AuditLogger
 }

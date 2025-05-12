@@ -20,7 +20,8 @@ func RegisterAdminBillingRoutes(router fiber.Router, handler *BillingAdminHandle
 	billing.Put("/accounts/update", handler.UpdateAccount)
 	billing.Get("/accounts/get", handler.GetAccount)
 	billing.Get("/accounts/list", handler.ListAccounts)
-
+	billing.Get("/accounts/invoice-preview", handler.GetInvoicePreview)
+	
 	billing.Post("/plans/create", handler.CreatePlan)
 	billing.Put("/plans/update", handler.UpdatePlan)
 	billing.Get("/plans/get", handler.GetPlan)
@@ -56,6 +57,7 @@ func RegisterAdminBillingRoutes(router fiber.Router, handler *BillingAdminHandle
 	billing.Get("/coupons/get", handler.GetCoupon)
 	billing.Get("/coupons/code", handler.GetCouponByCode)
 	billing.Get("/coupons/list", handler.ListCoupons)
+	billing.Post("/coupons/redeem", handler.RedeemCoupon)
 
 	billing.Post("/credits/create", handler.CreateCredit)
 	billing.Put("/credits/update", handler.UpdateCredit)
@@ -105,8 +107,8 @@ func RegisterAdminBillingRoutes(router fiber.Router, handler *BillingAdminHandle
 	billing.Post("/manual-refund/create", handler.CreateManualRefund)
 	billing.Post("/account-action/perform", handler.PerformAccountAction)
 
-	billing.Get("/accounts/invoice-preview", handler.GetInvoicePreview)
-	billing.Post("/coupons/redeem", handler.RedeemCoupon)
+
+
 
 	billing.Get("/billing/config/get", handler.GetBillingConfig)
 	billing.Post("/billing/config/set", handler.SetBillingConfig)

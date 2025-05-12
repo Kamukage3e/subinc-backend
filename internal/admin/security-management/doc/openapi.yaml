@@ -1,0 +1,770 @@
+openapi: 3.1.0
+info:
+  title: Security Management API
+  version: 1.0.0
+  description: Production-grade API for SaaS security management. All endpoints are secure, RBAC-protected, rate-limited, and auditable.
+servers:
+  - url: /api/v1/admin/security-management
+paths:
+  /users/security-events:
+    post:
+      tags: [SecurityEvents]
+      summary: List user security events
+      operationId: listUserSecurityEvents
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: userId
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserIDRequest"
+      responses:
+        "200":
+          description: List of security events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SecurityEvent"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /users/login-history:
+    post:
+      tags: [LoginHistory]
+      summary: List user login history
+      operationId: listUserLoginHistory
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: userId
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserIDRequest"
+      responses:
+        "200":
+          description: List of login history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LoginHistory"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /users/mfa/enable:
+    post:
+      tags: [MFA]
+      summary: Enable MFA for user
+      operationId: enableMFA
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: userId
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserIDRequest"
+      responses:
+        "204":
+          description: MFA enabled
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /users/mfa/disable:
+    post:
+      tags: [MFA]
+      summary: Disable MFA for user
+      operationId: disableMFA
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: userId
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserIDRequest"
+      responses:
+        "204":
+          description: MFA disabled
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /users/password/reset:
+    post:
+      tags: [Password]
+      summary: Reset user password
+      operationId: resetUserPassword
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: passwordReset
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetRequest"
+      responses:
+        "204":
+          description: Password reset
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /users/sessions/list:
+    post:
+      tags: [Sessions]
+      summary: List user sessions
+      operationId: listUserSessions
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: userId
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserIDRequest"
+      responses:
+        "200":
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Session"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /users/sessions/revoke:
+    post:
+      tags: [Sessions]
+      summary: Revoke user session
+      operationId: revokeUserSession
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: sessionRevoke
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionRevokeRequest"
+      responses:
+        "204":
+          description: Session revoked
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /audit-logs/list:
+    post:
+      tags: [AuditLogs]
+      summary: List security audit logs
+      operationId: listSecurityAuditLogs
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: auditLogFilter
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditLogFilterRequest"
+      responses:
+        "200":
+          description: List of audit logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SecurityAuditLog"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /users/api-keys/list:
+    post:
+      tags: [APIKeys]
+      summary: List user API keys
+      operationId: listUserAPIKeys
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: userId
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserIDRequest"
+      responses:
+        "200":
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/APIKey"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /users/api-keys/create:
+    post:
+      tags: [APIKeys]
+      summary: Create user API key
+      operationId: createUserAPIKey
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: apiKeyCreate
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreateRequest"
+      responses:
+        "201":
+          description: API key created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKey"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /users/api-keys/revoke:
+    post:
+      tags: [APIKeys]
+      summary: Revoke user API key
+      operationId: revokeUserAPIKey
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: apiKeyRevoke
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyRevokeRequest"
+      responses:
+        "204":
+          description: API key revoked
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /users/devices/list:
+    post:
+      tags: [Devices]
+      summary: List user devices
+      operationId: listUserDevices
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: userId
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserIDRequest"
+      responses:
+        "200":
+          description: List of devices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Device"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /users/devices/revoke:
+    post:
+      tags: [Devices]
+      summary: Revoke user device
+      operationId: revokeUserDevice
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: deviceRevoke
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceRevokeRequest"
+      responses:
+        "204":
+          description: Device revoked
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /breaches/list:
+    post:
+      tags: [Breaches]
+      summary: List breaches
+      operationId: listBreaches
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of breaches
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Breach"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /policies/list:
+    post:
+      tags: [Policies]
+      summary: List security policies
+      operationId: listSecurityPolicies
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of policies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SecurityPolicy"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /policies/create:
+    post:
+      tags: [Policies]
+      summary: Create security policy
+      operationId: createSecurityPolicy
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: policyCreate
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SecurityPolicyCreateRequest"
+      responses:
+        "201":
+          description: Policy created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityPolicy"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /policies/update:
+    post:
+      tags: [Policies]
+      summary: Update security policy
+      operationId: updateSecurityPolicy
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: policyUpdate
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SecurityPolicyUpdateRequest"
+      responses:
+        "200":
+          description: Policy updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityPolicy"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /policies/delete:
+    post:
+      tags: [Policies]
+      summary: Delete security policy
+      operationId: deleteSecurityPolicy
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: policyDelete
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SecurityPolicyDeleteRequest"
+      responses:
+        "204":
+          description: Policy deleted
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /webhooks/create:
+    post:
+      tags: [Webhooks]
+      summary: Create webhook
+      operationId: createWebhook
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: webhookCreate
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookCreateRequest"
+      responses:
+        "201":
+          description: Webhook created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityEventWebhook"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /webhooks/list:
+    post:
+      tags: [Webhooks]
+      summary: List webhooks
+      operationId: listWebhooks
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of webhooks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SecurityEventWebhook"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /webhooks/delete:
+    post:
+      tags: [Webhooks]
+      summary: Delete webhook
+      operationId: deleteWebhook
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: webhookDelete
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookDeleteRequest"
+      responses:
+        "204":
+          description: Webhook deleted
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /webhooks/trigger:
+    post:
+      tags: [Webhooks]
+      summary: Trigger webhook
+      operationId: triggerWebhook
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: webhookTrigger
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookTriggerRequest"
+      responses:
+        "204":
+          description: Webhook triggered
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /password-reset/request:
+    post:
+      tags: [PasswordReset]
+      summary: Request password reset token
+      operationId: requestPasswordResetToken
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: passwordResetRequest
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetTokenRequest"
+      responses:
+        "201":
+          description: Password reset token created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasswordResetToken"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /password-reset/verify:
+    post:
+      tags: [PasswordReset]
+      summary: Verify password reset token
+      operationId: verifyPasswordResetToken
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: passwordResetVerify
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetTokenVerifyRequest"
+      responses:
+        "200":
+          description: Password reset token verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasswordResetToken"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /password-reset/use:
+    post:
+      tags: [PasswordReset]
+      summary: Use password reset token
+      operationId: usePasswordResetToken
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: passwordResetUse
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetTokenUseRequest"
+      responses:
+        "204":
+          description: Password reset token used
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /rate-limit/set:
+    post:
+      tags: [RateLimit]
+      summary: Set rate limit
+      operationId: setRateLimit
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: rateLimitSet
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RateLimitSetRequest"
+      responses:
+        "204":
+          description: Rate limit set
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /rate-limit/get:
+    get:
+      tags: [RateLimit]
+      summary: Get rate limit
+      operationId: getRateLimit
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: scope
+          schema:
+            type: string
+        - in: query
+          name: scope_id
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Rate limit config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitConfig"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /rate-limit/delete:
+    post:
+      tags: [RateLimit]
+      summary: Delete rate limit
+      operationId: deleteRateLimit
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: rateLimitDelete
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RateLimitDeleteRequest"
+      responses:
+        "204":
+          description: Rate limit deleted
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    UserIDRequest:
+      type: object
+      required:
+        - user_id
+      properties:
+        user_id:
+          type: string
+    SecurityEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        event_type:
+          type: string
+        details:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    LoginHistory:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        ip:
+          type: string
+        device:
+          type: string
+        location:
+          type: string
+        success:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+    Session:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        ip:
+          type: string
+        device:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+    SessionRevokeRequest:
+      type: object
+      required:
+        - user_id
+        - session_id
+      properties:
+        user_id:
+          type: string
+        session_id:
+          type: string
+    PasswordResetRequest:
+      type: object
+      required:
+        - user_id
+        - new_password
+      properties:
+        user_id:
+          type: string
+        new_password:
+          type: string
+    SecurityAuditLog:
+      type: object
+      properties:
+        id:
+          type: string
+        actor_id:
+          type: string
+        action:
+          type: string
+        target_id:
+          type: string
+        details:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    AuditLogFilterRequest:
+      type: object
+      properties:
+        actor_id:
+          type: string
+        action:
+          type: string
+        target_id:
+          type: string
+        page:
+          type: integer
+        page_size:
+          type: integer
+    APIKey:
+      type: object
+    APIKeyCreateRequest:
+      type: object
+    APIKeyRevokeRequest:
+      type: object
+    Device:
+      type: object
+    DeviceRevokeRequest:
+      type: object
+    Breach:
+      type: object
+    SecurityPolicy:
+      type: object
+    SecurityPolicyCreateRequest:
+      type: object
+    SecurityPolicyUpdateRequest:
+      type: object
+    SecurityPolicyDeleteRequest:
+      type: object
+    WebhookCreateRequest:
+      type: object
+    WebhookDeleteRequest:
+      type: object
+    WebhookTriggerRequest:
+      type: object
+    PasswordResetTokenRequest:
+      type: object
+    PasswordResetToken:
+      type: object
+    PasswordResetTokenVerifyRequest:
+      type: object
+    PasswordResetTokenUseRequest:
+      type: object
+    RateLimitSetRequest:
+      type: object
+    RateLimitConfig:
+      type: object
+    RateLimitDeleteRequest:
+      type: object
+  responses:
+    Unauthorized:
+      description: Unauthorized
+    BadRequest:
+      description: Bad request
+    Forbidden:
+      description: Forbidden
+    NotFound:
+      description: Not found
+    UnprocessableEntity:
+      description: Unprocessable entity

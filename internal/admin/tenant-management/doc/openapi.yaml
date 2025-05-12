@@ -1,0 +1,434 @@
+openapi: 3.1.0
+info:
+  title: Tenant Management API
+  version: 1.0.0
+  description: Production-grade API for SaaS tenant/org management. All endpoints are secure, RBAC-protected, rate-limited, and auditable.
+servers:
+  - url: /api/v1/admin/tenant-management
+paths:
+  /tenants/create:
+    post:
+      tags: [Tenants]
+      summary: Create tenant
+      operationId: createTenant
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: tenant
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantCreateRequest"
+            examples:
+              default:
+                value:
+                  name: "Acme Corp"
+                  status: "active"
+                  settings: "{}"
+      responses:
+        "201":
+          description: Tenant created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+              examples:
+                default:
+                  value:
+                    id: "uuid"
+                    name: "Acme Corp"
+                    status: "active"
+                    settings: "{}"
+                    created_at: "2024-01-01T00:00:00Z"
+                    updated_at: "2024-01-01T00:00:00Z"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+  /tenants/update:
+    post:
+      tags: [Tenants]
+      summary: Update tenant
+      operationId: updateTenant
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: tenant
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantUpdateRequest"
+            examples:
+              default:
+                value:
+                  id: "uuid"
+                  name: "Acme Corp Updated"
+                  status: "active"
+                  settings: '{"policy":true}'
+      responses:
+        "200":
+          description: Tenant updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+              examples:
+                default:
+                  value:
+                    id: "uuid"
+                    name: "Acme Corp Updated"
+                    status: "active"
+                    settings: '{"policy":true}'
+                    created_at: "2024-01-01T00:00:00Z"
+                    updated_at: "2024-01-02T00:00:00Z"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+  /tenants/delete:
+    post:
+      tags: [Tenants]
+      summary: Delete tenant
+      operationId: deleteTenant
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: tenantId
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantIDRequest"
+            examples:
+              default:
+                value:
+                  id: "uuid"
+      responses:
+        "204":
+          description: Tenant deleted
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+  /tenants/get:
+    post:
+      tags: [Tenants]
+      summary: Get tenant by ID
+      operationId: getTenant
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: tenantId
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantIDRequest"
+            examples:
+              default:
+                value:
+                  id: "uuid"
+      responses:
+        "200":
+          description: Tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+              examples:
+                default:
+                  value:
+                    id: "uuid"
+                    name: "Acme Corp"
+                    status: "active"
+                    settings: "{}"
+                    created_at: "2024-01-01T00:00:00Z"
+                    updated_at: "2024-01-01T00:00:00Z"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /tenants/list:
+    post:
+      tags: [Tenants]
+      summary: List tenants
+      operationId: listTenants
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: tenantFilter
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantFilterRequest"
+            examples:
+              default:
+                value:
+                  query: "Acme"
+                  sort_by: "created_at"
+                  sort_dir: "DESC"
+                  limit: 10
+                  offset: 0
+      responses:
+        "200":
+          description: List of tenants
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenants:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Tenant"
+                  total:
+                    type: integer
+              examples:
+                default:
+                  value:
+                    tenants:
+                      - id: "uuid"
+                        name: "Acme Corp"
+                        status: "active"
+                        settings: "{}"
+                        created_at: "2024-01-01T00:00:00Z"
+                        updated_at: "2024-01-01T00:00:00Z"
+                    total: 1
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /tenants/get-settings:
+    post:
+      tags: [TenantSettings]
+      summary: Get tenant settings
+      operationId: getTenantSettings
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: tenantId
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantIDRequest"
+            examples:
+              default:
+                value:
+                  id: "uuid"
+      responses:
+        "200":
+          description: Tenant settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantSettings"
+              examples:
+                default:
+                  value:
+                    policy: true
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /tenants/update-settings:
+    post:
+      tags: [TenantSettings]
+      summary: Update tenant settings
+      operationId: updateTenantSettings
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: tenantSettings
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantSettingsUpdateRequest"
+            examples:
+              default:
+                value:
+                  tenant_id: "uuid"
+                  settings:
+                    policy: true
+      responses:
+        "200":
+          description: Tenant settings updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantSettings"
+              examples:
+                default:
+                  value:
+                    policy: true
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+  /tenants/set-status:
+    post:
+      tags: [TenantStatus]
+      summary: Set tenant status
+      operationId: setTenantStatus
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: tenantStatus
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantStatusUpdateRequest"
+            examples:
+              default:
+                value:
+                  tenant_id: "uuid"
+                  status: "active"
+      responses:
+        "204":
+          description: Tenant status updated
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+  /tenants/get-status:
+    post:
+      tags: [TenantStatus]
+      summary: Get tenant status
+      operationId: getTenantStatus
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        x-codegen-request-body-name: tenantId
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantIDRequest"
+            examples:
+              default:
+                value:
+                  id: "uuid"
+      responses:
+        "200":
+          description: Tenant status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantStatusResponse"
+              examples:
+                default:
+                  value:
+                    tenant_id: "uuid"
+                    status: "active"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+        settings:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    TenantCreateRequest:
+      type: object
+      required:
+        - name
+        - status
+        - settings
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+        settings:
+          type: string
+    TenantUpdateRequest:
+      type: object
+      required:
+        - id
+        - name
+        - status
+        - settings
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+        settings:
+          type: string
+    TenantIDRequest:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+    TenantFilterRequest:
+      type: object
+      properties:
+        query:
+          type: string
+        sort_by:
+          type: string
+        sort_dir:
+          type: string
+        limit:
+          type: integer
+        offset:
+          type: integer
+    TenantSettings:
+      type: object
+      additionalProperties: true
+    TenantSettingsUpdateRequest:
+      type: object
+      required:
+        - tenant_id
+        - settings
+      properties:
+        tenant_id:
+          type: string
+        settings:
+          type: object
+          additionalProperties: true
+    TenantStatusUpdateRequest:
+      type: object
+      required:
+        - tenant_id
+        - status
+      properties:
+        tenant_id:
+          type: string
+        status:
+          type: string
+    TenantStatusResponse:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+        status:
+          type: string
+  responses:
+    Unauthorized:
+      description: Unauthorized
+    BadRequest:
+      description: Bad request
+    NotFound:
+      description: Not found
+    UnprocessableEntity:
+      description: Unprocessable entity

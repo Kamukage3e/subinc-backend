@@ -10,6 +10,10 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
+func NewOrganizationHandler(store *PostgresStore) *OrganizationHandler {
+	return &OrganizationHandler{Store: store}
+}
+
 // Helper to serialize details to string for audit logs
 func auditDetails(v interface{}) string {
 	if s, ok := v.(string); ok {

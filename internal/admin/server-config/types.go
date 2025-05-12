@@ -22,3 +22,17 @@ type ServerConfigHistory struct {
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 	UpdatedBy string    `json:"updated_by" db:"updated_by"`
 }
+
+// MigrationStatus tracks the status of a runtime or schema migration for server config
+// All fields are required for real-world SaaS migration tracking
+// Status: running, completed, failed
+// CompletedAt and Error are nullable
+
+type MigrationStatus struct {
+	Name        string     `json:"name" db:"name"`
+	Version     int        `json:"version" db:"version"`
+	Status      string     `json:"status" db:"status"`
+	StartedAt   time.Time  `json:"started_at" db:"started_at"`
+	CompletedAt *time.Time `json:"completed_at" db:"completed_at"`
+	Error       *string    `json:"error" db:"error"`
+}

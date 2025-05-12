@@ -8,7 +8,7 @@ import (
 
 // Architectural decision: All security-management endpoints use in-memory rate limiting and strict security headers.
 // Sensitive endpoints have stricter limits.
-func RegisterAdminSecurityRoutes(router fiber.Router, handler *SecurityAdminHandler) {
+func RegisterAdminSecurityRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretName string) {
 	sec := router.Group("/security-management", securityHeadersMiddleware())
 
 	// General rate limiter: 30 req/min/IP

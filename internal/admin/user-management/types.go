@@ -5,8 +5,13 @@ import (
 
 	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type PostgresStore struct {
+	DB *pgxpool.Pool
+	AuditLogger security_management.AuditLogger
+}
 type User struct {
 	ID        string    `json:"id"`
 	Email     string    `json:"email"`

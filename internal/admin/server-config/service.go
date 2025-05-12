@@ -4,23 +4,30 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
+	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 )
 
 // Service provides runtime CRUD, in-memory cache, and hot-reload for server config.
 type Service struct {
-	store   *Store
-	cache   map[string]ServerConfig
-	mu      sync.RWMutex
-	refresh time.Duration
-	stopCh  chan struct{}
+	store       *Store
+	cache       map[string]ServerConfig
+	mu          sync.RWMutex
+	refresh     time.Duration
+	stopCh      chan struct{}
+	AuditLogger security_management.AuditLogger
+	RBACService rbac_management.RBACService
 }
 
-func NewService(store *Store, refresh time.Duration) *Service {
+func NewService(store *Store, refresh time.Duration, auditLogger security_management.AuditLogger, rbac rbac_management.RBACService) *Service {
 	s := &Service{
-		store:   store,
-		cache:   make(map[string]ServerConfig),
-		refresh: refresh,
-		stopCh:  make(chan struct{}),
+		store:       store,
+		cache:       make(map[string]ServerConfig),
+		refresh:     refresh,
+		stopCh:      make(chan struct{}),
+		AuditLogger: auditLogger,
+		RBACService: rbac,
 	}
 	s.reload(context.Background())
 	go s.autoReload()
@@ -90,4 +97,16 @@ func (s *Service) autoReload() {
 
 func (s *Service) Stop() {
 	close(s.stopCh)
+}
+
+func (s *Service) ListMigrationStatus(ctx context.Context) ([]MigrationStatus, error) {
+	return s.store.ListMigrationStatus(ctx)
+}
+
+func (s *Service) GetMigrationStatus(ctx context.Context, name string) (*MigrationStatus, error) {
+	return s.store.GetMigrationStatus(ctx, name)
+}
+
+func (s *Service) SetMigrationStatus(ctx context.Context, status *MigrationStatus) (*MigrationStatus, error) {
+	return s.store.SetMigrationStatus(ctx, status)
 }

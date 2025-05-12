@@ -5,12 +5,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
 type PostgresStore struct {
-	db          *pgxpool.Pool
-	logger      *logger.Logger
+	DB         *pgxpool.Pool
 	AuditLogger security_management.AuditLogger
 }
 
@@ -23,6 +21,7 @@ type RBACHandler struct {
 	ResourceService      ResourceService
 	AuditLogService      AuditLogService
 	Store                *PostgresStore
+	RateLimitService     security_management.RateLimitService
 	AuditLogger          security_management.AuditLogger
 	RBACService          RBACService // optional, may be nil
 }

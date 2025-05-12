@@ -11,6 +11,12 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
+func NewTenantHandler(store *PostgresStore) *TenantAdminHandler {
+	return &TenantAdminHandler{
+		TenantStore: store,
+	}
+}
+
 func getActorID(c *fiber.Ctx) string {
 	id := c.Get("X-Actor-ID")
 	if id != "" {

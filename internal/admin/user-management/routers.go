@@ -59,19 +59,24 @@ func RegisterAdminUserRoutes(router fiber.Router, handler *UserHandler, jwtSecre
 	user.Post("/users/get", handler.GetUser)
 	user.Post("/users/get-by-email", handler.GetUserByEmail)
 	user.Post("/users/list", handler.ListUsers)
+
 	user.Post("/profiles/create", handler.CreateProfile)
 	user.Post("/profiles/update", handler.UpdateProfile)
 	user.Post("/profiles/get", handler.GetProfile)
+
 	user.Post("/settings/get", handler.GetSettings)
 	user.Post("/settings/update", handler.UpdateSettings)
+
 	user.Post("/sessions/create", handler.CreateSession)
 	user.Post("/sessions/delete", handler.DeleteSession)
 	user.Post("/sessions/get", handler.GetSession)
 	user.Post("/sessions/list", handler.ListSessions)
+
 	user.Post("/orgs/add-user", handler.AddUserToOrg)
 	user.Post("/orgs/remove-user", handler.RemoveUserFromOrg)
 	user.Post("/orgs/list-users", handler.ListOrgUsers)
 	user.Post("/orgs/invite-user", handler.InviteUserToOrg)
+	
 	user.Post("/projects/add-user", handler.AddUserToProject)
 	user.Post("/projects/remove-user", handler.RemoveUserFromProject)
 	user.Post("/projects/list-users", handler.ListProjectUsers)

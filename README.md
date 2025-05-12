@@ -1,171 +1,98 @@
-# Subinc Cost Management Microservice – Backend
+# Subinc Cost Microservice Backend
 
-> NOTE: The `/enterprise` and `/deploy` directories are required for enterprise features and deployment manifests. Create them if missing. See below for details.
+```
++-------------------+         +-------------------+         +-------------------+
+|    Admin Panel    | <-----> |    API Gateway    | <-----> |   Client Panel    |
++-------------------+         +-------------------+         +-------------------+
+         |                            |                              |
+         v                            v                              v
++-------------------+   +---------------------------+   +-----------------------+
+|   Auth (OIDC/JWT) |   |  Feature Flags/Settings   |   |   Server Config API   |
++-------------------+   +---------------------------+   +-----------------------+
+         |                            |                              |
+         v                            v                              v
++-------------------+   +---------------------------+   +-----------------------+
+|   RBAC & Security |   |  Tenant Isolation Layer   |   |   Audit Logging       |
++-------------------+   +---------------------------+   +-----------------------+
+         |                            |                              |
+         v                            v                              v
++-------------------+   +---------------------------+   +-----------------------+
+|   Postgres (DB)   |   |   Redis (Cache/Jobs)      |   |   Asynq (Jobs)        |
++-------------------+   +---------------------------+   +-----------------------+
+```
+
+## Overview
+This is a production-grade, multi-tenant SaaS backend for Admin Panel as a Service. It is designed for real-world, high-scale, secure, and extensible deployments. All configuration, feature flags, and tenant isolation are runtime, DB-backed, and auditable. No static config, no YAML, no placeholders.
+
+---
+
+## Features
+
+### Client (Tenant) Features
+- **Self-Service Admin Panel**: Each tenant gets a secure, isolated admin panel to manage their own users, billing, projects, and settings.
+- **Per-Tenant Feature Flags**: Tenants can enable/disable features (e.g., billing, AI, custom reports) via their own settings. All flags are stored in the DB and take effect at runtime.
+- **Per-Tenant Limits**: Tenants can set and view their own usage limits (e.g., max users, max projects) and upgrade as needed.
+- **Bring Your Own Database/Infra**: Tenants can securely provide their own DB connection info and cloud credentials. All data access and integrations are routed through tenant-specific infra, with strict isolation and credential management.
+- **Audit Logging**: All config changes, feature toggles, and sensitive actions are logged and auditable per tenant.
+- **Secure API Access**: All APIs are protected by JWT/OIDC, RBAC, and rate limiting. No tenant can access another tenant's data or config.
+- **Runtime Config Management**: Tenants can update their own settings, feature flags, and infra config at any time via API/UI. No restarts, no static files.
+
+### Owner (Platform Admin) Features
+- **Global Feature Flags & Rollouts**: Platform owner can enable/disable features globally or for specific tenants using the `server_config` module. All changes are runtime, versioned, and auditable.
+- **Per-Tenant Overrides**: Owner can override tenant settings, set defaults, and enforce limits via secure admin APIs.
+- **Multi-Tenant Isolation**: All tenant data, config, and infra are strictly isolated at the service and DB layer. No cross-tenant access.
+- **Bring-Your-Own-Infra Control**: Owner can enable/disable tenant BYO-DB/BYO-cloud, rotate/revoke credentials, and audit all infra changes.
+- **Operational Controls**: Owner can set global rate limits, maintenance windows, and operational toggles via the server config API.
+- **Audit & Compliance**: All admin actions are logged, versioned, and auditable. No silent failures, no insecure defaults.
+- **Hot-Reloadable Config**: All server config is cached in-memory and hot-reloaded on change. No downtime, no redeploys.
+- **RBAC & Security**: Full RBAC for both platform and tenant admins. All APIs are secure by default. No hardcoded secrets, no insecure defaults.
+
+---
 
 ## Tech Stack
+- **Language**: Go (latest stable)
+- **API Framework**: Fiber (RESTful, idiomatic Go)
+- **Database**: Postgres (multi-tenant, per-tenant settings, audit logs)
+- **Cache/Jobs**: Redis (sessions, cache, background jobs via Asynq)
+- **Auth**: JWT/OIDC, RBAC, per-tenant and global rate limiting
+- **Logging**: Zap (structured, contextual, production-grade)
+- **Metrics**: Prometheus (jobs, sessions, cache, API)
+- **Config**: All runtime, DB-backed, hot-reloadable (no YAML, no static config)
+- **Containerization**: Cloud-native, ready for Docker/K8s/CI/CD
+- **Security**: No hardcoded secrets, all credentials encrypted at rest, never logged
+- **Testing**: All code is modular, interface-driven, and CI/CD ready
 
-- **Language:** Go (>=1.23, always latest stable)
-- **API Framework:** Fiber (RESTful, idiomatic, high-performance)
-- **Database:** PostgreSQL (multi-tenant, ACID, scalable)
-- **ORM:** GORM (use raw SQL for perf-critical paths)
-- **Cache/Queue:** Redis (caching, rate limiting, background jobs)
-- **Cloud SDKs:** AWS SDK for Go v2, Azure SDK for Go, Google Cloud Go SDK
-- **Auth/Security:** OIDC/OAuth2 (go-oidc), JWT, Argon2id, OPA (RBAC/ABAC), Vault/AWS Secrets Manager
-- **Observability:** Zap or Zerolog (logging), Prometheus (metrics), OpenTelemetry (tracing), Sentry (error tracking)
-- **Background Jobs:** Asynq (Redis-backed), Cron
-- **Testing:** Go built-in testing, Testcontainers-go, Mockery
-- **CI/CD:** Docker, Kubernetes, GitHub Actions, Helm
-- **Config:** Viper
-- **Migrations:** golang-migrate
-- **Dependency Injection:** Wire
-- **API Docs:** OpenAPI/Swagger
+---
 
-## Project Structure
+## Architectural Decisions
+- **No static config**: All settings, feature flags, and infra are runtime, DB-backed, and auditable.
+- **Strict multi-tenancy**: All tenant data and config are isolated at the service and DB layer. No cross-tenant access.
+- **RBAC everywhere**: All APIs are protected by RBAC and rate limiting. No insecure endpoints.
+- **Audit everything**: All sensitive actions are logged and versioned. No silent failures.
+- **No placeholders, no bloat**: All code is production-grade, real, and ready for SaaS deployment. No commented-out code, no TODOs, no legacy.
+- **Cloud-native**: All code is ready for containerization, orchestration, and CI/CD.
 
-- `/cmd` – Service entrypoints
-- `/internal` – Business logic, domain, adapters (no cross-service imports)
-- `/pkg` – Reusable libraries (safe for external use)
-- `/api` – OpenAPI specs, API contracts
-- `/migrations` – DB migrations
-- `/test` – Integration/unit tests
-- `/deploy` – K8s, Docker, Helm charts
-- `/enterprise` – Modular, production-grade enterprise features (see enterprise/README.md)
+---
 
-## Coding Rules (Strict)
+## How It Works
+- **Per-Tenant Config**: Stored as JSON in the `settings` column of the `tenants` table. All feature flags, limits, and preferences are runtime, DB-backed, and modifiable via API/UI.
+- **Server Config**: All global/operational settings are managed via the `server_config` table and API. Hot-reloadable, versioned, and auditable.
+- **Bring Your Own Infra**: Tenants can securely provide their own DB/cloud credentials. All access is dynamic, secure, and auditable.
+- **Admin APIs**: Both tenant and platform admins have secure APIs to manage all config, features, and infra at runtime.
 
-- **No placeholders, no dummy code, no mixed prod/non-prod content.**
-- **All code must be linter-clean, type-safe, and pass static analysis.**
-- **No commented-out code, no TODOs, no "fix later" notes.**
-- **No hardcoded secrets, no insecure defaults, no panics.**
-- **All error handling must be robust, user-friendly, and never leak sensitive info.**
-- **All code must be secure by default.**
-- **All dependencies must be up-to-date, minimal, and explicitly required.**
-- **All code must be cloud-native, container-ready, and CI/CD friendly.**
-- **All architectural decisions must be explicit and justified in code comments.**
-- **No "misc", "tmp", or catch-all folders.**
-- **No "example", "sample", or "test" code outside of dedicated test directories.**
-- **All code must be easily testable and ready for CI/CD integration.**
-- **All code, comments, and documentation must be written for expert-level developers.**
-- **All code must be compatible with the latest stable versions of all relevant tools and languages.**
-- **All code must be accessible and maintainable by any senior engineer without additional context.**
-- **If a convention or best practice is violated, document the reason in code comments.**
+---
 
-## Development Process
+## No Frontend
+This repo is backend-only. No frontend code, no UI scaffolding, no non-prod content.
 
-- All code must be reviewed for real-world SaaS readiness before merge.
-- No code is merged without passing all linters, static analysis, and tests.
-- All new features and modules must be production-grade, secure, and ready for SaaS deployment.
-- All code must be modular, DRY, and reflect real-world microservice boundaries.
+---
+
+## Enforcement
+- No placeholder files or folders anywhere in the repo.
 - No mixing of prod and non-prod code in the same directory.
-- All code must be cloud-agnostic and ready for multi-cloud, multi-region, and multi-tenant deployment.
-- All architectural decisions must be documented in code comments and/or README files.
+- No "example", "sample", or "test" code outside of dedicated test directories.
+- All new code and structure must be reviewed for real-world SaaS readiness before merge.
 
 ---
 
-**This repository is for backend only. No frontend code, no UI, no non-backend logic.**
-
----
-
-## Admin Backend Architecture
-
-- **Admin API:** All admin endpoints are versioned, strictly separated from tenant/user APIs, and protected by RBAC/ABAC. No admin logic is exposed to tenants or regular users.
-- **Admin Business Logic:** Located in `/internal/admin` and `/enterprise/admin` for superuser operations, tenant/org/project/region management, system configuration, audit, and compliance. No mixing of admin and tenant logic.
-- **Security:** All admin endpoints require elevated authentication and authorization. All actions are auditable. No hardcoded secrets, no insecure defaults, no panics.
-- **Boundaries:** No admin code or endpoints in tenant/user modules. No shared handlers or business logic between admin and tenant APIs. All admin code is production-grade, modular, and ready for SaaS deployment.
-- **Review:** All admin code must be reviewed for real-world SaaS readiness, security, and compliance before merge.
-
-## Security Features & Enforcement
-
-- **Authentication:** All endpoints require strong authentication (OIDC/OAuth2, JWT, Argon2id for passwords). No anonymous access. MFA enforced for admin and sensitive operations.
-- **Authorization:** Strict RBAC/ABAC enforced at API and business logic layers. OPA used for policy evaluation. No privilege escalation, no insecure defaults.
-- **Secrets Management:** All secrets managed via Vault or AWS Secrets Manager. No hardcoded secrets, no secrets in code or config files. All secrets are rotated and auditable.
-- **Audit & Compliance:** All sensitive actions are logged with full context. Audit logs are immutable, tamper-evident, and exportable for compliance (SOC2, ISO, etc.).
-- **Secure Defaults:** All services start with least privilege, secure headers, CORS, and rate limiting. No panics, no silent failures, no insecure fallbacks.
-- **Error Handling:** All errors are user-friendly, never leak sensitive info, and are logged for ops. No stack traces or internal details in API responses.
-- **Dependencies:** All dependencies are minimal, up-to-date, and scanned for vulnerabilities. No legacy or unmaintained packages.
-- **Network:** All traffic is encrypted in transit (TLS 1.3+). No plaintext protocols. All endpoints are protected by API gateway and WAF.
-- **Review:** All code is reviewed for security, compliance, and SaaS readiness before merge. No exceptions.
-
-## SaaS Product Features: Implementation Status
-
-| Feature                        | User | Admin | Status         |
-|--------------------------------|------|-------|---------------|
-| Multi-Cloud Cost Tracking       | ✔️   | ✔️    | Implemented   |
-| Provisioning & Automation       | ✔️   | ✔️    | Implemented   |
-| Architecture Docs/Live Diagrams | ✔️   | ✔️    | Implemented   |
-| Optimization Recommendations    | ✔️   | ✔️    | Implemented   |
-| Security & Compliance           | ✔️   | ✔️    | Implemented   |
-| Audit & Activity Logging        | ✔️   | ✔️    | Implemented   |
-| Payments & Billing              | ✔️   | ✔️    | Implemented   |
-| Access & User Management        | ✔️   | ✔️    | Implemented   |
-| Visualization & Reporting       | ❌   | ❌    | Not implemented |
-| AI-Driven Intelligence          | ✔️   | ✔️    | Implemented (anomaly detection, explainable recommendations) |
-| Notifications                   | ✔️   | ✔️    | Implemented   |
-
----
-
-### Feature Notes
-- **Architecture Documentation & Live Diagrams:** Fully implemented. Endpoints for auto-generation, versioning, export, and real-time visualization of cloud resources/topology are available under `/architecture`. The backend stores and returns the full ArchitectureGraph (nodes + edges) for every doc, supporting all AWS services discovered by the backend scanner. All endpoints are production-ready, RBAC/ABAC-protected, and SaaS-grade. See OpenAPI spec for details.
-- **Provisioning & Automation:** Fully implemented. Endpoints for resource provisioning, automation, and guardrails are available and production-grade.
-- **Optimization Recommendations:** Fully implemented. API, service, and OpenAPI spec are present. Engine integration (OpenAI, AWS, Azure, GCP) is production-ready. The backend supports real-world SaaS credential onboarding and multi-cloud optimization.
-- **AI-Driven Intelligence:** Anomaly detection and explainable recommendations are present. The system is extensible for future AI/ML-powered insights for cost/security/compliance/architecture.
-- **Security & Compliance:** RBAC/ABAC, OPA, audit logging, and MFA are present. All endpoints are production-grade and SaaS-ready. Compliance frameworks (SOC2, ISO, CIS, HIPAA) can be added as needed.
-- **Access & User Management:** RBAC/ABAC, delegated admin, and tenant isolation are present. SSO and SCIM are referenced and extensible.
-- **Audit & Activity Logging:** Full CRUD, search, and export for audit logs, with robust error handling and RBAC.
-- **Notifications:** Real notification system (email, webhook, etc.) with admin endpoints, persistence, and delivery logic.
-- **Budgets, Refunds, Invoices, Credits, Payments, Subscriptions, Webhook Events, Invoice Adjustments:** All implemented, production-grade, and ready for SaaS deployment.
-- **Enterprise Features:** `/enterprise` directory contains only production-grade, modular features.
-- **Future AWS Service Enhancements:**
-  The following AWS services are high-priority for future enhancement of the cost microservice, due to their enterprise value, complexity, or cost impact:
-  - AWS Organizations: For consolidated billing, cross-account cost analysis, and enterprise RBAC/ABAC.
-  - AWS Control Tower: For multi-account governance and landing zone automation.
-  - AWS Savings Plans & Reserved Instances: For advanced cost optimization and commitment management.
-  - AWS Marketplace: For third-party SaaS spend tracking and cost allocation.
-  - AWS Service Catalog: For managed product portfolios and cost controls.
-  - AWS Outposts & Local Zones: For hybrid cloud and edge cost visibility.
-  - AWS Data Exchange: For external data cost tracking and compliance.
-  - AWS License Manager: For software license cost and compliance management.
-  - AWS Budgets & Cost Anomaly Detection: For proactive cost controls and anomaly alerting.
-  - AWS Billing Conductor: For custom billing and chargeback models.
-  - AWS CloudEndure, DMS, and Migration Hub: For migration cost tracking and reporting.
-  - AWS AppConfig, CodeArtifact, and AppRunner: For modern app delivery and cost visibility.
-  - AWS IoT, Greengrass, and RoboMaker: For IoT and robotics cost management at scale.
-  - AWS Managed Blockchain: For distributed ledger cost and usage tracking.
-  - AWS Ground Station: For satellite data cost management.
-  - AWS Quantum Technologies: For future-proofing cost analytics.
-  These services are critical for SaaS customers with complex, multi-cloud, or regulated environments. Roadmap prioritization should be based on customer demand and cost impact.
-
----
-
-**This README reflects the current production-grade, real-world SaaS backend implementation. All features listed as implemented are present in the codebase and ready for deployment.**
-
----
-
-## Payment Provider Disabling (Local/Dev/Test)
-
-Set `PAYMENTS_DISABLED=true` in your environment to disable all payment providers (Stripe, PayPal, Google Pay, Apple Pay). When disabled:
-
-- No real payment API calls are made
-- No provider credentials are required
-- All provider constructors use dummy keys:
-  - Stripe: `dummy-stripe-key`
-  - PayPal: `dummy-paypal-client-id`, `dummy-paypal-client-secret`
-  - Google Pay: `dummy-googlepay-merchant-id`, `dummy-googlepay-api-key`
-  - Apple Pay: `dummy-applepay-merchant-id`, `dummy-applepay-api-key`
-- All tokenization methods return static dummy tokens/metadata
-- No panics or errors if real env vars are missing
-
-**Production:**
-- Leave `PAYMENTS_DISABLED` unset or set to `false` to enable real payment processing.
-- All required provider env vars must be set for production.
-
-This feature is for local/dev/test only. Never use dummy mode in production.
-
-## Middleware
-
-- **CORS**: Applied globally for all routes.
-- **Security Headers**: Strict HTTP security headers (helmet) enforced globally for all routes.
-- **Request Logging**: Structured, audit-grade logging for all requests, including admin API audit logs.
-- **Distributed Rate Limiting**: Redis-backed, production-grade rate limiting applied globally to protect against abuse and DoS.
-
-All middleware is enforced for every route and is production-grade, with no exceptions or bypasses. 
+For expert-level backend SaaS engineers only. All code and documentation are production-grade, secure, and ready for real-world deployment.

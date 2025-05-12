@@ -12,28 +12,21 @@ import (
 	"encoding/json"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-// Remove the PostgresStore struct definition from this file. Only use the one from types.go.
 
-func NewPostgresStore(db *pgxpool.Pool, log *logger.Logger) *PostgresStore {
-	if log == nil {
-		log = logger.NewNoop()
-	}
-	return &PostgresStore{db: db, logger: log}
-}
 
 // --- RoleService ---
 func (s *PostgresStore) CreateRole(ctx context.Context, role Role) (Role, error) {
 	const q = `INSERT INTO roles (id, tenant_id, name, desc, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, tenant_id, name, desc, created_at, updated_at`
 	id := uuid.NewString()
 	now := time.Now().UTC()
-	row := s.db.QueryRow(ctx, q, id, role.TenantID, role.Name, role.Desc, now, now)
+	row := s.DB.QueryRow(ctx, q, id, role.TenantID, role.Name, role.Desc, now, now)
 	var out Role
 	if err := row.Scan(&out.ID, &out.TenantID, &out.Name, &out.Desc, &out.CreatedAt, &out.UpdatedAt); err != nil {
-		s.logger.Error("CreateRole failed", logger.ErrorField(err), logger.Any("role", role))
+		logger.LogError("CreateRole failed", logger.ErrorField(err), logger.Any("role", role))
 		return Role{}, err
 	}
 	s.logRBACChange(ctx, out.TenantID, "", "create", "role", out.ID, nil, out)
@@ -43,10 +36,10 @@ func (s *PostgresStore) CreateRole(ctx context.Context, role Role) (Role, error)
 func (s *PostgresStore) UpdateRole(ctx context.Context, role Role) (Role, error) {
 	before, _ := s.GetRole(ctx, role.ID, role.TenantID)
 	const q = `UPDATE roles SET name = $2, desc = $3, updated_at = $4 WHERE id = $1 AND tenant_id = $5 RETURNING id, tenant_id, name, desc, created_at, updated_at`
-	row := s.db.QueryRow(ctx, q, role.ID, role.Name, role.Desc, time.Now().UTC(), role.TenantID)
+	row := s.DB.QueryRow(ctx, q, role.ID, role.Name, role.Desc, time.Now().UTC(), role.TenantID)
 	var out Role
 	if err := row.Scan(&out.ID, &out.TenantID, &out.Name, &out.Desc, &out.CreatedAt, &out.UpdatedAt); err != nil {
-		s.logger.Error("UpdateRole failed", logger.ErrorField(err), logger.Any("role", role))
+		logger.LogError("UpdateRole failed", logger.ErrorField(err), logger.Any("role", role))
 		return Role{}, err
 	}
 	s.logRBACChange(ctx, out.TenantID, "", "update", "role", out.ID, before, out)
@@ -57,9 +50,9 @@ func (s *PostgresStore) DeleteRole(ctx context.Context, id, tenantID string) err
 	before, _ := s.GetRole(ctx, id, tenantID)
 	const q = `UPDATE roles SET deleted_at = $3 WHERE id = $1 AND tenant_id = $2`
 	now := time.Now().UTC()
-	_, err := s.db.Exec(ctx, q, id, tenantID, now)
+	_, err := s.DB.Exec(ctx, q, id, tenantID, now)
 	if err != nil {
-		s.logger.Error("DeleteRole failed", logger.ErrorField(err), logger.String("id", id))
+		logger.LogError("DeleteRole failed", logger.ErrorField(err), logger.String("id", id))
 		return err
 	}
 	s.logRBACChange(ctx, tenantID, "", "soft_delete", "role", id, before, nil)
@@ -68,9 +61,9 @@ func (s *PostgresStore) DeleteRole(ctx context.Context, id, tenantID string) err
 
 func (s *PostgresStore) RestoreRole(ctx context.Context, id, tenantID string) error {
 	const q = `UPDATE roles SET deleted_at = NULL WHERE id = $1 AND tenant_id = $2`
-	_, err := s.db.Exec(ctx, q, id, tenantID)
+	_, err := s.DB.Exec(ctx, q, id, tenantID)
 	if err != nil {
-		s.logger.Error("RestoreRole failed", logger.ErrorField(err), logger.String("id", id))
+		logger.LogError("RestoreRole failed", logger.ErrorField(err), logger.String("id", id))
 		return err
 	}
 	return nil
@@ -78,10 +71,10 @@ func (s *PostgresStore) RestoreRole(ctx context.Context, id, tenantID string) er
 
 func (s *PostgresStore) GetRole(ctx context.Context, id, tenantID string) (Role, error) {
 	const q = `SELECT id, tenant_id, name, desc, created_at, updated_at, deleted_at FROM roles WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`
-	row := s.db.QueryRow(ctx, q, id, tenantID)
+	row := s.DB.QueryRow(ctx, q, id, tenantID)
 	var out Role
 	if err := row.Scan(&out.ID, &out.TenantID, &out.Name, &out.Desc, &out.CreatedAt, &out.UpdatedAt, &out.DeletedAt); err != nil {
-		s.logger.Error("GetRole failed", logger.ErrorField(err), logger.String("id", id))
+		logger.LogError("GetRole failed", logger.ErrorField(err), logger.String("id", id))
 		return Role{}, err
 	}
 	return out, nil
@@ -96,9 +89,9 @@ func (s *PostgresStore) ListRoles(ctx context.Context, tenantID string, page, pa
 	}
 	const q = `SELECT id, tenant_id, name, desc, created_at, updated_at, deleted_at FROM roles WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2 OFFSET $3`
 	offset := (page - 1) * pageSize
-	rows, err := s.db.Query(ctx, q, tenantID, pageSize, offset)
+	rows, err := s.DB.Query(ctx, q, tenantID, pageSize, offset)
 	if err != nil {
-		s.logger.Error("ListRoles query failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		logger.LogError("ListRoles query failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return nil, err
 	}
 	defer rows.Close()
@@ -106,7 +99,7 @@ func (s *PostgresStore) ListRoles(ctx context.Context, tenantID string, page, pa
 	for rows.Next() {
 		var r Role
 		if err := rows.Scan(&r.ID, &r.TenantID, &r.Name, &r.Desc, &r.CreatedAt, &r.UpdatedAt, &r.DeletedAt); err != nil {
-			s.logger.Error("ListRoles scan failed", logger.ErrorField(err))
+			logger.LogError("ListRoles scan failed", logger.ErrorField(err))
 			return nil, err
 		}
 		out = append(out, r)
@@ -119,10 +112,10 @@ func (s *PostgresStore) CreatePermission(ctx context.Context, perm Permission) (
 	const q = `INSERT INTO permissions (id, name, resource, action, desc, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, resource, action, desc, created_at, updated_at`
 	id := uuid.NewString()
 	now := time.Now().UTC()
-	row := s.db.QueryRow(ctx, q, id, perm.Name, perm.Resource, perm.Action, perm.Desc, now, now)
+	row := s.DB.QueryRow(ctx, q, id, perm.Name, perm.Resource, perm.Action, perm.Desc, now, now)
 	var out Permission
 	if err := row.Scan(&out.ID, &out.Name, &out.Resource, &out.Action, &out.Desc, &out.CreatedAt, &out.UpdatedAt); err != nil {
-		s.logger.Error("CreatePermission failed", logger.ErrorField(err), logger.Any("perm", perm))
+		logger.LogError("CreatePermission failed", logger.ErrorField(err), logger.Any("perm", perm))
 		return Permission{}, err
 	}
 	s.logRBACChange(ctx, "", "", "create", "permission", out.ID, nil, out)
@@ -132,10 +125,10 @@ func (s *PostgresStore) CreatePermission(ctx context.Context, perm Permission) (
 func (s *PostgresStore) UpdatePermission(ctx context.Context, perm Permission) (Permission, error) {
 	before, _ := s.GetPermission(ctx, perm.ID)
 	const q = `UPDATE permissions SET name = $2, resource = $3, action = $4, desc = $5, updated_at = $6 WHERE id = $1 RETURNING id, name, resource, action, desc, created_at, updated_at`
-	row := s.db.QueryRow(ctx, q, perm.ID, perm.Name, perm.Resource, perm.Action, perm.Desc, time.Now().UTC())
+	row := s.DB.QueryRow(ctx, q, perm.ID, perm.Name, perm.Resource, perm.Action, perm.Desc, time.Now().UTC())
 	var out Permission
 	if err := row.Scan(&out.ID, &out.Name, &out.Resource, &out.Action, &out.Desc, &out.CreatedAt, &out.UpdatedAt); err != nil {
-		s.logger.Error("UpdatePermission failed", logger.ErrorField(err), logger.Any("perm", perm))
+		logger.LogError("UpdatePermission failed", logger.ErrorField(err), logger.Any("perm", perm))
 		return Permission{}, err
 	}
 	s.logRBACChange(ctx, "", "", "update", "permission", out.ID, before, out)
@@ -145,9 +138,9 @@ func (s *PostgresStore) UpdatePermission(ctx context.Context, perm Permission) (
 func (s *PostgresStore) DeletePermission(ctx context.Context, id string) error {
 	before, _ := s.GetPermission(ctx, id)
 	const q = `DELETE FROM permissions WHERE id = $1`
-	_, err := s.db.Exec(ctx, q, id)
+	_, err := s.DB.Exec(ctx, q, id)
 	if err != nil {
-		s.logger.Error("DeletePermission failed", logger.ErrorField(err), logger.String("id", id))
+		logger.LogError("DeletePermission failed", logger.ErrorField(err), logger.String("id", id))
 		return err
 	}
 	s.logRBACChange(ctx, "", "", "delete", "permission", id, before, nil)
@@ -156,10 +149,10 @@ func (s *PostgresStore) DeletePermission(ctx context.Context, id string) error {
 
 func (s *PostgresStore) GetPermission(ctx context.Context, id string) (Permission, error) {
 	const q = `SELECT id, name, resource, action, desc, created_at, updated_at FROM permissions WHERE id = $1`
-	row := s.db.QueryRow(ctx, q, id)
+	row := s.DB.QueryRow(ctx, q, id)
 	var out Permission
 	if err := row.Scan(&out.ID, &out.Name, &out.Resource, &out.Action, &out.Desc, &out.CreatedAt, &out.UpdatedAt); err != nil {
-		s.logger.Error("GetPermission failed", logger.ErrorField(err), logger.String("id", id))
+		logger.LogError("GetPermission failed", logger.ErrorField(err), logger.String("id", id))
 		return Permission{}, err
 	}
 	return out, nil
@@ -184,9 +177,9 @@ func (s *PostgresStore) ListPermissions(ctx context.Context, resource, action st
 	}
 	q += " ORDER BY created_at DESC LIMIT $3 OFFSET $4"
 	args = append(args, pageSize, (page-1)*pageSize)
-	rows, err := s.db.Query(ctx, q, args...)
+	rows, err := s.DB.Query(ctx, q, args...)
 	if err != nil {
-		s.logger.Error("ListPermissions query failed", logger.ErrorField(err))
+		logger.LogError("ListPermissions query failed", logger.ErrorField(err))
 		return nil, err
 	}
 	defer rows.Close()
@@ -194,7 +187,7 @@ func (s *PostgresStore) ListPermissions(ctx context.Context, resource, action st
 	for rows.Next() {
 		var p Permission
 		if err := rows.Scan(&p.ID, &p.Name, &p.Resource, &p.Action, &p.Desc, &p.CreatedAt, &p.UpdatedAt); err != nil {
-			s.logger.Error("ListPermissions scan failed", logger.ErrorField(err))
+			logger.LogError("ListPermissions scan failed", logger.ErrorField(err))
 			return nil, err
 		}
 		out = append(out, p)
@@ -207,10 +200,10 @@ func (s *PostgresStore) CreateRoleBinding(ctx context.Context, binding RoleBindi
 	const q = `INSERT INTO role_bindings (id, tenant_id, role_id, user_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, tenant_id, role_id, user_id, created_at, updated_at`
 	id := uuid.NewString()
 	now := time.Now().UTC()
-	row := s.db.QueryRow(ctx, q, id, binding.TenantID, binding.RoleID, binding.UserID, now, now)
+	row := s.DB.QueryRow(ctx, q, id, binding.TenantID, binding.RoleID, binding.UserID, now, now)
 	var out RoleBinding
 	if err := row.Scan(&out.ID, &out.TenantID, &out.RoleID, &out.UserID, &out.CreatedAt, &out.UpdatedAt); err != nil {
-		s.logger.Error("CreateRoleBinding failed", logger.ErrorField(err), logger.Any("binding", binding))
+		logger.LogError("CreateRoleBinding failed", logger.ErrorField(err), logger.Any("binding", binding))
 		return RoleBinding{}, err
 	}
 
@@ -219,9 +212,9 @@ func (s *PostgresStore) CreateRoleBinding(ctx context.Context, binding RoleBindi
 
 func (s *PostgresStore) DeleteRoleBinding(ctx context.Context, id string) error {
 	const q = `DELETE FROM role_bindings WHERE id = $1`
-	_, err := s.db.Exec(ctx, q, id)
+	_, err := s.DB.Exec(ctx, q, id)
 	if err != nil {
-		s.logger.Error("DeleteRoleBinding failed", logger.ErrorField(err), logger.String("id", id))
+		logger.LogError("DeleteRoleBinding failed", logger.ErrorField(err), logger.String("id", id))
 		return err
 	}
 
@@ -243,9 +236,9 @@ func (s *PostgresStore) ListRoleBindings(ctx context.Context, tenantID, userID s
 	}
 	q += " ORDER BY created_at DESC LIMIT $3 OFFSET $4"
 	args = append(args, pageSize, (page-1)*pageSize)
-	rows, err := s.db.Query(ctx, q, args...)
+	rows, err := s.DB.Query(ctx, q, args...)
 	if err != nil {
-		s.logger.Error("ListRoleBindings query failed", logger.ErrorField(err))
+		logger.LogError("ListRoleBindings query failed", logger.ErrorField(err))
 		return nil, err
 	}
 	defer rows.Close()
@@ -253,7 +246,7 @@ func (s *PostgresStore) ListRoleBindings(ctx context.Context, tenantID, userID s
 	for rows.Next() {
 		var b RoleBinding
 		if err := rows.Scan(&b.ID, &b.TenantID, &b.RoleID, &b.UserID, &b.CreatedAt, &b.UpdatedAt); err != nil {
-			s.logger.Error("ListRoleBindings scan failed", logger.ErrorField(err))
+			logger.LogError("ListRoleBindings scan failed", logger.ErrorField(err))
 			return nil, err
 		}
 		out = append(out, b)
@@ -266,10 +259,10 @@ func (s *PostgresStore) CreatePolicy(ctx context.Context, policy Policy) (Policy
 	const q = `INSERT INTO policies (id, tenant_id, name, statements, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, tenant_id, name, statements, created_at, updated_at`
 	id := uuid.NewString()
 	now := time.Now().UTC()
-	row := s.db.QueryRow(ctx, q, id, policy.TenantID, policy.Name, pq.Array(policy.Statements), now, now)
+	row := s.DB.QueryRow(ctx, q, id, policy.TenantID, policy.Name, pq.Array(policy.Statements), now, now)
 	var out Policy
 	if err := row.Scan(&out.ID, &out.TenantID, &out.Name, pq.Array(&out.Statements), &out.CreatedAt, &out.UpdatedAt); err != nil {
-		s.logger.Error("CreatePolicy failed", logger.ErrorField(err), logger.Any("policy", policy))
+		logger.LogError("CreatePolicy failed", logger.ErrorField(err), logger.Any("policy", policy))
 		return Policy{}, err
 	}
 
@@ -278,10 +271,10 @@ func (s *PostgresStore) CreatePolicy(ctx context.Context, policy Policy) (Policy
 
 func (s *PostgresStore) UpdatePolicy(ctx context.Context, policy Policy) (Policy, error) {
 	const q = `UPDATE policies SET name = $2, statements = $3, updated_at = $4 WHERE id = $1 RETURNING id, tenant_id, name, statements, created_at, updated_at`
-	row := s.db.QueryRow(ctx, q, policy.ID, policy.Name, pq.Array(policy.Statements), time.Now().UTC())
+	row := s.DB.QueryRow(ctx, q, policy.ID, policy.Name, pq.Array(policy.Statements), time.Now().UTC())
 	var out Policy
 	if err := row.Scan(&out.ID, &out.TenantID, &out.Name, pq.Array(&out.Statements), &out.CreatedAt, &out.UpdatedAt); err != nil {
-		s.logger.Error("UpdatePolicy failed", logger.ErrorField(err), logger.Any("policy", policy))
+		logger.LogError("UpdatePolicy failed", logger.ErrorField(err), logger.Any("policy", policy))
 		return Policy{}, err
 	}
 
@@ -292,9 +285,9 @@ func (s *PostgresStore) DeletePolicy(ctx context.Context, id string) error {
 	before, _ := s.GetPolicy(ctx, id)
 	const q = `UPDATE policies SET deleted_at = $2 WHERE id = $1`
 	now := time.Now().UTC()
-	_, err := s.db.Exec(ctx, q, id, now)
+	_, err := s.DB.Exec(ctx, q, id, now)
 	if err != nil {
-		s.logger.Error("DeletePolicy failed", logger.ErrorField(err), logger.String("id", id))
+		logger.LogError("DeletePolicy failed", logger.ErrorField(err), logger.String("id", id))
 		return err
 	}
 	s.logRBACChange(ctx, "", "", "soft_delete", "policy", id, before, nil)
@@ -303,9 +296,9 @@ func (s *PostgresStore) DeletePolicy(ctx context.Context, id string) error {
 
 func (s *PostgresStore) RestorePolicy(ctx context.Context, id string) error {
 	const q = `UPDATE policies SET deleted_at = NULL WHERE id = $1`
-	_, err := s.db.Exec(ctx, q, id)
+	_, err := s.DB.Exec(ctx, q, id)
 	if err != nil {
-		s.logger.Error("RestorePolicy failed", logger.ErrorField(err), logger.String("id", id))
+		logger.LogError("RestorePolicy failed", logger.ErrorField(err), logger.String("id", id))
 		return err
 	}
 	return nil
@@ -313,10 +306,10 @@ func (s *PostgresStore) RestorePolicy(ctx context.Context, id string) error {
 
 func (s *PostgresStore) GetPolicy(ctx context.Context, id string) (Policy, error) {
 	const q = `SELECT id, tenant_id, name, statements, created_at, updated_at, deleted_at FROM policies WHERE id = $1 AND deleted_at IS NULL`
-	row := s.db.QueryRow(ctx, q, id)
+	row := s.DB.QueryRow(ctx, q, id)
 	var out Policy
 	if err := row.Scan(&out.ID, &out.TenantID, &out.Name, pq.Array(&out.Statements), &out.CreatedAt, &out.UpdatedAt, &out.DeletedAt); err != nil {
-		s.logger.Error("GetPolicy failed", logger.ErrorField(err), logger.String("id", id))
+		logger.LogError("GetPolicy failed", logger.ErrorField(err), logger.String("id", id))
 		return Policy{}, err
 	}
 	return out, nil
@@ -331,9 +324,9 @@ func (s *PostgresStore) ListPolicies(ctx context.Context, tenantID string, page,
 	}
 	const q = `SELECT id, tenant_id, name, statements, created_at, updated_at, deleted_at FROM policies WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2 OFFSET $3`
 	offset := (page - 1) * pageSize
-	rows, err := s.db.Query(ctx, q, tenantID, pageSize, offset)
+	rows, err := s.DB.Query(ctx, q, tenantID, pageSize, offset)
 	if err != nil {
-		s.logger.Error("ListPolicies query failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		logger.LogError("ListPolicies query failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return nil, err
 	}
 	defer rows.Close()
@@ -341,7 +334,7 @@ func (s *PostgresStore) ListPolicies(ctx context.Context, tenantID string, page,
 	for rows.Next() {
 		var p Policy
 		if err := rows.Scan(&p.ID, &p.TenantID, &p.Name, pq.Array(&p.Statements), &p.CreatedAt, &p.UpdatedAt, &p.DeletedAt); err != nil {
-			s.logger.Error("ListPolicies scan failed", logger.ErrorField(err))
+			logger.LogError("ListPolicies scan failed", logger.ErrorField(err))
 			return nil, err
 		}
 		out = append(out, p)
@@ -354,10 +347,10 @@ func (s *PostgresStore) CreateAPIPermission(ctx context.Context, perm APIPermiss
 	const q = `INSERT INTO api_permissions (id, tenant_id, api, method, resource, action, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, tenant_id, api, method, resource, action, created_at, updated_at`
 	id := uuid.NewString()
 	now := time.Now().UTC()
-	row := s.db.QueryRow(ctx, q, id, perm.TenantID, perm.API, perm.Method, perm.Resource, perm.Action, now, now)
+	row := s.DB.QueryRow(ctx, q, id, perm.TenantID, perm.API, perm.Method, perm.Resource, perm.Action, now, now)
 	var out APIPermission
 	if err := row.Scan(&out.ID, &out.TenantID, &out.API, &out.Method, &out.Resource, &out.Action, &out.CreatedAt, &out.UpdatedAt); err != nil {
-		s.logger.Error("CreateAPIPermission failed", logger.ErrorField(err), logger.Any("perm", perm))
+		logger.LogError("CreateAPIPermission failed", logger.ErrorField(err), logger.Any("perm", perm))
 		return APIPermission{}, err
 	}
 
@@ -366,9 +359,9 @@ func (s *PostgresStore) CreateAPIPermission(ctx context.Context, perm APIPermiss
 
 func (s *PostgresStore) DeleteAPIPermission(ctx context.Context, id string) error {
 	const q = `DELETE FROM api_permissions WHERE id = $1`
-	_, err := s.db.Exec(ctx, q, id)
+	_, err := s.DB.Exec(ctx, q, id)
 	if err != nil {
-		s.logger.Error("DeleteAPIPermission failed", logger.ErrorField(err), logger.String("id", id))
+		logger.LogError("DeleteAPIPermission failed", logger.ErrorField(err), logger.String("id", id))
 		return err
 	}
 
@@ -394,9 +387,9 @@ func (s *PostgresStore) ListAPIPermissions(ctx context.Context, tenantID, api, m
 	}
 	q += " ORDER BY created_at DESC LIMIT $4 OFFSET $5"
 	args = append(args, pageSize, (page-1)*pageSize)
-	rows, err := s.db.Query(ctx, q, args...)
+	rows, err := s.DB.Query(ctx, q, args...)
 	if err != nil {
-		s.logger.Error("ListAPIPermissions query failed", logger.ErrorField(err))
+		logger.LogError("ListAPIPermissions query failed", logger.ErrorField(err))
 		return nil, err
 	}
 	defer rows.Close()
@@ -404,7 +397,7 @@ func (s *PostgresStore) ListAPIPermissions(ctx context.Context, tenantID, api, m
 	for rows.Next() {
 		var p APIPermission
 		if err := rows.Scan(&p.ID, &p.TenantID, &p.API, &p.Method, &p.Resource, &p.Action, &p.CreatedAt, &p.UpdatedAt); err != nil {
-			s.logger.Error("ListAPIPermissions scan failed", logger.ErrorField(err))
+			logger.LogError("ListAPIPermissions scan failed", logger.ErrorField(err))
 			return nil, err
 		}
 		out = append(out, p)
@@ -417,10 +410,10 @@ func (s *PostgresStore) CreateResource(ctx context.Context, res Resource) (Resou
 	const q = `INSERT INTO resources (id, tenant_id, type, name, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, tenant_id, type, name, created_at, updated_at`
 	id := uuid.NewString()
 	now := time.Now().UTC()
-	row := s.db.QueryRow(ctx, q, id, res.TenantID, res.Type, res.Name, now, now)
+	row := s.DB.QueryRow(ctx, q, id, res.TenantID, res.Type, res.Name, now, now)
 	var out Resource
 	if err := row.Scan(&out.ID, &out.TenantID, &out.Type, &out.Name, &out.CreatedAt, &out.UpdatedAt); err != nil {
-		s.logger.Error("CreateResource failed", logger.ErrorField(err), logger.Any("res", res))
+		logger.LogError("CreateResource failed", logger.ErrorField(err), logger.Any("res", res))
 		return Resource{}, err
 	}
 
@@ -429,10 +422,10 @@ func (s *PostgresStore) CreateResource(ctx context.Context, res Resource) (Resou
 
 func (s *PostgresStore) UpdateResource(ctx context.Context, res Resource) (Resource, error) {
 	const q = `UPDATE resources SET type = $2, name = $3, updated_at = $4 WHERE id = $1 RETURNING id, tenant_id, type, name, created_at, updated_at`
-	row := s.db.QueryRow(ctx, q, res.ID, res.Type, res.Name, time.Now().UTC())
+	row := s.DB.QueryRow(ctx, q, res.ID, res.Type, res.Name, time.Now().UTC())
 	var out Resource
 	if err := row.Scan(&out.ID, &out.TenantID, &out.Type, &out.Name, &out.CreatedAt, &out.UpdatedAt); err != nil {
-		s.logger.Error("UpdateResource failed", logger.ErrorField(err), logger.Any("res", res))
+		logger.LogError("UpdateResource failed", logger.ErrorField(err), logger.Any("res", res))
 		return Resource{}, err
 	}
 
@@ -441,9 +434,9 @@ func (s *PostgresStore) UpdateResource(ctx context.Context, res Resource) (Resou
 
 func (s *PostgresStore) DeleteResource(ctx context.Context, id string) error {
 	const q = `DELETE FROM resources WHERE id = $1`
-	_, err := s.db.Exec(ctx, q, id)
+	_, err := s.DB.Exec(ctx, q, id)
 	if err != nil {
-		s.logger.Error("DeleteResource failed", logger.ErrorField(err), logger.String("id", id))
+		logger.LogError("DeleteResource failed", logger.ErrorField(err), logger.String("id", id))
 		return err
 	}
 
@@ -452,10 +445,10 @@ func (s *PostgresStore) DeleteResource(ctx context.Context, id string) error {
 
 func (s *PostgresStore) GetResource(ctx context.Context, id string) (Resource, error) {
 	const q = `SELECT id, tenant_id, type, name, created_at, updated_at FROM resources WHERE id = $1`
-	row := s.db.QueryRow(ctx, q, id)
+	row := s.DB.QueryRow(ctx, q, id)
 	var out Resource
 	if err := row.Scan(&out.ID, &out.TenantID, &out.Type, &out.Name, &out.CreatedAt, &out.UpdatedAt); err != nil {
-		s.logger.Error("GetResource failed", logger.ErrorField(err), logger.String("id", id))
+		logger.LogError("GetResource failed", logger.ErrorField(err), logger.String("id", id))
 		return Resource{}, err
 	}
 	return out, nil
@@ -476,9 +469,9 @@ func (s *PostgresStore) ListResources(ctx context.Context, tenantID, typ string,
 	}
 	q += " ORDER BY created_at DESC LIMIT $3 OFFSET $4"
 	args = append(args, pageSize, (page-1)*pageSize)
-	rows, err := s.db.Query(ctx, q, args...)
+	rows, err := s.DB.Query(ctx, q, args...)
 	if err != nil {
-		s.logger.Error("ListResources query failed", logger.ErrorField(err))
+		logger.LogError("ListResources query failed", logger.ErrorField(err))
 		return nil, err
 	}
 	defer rows.Close()
@@ -486,7 +479,7 @@ func (s *PostgresStore) ListResources(ctx context.Context, tenantID, typ string,
 	for rows.Next() {
 		var r Resource
 		if err := rows.Scan(&r.ID, &r.TenantID, &r.Type, &r.Name, &r.CreatedAt, &r.UpdatedAt); err != nil {
-			s.logger.Error("ListResources scan failed", logger.ErrorField(err))
+			logger.LogError("ListResources scan failed", logger.ErrorField(err))
 			return nil, err
 		}
 		out = append(out, r)
@@ -517,9 +510,9 @@ func (s *PostgresStore) ListAuditLogs(ctx context.Context, tenantID, actorID, ac
 	}
 	q += " ORDER BY created_at DESC LIMIT $5 OFFSET $6"
 	args = append(args, pageSize, (page-1)*pageSize)
-	rows, err := s.db.Query(ctx, q, args...)
+	rows, err := s.DB.Query(ctx, q, args...)
 	if err != nil {
-		s.logger.Error("ListAuditLogs query failed", logger.ErrorField(err))
+		logger.LogError("ListAuditLogs query failed", logger.ErrorField(err))
 		return nil, err
 	}
 	defer rows.Close()
@@ -527,7 +520,7 @@ func (s *PostgresStore) ListAuditLogs(ctx context.Context, tenantID, actorID, ac
 	for rows.Next() {
 		var a AuditLog
 		if err := rows.Scan(&a.ID, &a.TenantID, &a.ActorID, &a.Action, &a.Resource, &a.TargetID, &a.Details, &a.CreatedAt); err != nil {
-			s.logger.Error("ListAuditLogs scan failed", logger.ErrorField(err))
+			logger.LogError("ListAuditLogs scan failed", logger.ErrorField(err))
 			return nil, err
 		}
 		out = append(out, a)
@@ -540,17 +533,17 @@ func (s *PostgresStore) ListAuditLogs(ctx context.Context, tenantID, actorID, ac
 func (s *PostgresStore) CheckPermission(ctx context.Context, userID, resource, action string) (bool, error) {
 	// Validate input
 	if userID == "" || resource == "" || action == "" {
-		s.logger.Error("CheckPermission invalid input", logger.String("user_id", userID), logger.String("resource", resource), logger.String("action", action))
+		logger.LogError("CheckPermission invalid input", logger.String("user_id", userID), logger.String("resource", resource), logger.String("action", action))
 		return false, ErrInvalidRBACInput
 	}
 	// Query for user roles on the resource
 	roles, err := s.GetUserRoles(ctx, userID, resource)
 	if err != nil {
-		s.logger.Error("CheckPermission GetUserRoles failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("resource", resource))
+		logger.LogError("CheckPermission GetUserRoles failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("resource", resource))
 		return false, err
 	}
 	if len(roles) == 0 {
-		s.logger.Error("CheckPermission no roles found", logger.String("user_id", userID), logger.String("resource", resource))
+		logger.LogError("CheckPermission no roles found", logger.String("user_id", userID), logger.String("resource", resource))
 		return false, nil
 	}
 	// Check if any role grants the permission
@@ -559,9 +552,9 @@ func (s *PostgresStore) CheckPermission(ctx context.Context, userID, resource, a
 		JOIN roles r ON r.id = rp.role_id
 	WHERE r.name = ANY($1) AND p.resource = $2 AND p.action = $3`
 	var count int
-	err = s.db.QueryRow(ctx, q, pq.Array(roles), resource, action).Scan(&count)
+	err = s.DB.QueryRow(ctx, q, pq.Array(roles), resource, action).Scan(&count)
 	if err != nil {
-		s.logger.Error("CheckPermission query failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("resource", resource), logger.String("action", action))
+		logger.LogError("CheckPermission query failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("resource", resource), logger.String("action", action))
 		return false, err
 	}
 	return count > 0, nil
@@ -575,9 +568,9 @@ func (s *PostgresStore) GetUserRoles(ctx context.Context, userID, resource strin
 		JOIN role_bindings rb ON rb.role_id = r.id
 		JOIN resources res ON res.id = rb.resource_id
 	WHERE rb.user_id = $1 AND res.name = $2`
-	rows, err := s.db.Query(ctx, q, userID, resource)
+	rows, err := s.DB.Query(ctx, q, userID, resource)
 	if err != nil {
-		s.logger.Error("GetUserRoles query failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("resource", resource))
+		logger.LogError("GetUserRoles query failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("resource", resource))
 		return nil, err
 	}
 	defer rows.Close()
@@ -585,7 +578,7 @@ func (s *PostgresStore) GetUserRoles(ctx context.Context, userID, resource strin
 	for rows.Next() {
 		var role string
 		if err := rows.Scan(&role); err != nil {
-			s.logger.Error("GetUserRoles scan failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("resource", resource))
+			logger.LogError("GetUserRoles scan failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("resource", resource))
 			return nil, err
 		}
 		roles = append(roles, role)
@@ -603,18 +596,18 @@ func (s *PostgresStore) CreateABACPolicy(ctx context.Context, policy ABACPolicy)
 	now := time.Now().UTC()
 	cond, err := json.Marshal(policy.Conditions)
 	if err != nil {
-		s.logger.Error("CreateABACPolicy: marshal conditions failed", logger.ErrorField(err))
+		logger.LogError("CreateABACPolicy: marshal conditions failed", logger.ErrorField(err))
 		return ABACPolicy{}, err
 	}
-	row := s.db.QueryRow(ctx, q, id, policy.TenantID, policy.Name, policy.Effect, pq.Array(policy.Actions), pq.Array(policy.Resources), pq.Array(policy.Subjects), cond, now, now)
+	row := s.DB.QueryRow(ctx, q, id, policy.TenantID, policy.Name, policy.Effect, pq.Array(policy.Actions), pq.Array(policy.Resources), pq.Array(policy.Subjects), cond, now, now)
 	var out ABACPolicy
 	var condRaw []byte
 	if err := row.Scan(&out.ID, &out.TenantID, &out.Name, &out.Effect, pq.Array(&out.Actions), pq.Array(&out.Resources), pq.Array(&out.Subjects), &condRaw, &out.CreatedAt, &out.UpdatedAt); err != nil {
-		s.logger.Error("CreateABACPolicy failed", logger.ErrorField(err), logger.Any("policy", policy))
+		logger.LogError("CreateABACPolicy failed", logger.ErrorField(err), logger.Any("policy", policy))
 		return ABACPolicy{}, err
 	}
 	if err := json.Unmarshal(condRaw, &out.Conditions); err != nil {
-		s.logger.Error("CreateABACPolicy: unmarshal conditions failed", logger.ErrorField(err))
+		logger.LogError("CreateABACPolicy: unmarshal conditions failed", logger.ErrorField(err))
 		return ABACPolicy{}, err
 	}
 	return out, nil
@@ -624,18 +617,18 @@ func (s *PostgresStore) UpdateABACPolicy(ctx context.Context, policy ABACPolicy)
 	const q = `UPDATE abac_policies SET name=$2, effect=$3, actions=$4, resources=$5, subjects=$6, conditions=$7, updated_at=$8 WHERE id=$1 RETURNING id, tenant_id, name, effect, actions, resources, subjects, conditions, created_at, updated_at`
 	cond, err := json.Marshal(policy.Conditions)
 	if err != nil {
-		s.logger.Error("UpdateABACPolicy: marshal conditions failed", logger.ErrorField(err))
+		logger.LogError("UpdateABACPolicy: marshal conditions failed", logger.ErrorField(err))
 		return ABACPolicy{}, err
 	}
-	row := s.db.QueryRow(ctx, q, policy.ID, policy.Name, policy.Effect, pq.Array(policy.Actions), pq.Array(policy.Resources), pq.Array(policy.Subjects), cond, time.Now().UTC())
+	row := s.DB.QueryRow(ctx, q, policy.ID, policy.Name, policy.Effect, pq.Array(policy.Actions), pq.Array(policy.Resources), pq.Array(policy.Subjects), cond, time.Now().UTC())
 	var out ABACPolicy
 	var condRaw []byte
 	if err := row.Scan(&out.ID, &out.TenantID, &out.Name, &out.Effect, pq.Array(&out.Actions), pq.Array(&out.Resources), pq.Array(&out.Subjects), &condRaw, &out.CreatedAt, &out.UpdatedAt); err != nil {
-		s.logger.Error("UpdateABACPolicy failed", logger.ErrorField(err), logger.Any("policy", policy))
+		logger.LogError("UpdateABACPolicy failed", logger.ErrorField(err), logger.Any("policy", policy))
 		return ABACPolicy{}, err
 	}
 	if err := json.Unmarshal(condRaw, &out.Conditions); err != nil {
-		s.logger.Error("UpdateABACPolicy: unmarshal conditions failed", logger.ErrorField(err))
+		logger.LogError("UpdateABACPolicy: unmarshal conditions failed", logger.ErrorField(err))
 		return ABACPolicy{}, err
 	}
 	return out, nil
@@ -643,9 +636,9 @@ func (s *PostgresStore) UpdateABACPolicy(ctx context.Context, policy ABACPolicy)
 
 func (s *PostgresStore) DeleteABACPolicy(ctx context.Context, id string) error {
 	const q = `DELETE FROM abac_policies WHERE id=$1`
-	_, err := s.db.Exec(ctx, q, id)
+	_, err := s.DB.Exec(ctx, q, id)
 	if err != nil {
-		s.logger.Error("DeleteABACPolicy failed", logger.ErrorField(err), logger.String("id", id))
+		logger.LogError("DeleteABACPolicy failed", logger.ErrorField(err), logger.String("id", id))
 		return err
 	}
 	return nil
@@ -653,15 +646,15 @@ func (s *PostgresStore) DeleteABACPolicy(ctx context.Context, id string) error {
 
 func (s *PostgresStore) GetABACPolicy(ctx context.Context, id string) (ABACPolicy, error) {
 	const q = `SELECT id, tenant_id, name, effect, actions, resources, subjects, conditions, created_at, updated_at FROM abac_policies WHERE id=$1`
-	row := s.db.QueryRow(ctx, q, id)
+	row := s.DB.QueryRow(ctx, q, id)
 	var out ABACPolicy
 	var condRaw []byte
 	if err := row.Scan(&out.ID, &out.TenantID, &out.Name, &out.Effect, pq.Array(&out.Actions), pq.Array(&out.Resources), pq.Array(&out.Subjects), &condRaw, &out.CreatedAt, &out.UpdatedAt); err != nil {
-		s.logger.Error("GetABACPolicy failed", logger.ErrorField(err), logger.String("id", id))
+		logger.LogError("GetABACPolicy failed", logger.ErrorField(err), logger.String("id", id))
 		return ABACPolicy{}, err
 	}
 	if err := json.Unmarshal(condRaw, &out.Conditions); err != nil {
-		s.logger.Error("GetABACPolicy: unmarshal conditions failed", logger.ErrorField(err))
+		logger.LogError("GetABACPolicy: unmarshal conditions failed", logger.ErrorField(err))
 		return ABACPolicy{}, err
 	}
 	return out, nil
@@ -676,9 +669,9 @@ func (s *PostgresStore) ListABACPolicies(ctx context.Context, tenantID string, p
 	}
 	const q = `SELECT id, tenant_id, name, effect, actions, resources, subjects, conditions, created_at, updated_at FROM abac_policies WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
 	offset := (page - 1) * pageSize
-	rows, err := s.db.Query(ctx, q, tenantID, pageSize, offset)
+	rows, err := s.DB.Query(ctx, q, tenantID, pageSize, offset)
 	if err != nil {
-		s.logger.Error("ListABACPolicies query failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		logger.LogError("ListABACPolicies query failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return nil, err
 	}
 	defer rows.Close()
@@ -687,11 +680,11 @@ func (s *PostgresStore) ListABACPolicies(ctx context.Context, tenantID string, p
 		var p ABACPolicy
 		var condRaw []byte
 		if err := rows.Scan(&p.ID, &p.TenantID, &p.Name, &p.Effect, pq.Array(&p.Actions), pq.Array(&p.Resources), pq.Array(&p.Subjects), &condRaw, &p.CreatedAt, &p.UpdatedAt); err != nil {
-			s.logger.Error("ListABACPolicies scan failed", logger.ErrorField(err))
+			logger.LogError("ListABACPolicies scan failed", logger.ErrorField(err))
 			return nil, err
 		}
 		if err := json.Unmarshal(condRaw, &p.Conditions); err != nil {
-			s.logger.Error("ListABACPolicies: unmarshal conditions failed", logger.ErrorField(err))
+			logger.LogError("ListABACPolicies: unmarshal conditions failed", logger.ErrorField(err))
 			return nil, err
 		}
 		out = append(out, p)
@@ -701,9 +694,9 @@ func (s *PostgresStore) ListABACPolicies(ctx context.Context, tenantID string, p
 
 func (s *PostgresStore) EvaluateABAC(ctx context.Context, input ABACEvaluationInput) (ABACEvaluationResult, error) {
 	const q = `SELECT id, effect, actions, resources, subjects, conditions FROM abac_policies WHERE tenant_id=$1`
-	rows, err := s.db.Query(ctx, q, input.TenantID)
+	rows, err := s.DB.Query(ctx, q, input.TenantID)
 	if err != nil {
-		s.logger.Error("EvaluateABAC query failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		logger.LogError("EvaluateABAC query failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
 		return ABACEvaluationResult{}, err
 	}
 	defer rows.Close()
@@ -713,7 +706,7 @@ func (s *PostgresStore) EvaluateABAC(ctx context.Context, input ABACEvaluationIn
 		var actions, resources, subjects []string
 		var condRaw []byte
 		if err := rows.Scan(&id, &effect, pq.Array(&actions), pq.Array(&resources), pq.Array(&subjects), &condRaw); err != nil {
-			s.logger.Error("EvaluateABAC scan failed", logger.ErrorField(err))
+			logger.LogError("EvaluateABAC scan failed", logger.ErrorField(err))
 			return ABACEvaluationResult{}, err
 		}
 		if !contains(actions, input.Action) {
@@ -754,7 +747,7 @@ func (s *PostgresStore) SimulatePolicy(ctx context.Context, input PolicySimulati
 		Context:  input.Context,
 	})
 	if err != nil {
-		s.logger.Error("SimulatePolicy failed", logger.ErrorField(err))
+		logger.LogError("SimulatePolicy failed", logger.ErrorField(err))
 		return PolicySimulationResult{}, err
 	}
 	return PolicySimulationResult{
@@ -775,7 +768,7 @@ func (s *PostgresStore) ExplainPermission(ctx context.Context, input PermissionE
 		Context:  map[string]interface{}{},
 	})
 	if err != nil {
-		s.logger.Error("ExplainPermission failed", logger.ErrorField(err))
+		logger.LogError("ExplainPermission failed", logger.ErrorField(err))
 		return PermissionExplainResult{}, err
 	}
 	explanation := ""
@@ -797,9 +790,9 @@ func (s *PostgresStore) DelegateRole(ctx context.Context, input RoleDelegationIn
 	const q = `INSERT INTO delegated_roles (id, tenant_id, from_user_id, to_user_id, role_id, expires_at, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 	id := uuid.NewString()
 	now := time.Now().UTC()
-	_, err := s.db.Exec(ctx, q, id, input.TenantID, input.FromUserID, input.ToUserID, input.RoleID, input.ExpiresAt, now, now)
+	_, err := s.DB.Exec(ctx, q, id, input.TenantID, input.FromUserID, input.ToUserID, input.RoleID, input.ExpiresAt, now, now)
 	if err != nil {
-		s.logger.Error("DelegateRole failed", logger.ErrorField(err), logger.Any("input", input))
+		logger.LogError("DelegateRole failed", logger.ErrorField(err), logger.Any("input", input))
 		return err
 	}
 	return nil
@@ -807,9 +800,9 @@ func (s *PostgresStore) DelegateRole(ctx context.Context, input RoleDelegationIn
 
 func (s *PostgresStore) RevokeDelegatedRole(ctx context.Context, input RoleDelegationInput) error {
 	const q = `DELETE FROM delegated_roles WHERE tenant_id=$1 AND from_user_id=$2 AND to_user_id=$3 AND role_id=$4`
-	_, err := s.db.Exec(ctx, q, input.TenantID, input.FromUserID, input.ToUserID, input.RoleID)
+	_, err := s.DB.Exec(ctx, q, input.TenantID, input.FromUserID, input.ToUserID, input.RoleID)
 	if err != nil {
-		s.logger.Error("RevokeDelegatedRole failed", logger.ErrorField(err), logger.Any("input", input))
+		logger.LogError("RevokeDelegatedRole failed", logger.ErrorField(err), logger.Any("input", input))
 		return err
 	}
 	return nil
@@ -824,9 +817,9 @@ func (s *PostgresStore) ListDelegatedRoles(ctx context.Context, tenantID, userID
 	}
 	const q = `SELECT id, tenant_id, from_user_id, to_user_id, role_id, expires_at, created_at, updated_at FROM delegated_roles WHERE tenant_id=$1 AND to_user_id=$2 ORDER BY created_at DESC LIMIT $3 OFFSET $4`
 	offset := (page - 1) * pageSize
-	rows, err := s.db.Query(ctx, q, tenantID, userID, pageSize, offset)
+	rows, err := s.DB.Query(ctx, q, tenantID, userID, pageSize, offset)
 	if err != nil {
-		s.logger.Error("ListDelegatedRoles query failed", logger.ErrorField(err), logger.String("tenant_id", tenantID), logger.String("user_id", userID))
+		logger.LogError("ListDelegatedRoles query failed", logger.ErrorField(err), logger.String("tenant_id", tenantID), logger.String("user_id", userID))
 		return nil, err
 	}
 	defer rows.Close()
@@ -834,7 +827,7 @@ func (s *PostgresStore) ListDelegatedRoles(ctx context.Context, tenantID, userID
 	for rows.Next() {
 		var d DelegatedRole
 		if err := rows.Scan(&d.ID, &d.TenantID, &d.FromUserID, &d.ToUserID, &d.RoleID, &d.ExpiresAt, &d.CreatedAt, &d.UpdatedAt); err != nil {
-			s.logger.Error("ListDelegatedRoles scan failed", logger.ErrorField(err))
+			logger.LogError("ListDelegatedRoles scan failed", logger.ErrorField(err))
 			return nil, err
 		}
 		out = append(out, d)
@@ -885,13 +878,13 @@ func (s *PostgresStore) BulkAssignRoleBindings(ctx context.Context, tenantID, ro
 		id := uuid.NewString()
 		batch.Queue(`INSERT INTO role_bindings (id, tenant_id, role_id, user_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING RETURNING id, tenant_id, role_id, user_id, created_at, updated_at`, id, tenantID, roleID, userID, now, now)
 	}
-	br := s.db.SendBatch(ctx, batch)
+	br := s.DB.SendBatch(ctx, batch)
 	defer br.Close()
 	for range userIDs {
 		var b RoleBinding
 		err := br.QueryRow().Scan(&b.ID, &b.TenantID, &b.RoleID, &b.UserID, &b.CreatedAt, &b.UpdatedAt)
 		if err != nil && err.Error() != "no rows in result set" {
-			s.logger.Error("BulkAssignRoleBindings scan failed", logger.ErrorField(err))
+			logger.LogError("BulkAssignRoleBindings scan failed", logger.ErrorField(err))
 			return nil, err
 		}
 		if err == nil {
@@ -906,9 +899,9 @@ func (s *PostgresStore) BulkRemoveRoleBindings(ctx context.Context, tenantID, ro
 		return ErrInvalidRBACInput
 	}
 	const q = `DELETE FROM role_bindings WHERE tenant_id = $1 AND role_id = $2 AND user_id = ANY($3)`
-	_, err := s.db.Exec(ctx, q, tenantID, roleID, userIDs)
+	_, err := s.DB.Exec(ctx, q, tenantID, roleID, userIDs)
 	if err != nil {
-		s.logger.Error("BulkRemoveRoleBindings failed", logger.ErrorField(err))
+		logger.LogError("BulkRemoveRoleBindings failed", logger.ErrorField(err))
 		return err
 	}
 	return nil
@@ -921,17 +914,17 @@ func (s *PostgresStore) logRBACChange(ctx context.Context, tenantID, actorID, ac
 	now := time.Now().UTC()
 	beforeJSON, _ := json.Marshal(before)
 	afterJSON, _ := json.Marshal(after)
-	_, err := s.db.Exec(ctx, q, id, tenantID, actorID, action, targetType, targetID, beforeJSON, afterJSON, now)
+	_, err := s.DB.Exec(ctx, q, id, tenantID, actorID, action, targetType, targetID, beforeJSON, afterJSON, now)
 	if err != nil {
-		s.logger.Error("logRBACChange failed", logger.ErrorField(err), logger.String("action", action), logger.String("target_id", targetID))
+		logger.LogError("logRBACChange failed", logger.ErrorField(err), logger.String("action", action), logger.String("target_id", targetID))
 	}
 }
 
 func (s *PostgresStore) ListDistinctPermissionResources(ctx context.Context) ([]string, error) {
 	const q = `SELECT DISTINCT resource FROM permissions`
-	rows, err := s.db.Query(ctx, q)
+	rows, err := s.DB.Query(ctx, q)
 	if err != nil {
-		s.logger.Error("ListDistinctPermissionResources query failed", logger.ErrorField(err))
+		logger.LogError("ListDistinctPermissionResources query failed", logger.ErrorField(err))
 		return nil, err
 	}
 	defer rows.Close()
@@ -939,7 +932,7 @@ func (s *PostgresStore) ListDistinctPermissionResources(ctx context.Context) ([]
 	for rows.Next() {
 		var r string
 		if err := rows.Scan(&r); err != nil {
-			s.logger.Error("ListDistinctPermissionResources scan failed", logger.ErrorField(err))
+			logger.LogError("ListDistinctPermissionResources scan failed", logger.ErrorField(err))
 			return nil, err
 		}
 		resources = append(resources, r)
@@ -949,9 +942,9 @@ func (s *PostgresStore) ListDistinctPermissionResources(ctx context.Context) ([]
 
 func (s *PostgresStore) ListDistinctPermissionActions(ctx context.Context) ([]string, error) {
 	const q = `SELECT DISTINCT action FROM permissions`
-	rows, err := s.db.Query(ctx, q)
+	rows, err := s.DB.Query(ctx, q)
 	if err != nil {
-		s.logger.Error("ListDistinctPermissionActions query failed", logger.ErrorField(err))
+		logger.LogError("ListDistinctPermissionActions query failed", logger.ErrorField(err))
 		return nil, err
 	}
 	defer rows.Close()
@@ -959,7 +952,7 @@ func (s *PostgresStore) ListDistinctPermissionActions(ctx context.Context) ([]st
 	for rows.Next() {
 		var a string
 		if err := rows.Scan(&a); err != nil {
-			s.logger.Error("ListDistinctPermissionActions scan failed", logger.ErrorField(err))
+			logger.LogError("ListDistinctPermissionActions scan failed", logger.ErrorField(err))
 			return nil, err
 		}
 		actions = append(actions, a)

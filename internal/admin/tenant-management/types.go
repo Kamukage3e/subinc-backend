@@ -7,7 +7,6 @@ import (
 	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	user_management "github.com/subinc/subinc-backend/internal/admin/user-management"
-	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
 // TenantStatus defines valid lifecycle states for a tenant
@@ -52,9 +51,9 @@ type TenantFilter struct {
 
 type TenantAdminHandler struct {
 	// TenantStore is optional for deployments that do not require tenant management.
-	TenantStore *TenantStore // optional
+	TenantStore *PostgresStore // optional
 	// TenantSettingsStore is optional for deployments that do not require tenant settings management.
-	TenantSettingsStore *TenantSettingsStore // optional
+	TenantSettingsStore *PostgresStore // optional
 	// AuditLogger is optional for deployments that do not require audit logging.
 	AuditLogger security_management.AuditLogger // optional
 	// RBACService is optional and only required if tenant management needs to delegate to RBAC.
@@ -65,7 +64,7 @@ type TenantAdminHandler struct {
 	RateLimitService security_management.RateLimitService // optional
 }
 
-type TenantSettingsStore struct {
+type PostgresStore struct {
 	DB  *pgxpool.Pool
-	log *logger.Logger
+	AuditLogger security_management.AuditLogger
 }

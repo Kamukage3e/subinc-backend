@@ -1,0 +1,1473 @@
+openapi: 3.1.0
+info:
+  title: RBAC Management API
+  version: 1.0.0
+  description: Production-grade API for SaaS RBAC management. All endpoints are secure, RBAC-protected, and auditable.
+servers:
+  - url: /api/v1/admin/rbac-management
+paths:
+  /roles/create:
+    post:
+      summary: Create role
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleCreateRequest"
+      responses:
+        "201":
+          description: Role created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Role"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /roles/update:
+    put:
+      summary: Update role
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleUpdateRequest"
+      responses:
+        "200":
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Role"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /roles/delete:
+    delete:
+      summary: Delete role
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IDTenantRequest"
+      responses:
+        "204":
+          description: Role deleted
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /roles/get:
+    get:
+      summary: Get role by ID
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IDTenantRequest"
+      responses:
+        "200":
+          description: Role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Role"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /roles/list:
+    get:
+      summary: List roles
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListRequest"
+      responses:
+        "200":
+          description: List of roles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  roles:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Role"
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /roles/restore:
+    post:
+      summary: Restore role
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IDTenantRequest"
+      responses:
+        "200":
+          description: Role restored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Role"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /permissions/create:
+    post:
+      summary: Create permission
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PermissionCreateRequest"
+      responses:
+        "201":
+          description: Permission created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Permission"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /permissions/update:
+    put:
+      summary: Update permission
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PermissionUpdateRequest"
+      responses:
+        "200":
+          description: Permission updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Permission"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /permissions/delete:
+    delete:
+      summary: Delete permission
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IDTenantRequest"
+      responses:
+        "204":
+          description: Permission deleted
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /permissions/get:
+    get:
+      summary: Get permission by ID
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IDTenantRequest"
+      responses:
+        "200":
+          description: Permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Permission"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /permissions/list:
+    get:
+      summary: List permissions
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListRequest"
+      responses:
+        "200":
+          description: List of permissions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  permissions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Permission"
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /role-bindings/create:
+    post:
+      summary: Create role binding
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleBindingCreateRequest"
+      responses:
+        "201":
+          description: Role binding created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleBinding"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /role-bindings/delete:
+    delete:
+      summary: Delete role binding
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IDTenantRequest"
+      responses:
+        "204":
+          description: Role binding deleted
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /role-bindings/list:
+    get:
+      summary: List role bindings
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListRequest"
+      responses:
+        "200":
+          description: List of role bindings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  role_bindings:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RoleBinding"
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /role-bindings/bulk-assign:
+    post:
+      summary: Bulk assign role bindings
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkRoleBindingAssignRequest"
+      responses:
+        "200":
+          description: Bulk role bindings assigned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkRoleBindingAssignResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /role-bindings/bulk-remove:
+    delete:
+      summary: Bulk remove role bindings
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkRoleBindingRemoveRequest"
+      responses:
+        "200":
+          description: Bulk role bindings removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkRoleBindingRemoveResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /policies/create:
+    post:
+      summary: Create policy
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyCreateRequest"
+      responses:
+        "201":
+          description: Policy created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /policies/update:
+    put:
+      summary: Update policy
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyUpdateRequest"
+      responses:
+        "200":
+          description: Policy updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /policies/delete:
+    delete:
+      summary: Delete policy
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IDTenantRequest"
+      responses:
+        "204":
+          description: Policy deleted
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /policies/get:
+    get:
+      summary: Get policy by ID
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IDTenantRequest"
+      responses:
+        "200":
+          description: Policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /policies/list:
+    get:
+      summary: List policies
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListRequest"
+      responses:
+        "200":
+          description: List of policies
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policies:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Policy"
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /policies/simulate:
+    post:
+      summary: Simulate policy what-if
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicySimulateRequest"
+      responses:
+        "200":
+          description: Simulation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicySimulateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /policies/import:
+    post:
+      summary: Import policies
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/PolicyImportRequest"
+      responses:
+        "200":
+          description: Policies imported
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyImportResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /policies/export:
+    get:
+      summary: Export policies
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Policies exported
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /policies/restore:
+    post:
+      summary: Restore policy
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IDTenantRequest"
+      responses:
+        "200":
+          description: Policy restored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /api-permissions/create:
+    post:
+      summary: Create API permission
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIPermissionCreateRequest"
+      responses:
+        "201":
+          description: API permission created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIPermission"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /api-permissions/delete:
+    delete:
+      summary: Delete API permission
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IDTenantRequest"
+      responses:
+        "204":
+          description: API permission deleted
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /api-permissions/list:
+    get:
+      summary: List API permissions
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListRequest"
+      responses:
+        "200":
+          description: List of API permissions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  api_permissions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/APIPermission"
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /resources/create:
+    post:
+      summary: Create resource
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResourceCreateRequest"
+      responses:
+        "201":
+          description: Resource created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resource"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /resources/update:
+    put:
+      summary: Update resource
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResourceUpdateRequest"
+      responses:
+        "200":
+          description: Resource updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resource"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /resources/delete:
+    delete:
+      summary: Delete resource
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IDTenantRequest"
+      responses:
+        "204":
+          description: Resource deleted
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /resources/get:
+    get:
+      summary: Get resource by ID
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IDTenantRequest"
+      responses:
+        "200":
+          description: Resource
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resource"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /resources/list:
+    get:
+      summary: List resources
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListRequest"
+      responses:
+        "200":
+          description: List of resources
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  resources:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Resource"
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /delegations/delegate:
+    post:
+      summary: Create delegation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DelegationCreateRequest"
+      responses:
+        "201":
+          description: Delegation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Delegation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /delegations/revoke:
+    post:
+      summary: Delete delegation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IDTenantRequest"
+      responses:
+        "204":
+          description: Delegation deleted
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /permission-templates/create:
+    post:
+      summary: Create permission template
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PermissionTemplateCreateRequest"
+      responses:
+        "201":
+          description: Permission template created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PermissionTemplate"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /permission-templates/list:
+    get:
+      summary: List permission templates
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListRequest"
+      responses:
+        "200":
+          description: List of permission templates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  permission_templates:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PermissionTemplate"
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /permission-templates/apply:
+    post:
+      summary: Apply permission template
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IDTenantRequest"
+      responses:
+        "200":
+          description: Permission template applied
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    RoleCreateRequest:
+      type: object
+      required:
+        - tenant_id
+        - name
+      properties:
+        tenant_id:
+          type: string
+        name:
+          type: string
+        desc:
+          type: string
+    Role:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        name:
+          type: string
+        desc:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+    RoleUpdateRequest:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - name
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        name:
+          type: string
+        desc:
+          type: string
+    IDTenantRequest:
+      type: object
+      required:
+        - id
+        - tenant_id
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+    ListRequest:
+      type: object
+      required:
+        - page
+        - page_size
+      properties:
+        page:
+          type: integer
+        page_size:
+          type: integer
+    PermissionCreateRequest:
+      type: object
+      required:
+        - tenant_id
+        - name
+        - resource
+        - action
+      properties:
+        tenant_id:
+          type: string
+        name:
+          type: string
+        resource:
+          type: string
+        action:
+          type: string
+        desc:
+          type: string
+    Permission:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        name:
+          type: string
+        resource:
+          type: string
+        action:
+          type: string
+        desc:
+          type: string
+        parent_resource_id:
+          type: string
+        resource_pattern:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+    PermissionUpdateRequest:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - name
+        - resource
+        - action
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        name:
+          type: string
+        resource:
+          type: string
+        action:
+          type: string
+        desc:
+          type: string
+        parent_resource_id:
+          type: string
+        resource_pattern:
+          type: string
+    RoleBindingCreateRequest:
+      type: object
+      required:
+        - tenant_id
+        - role_id
+        - user_id
+      properties:
+        tenant_id:
+          type: string
+        role_id:
+          type: string
+        user_id:
+          type: string
+    RoleBinding:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        role_id:
+          type: string
+        user_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+    RoleBindingUpdateRequest:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - role_id
+        - user_id
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        role_id:
+          type: string
+        user_id:
+          type: string
+    PolicyCreateRequest:
+      type: object
+      required:
+        - tenant_id
+        - name
+      properties:
+        tenant_id:
+          type: string
+        name:
+          type: string
+        desc:
+          type: string
+    Policy:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        name:
+          type: string
+        desc:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+    PolicyUpdateRequest:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - name
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        name:
+          type: string
+        desc:
+          type: string
+    APIPermissionCreateRequest:
+      type: object
+      required:
+        - api
+        - method
+      properties:
+        api:
+          type: string
+        method:
+          type: string
+        desc:
+          type: string
+    APIPermission:
+      type: object
+      properties:
+        id:
+          type: string
+        api:
+          type: string
+        method:
+          type: string
+        desc:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    APIPermissionUpdateRequest:
+      type: object
+      required:
+        - id
+        - api
+        - method
+      properties:
+        id:
+          type: string
+        api:
+          type: string
+        method:
+          type: string
+        desc:
+          type: string
+    ResourceCreateRequest:
+      type: object
+      required:
+        - tenant_id
+        - type
+        - name
+      properties:
+        tenant_id:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+    Resource:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ResourceUpdateRequest:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - type
+        - name
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+    DelegationCreateRequest:
+      type: object
+      required:
+        - tenant_id
+        - from_user_id
+        - to_user_id
+        - role_id
+      properties:
+        tenant_id:
+          type: string
+        from_user_id:
+          type: string
+        to_user_id:
+          type: string
+        role_id:
+          type: string
+    Delegation:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        from_user_id:
+          type: string
+        to_user_id:
+          type: string
+        role_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    DelegationUpdateRequest:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - from_user_id
+        - to_user_id
+        - role_id
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        from_user_id:
+          type: string
+        to_user_id:
+          type: string
+        role_id:
+          type: string
+    PermissionTemplateCreateRequest:
+      type: object
+      required:
+        - name
+        - resource
+        - action
+      properties:
+        name:
+          type: string
+        resource:
+          type: string
+        action:
+          type: string
+    PermissionTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        resource:
+          type: string
+        action:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PermissionTemplateUpdateRequest:
+      type: object
+      required:
+        - id
+        - name
+        - resource
+        - action
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        resource:
+          type: string
+        action:
+          type: string
+    BulkRoleBindingAssignRequest:
+      type: object
+      required:
+        - tenant_id
+        - assignments
+      properties:
+        tenant_id:
+          type: string
+        assignments:
+          type: array
+          items:
+            type: object
+            required:
+              - user_id
+              - role_id
+            properties:
+              user_id:
+                type: string
+              role_id:
+                type: string
+    BulkRoleBindingAssignResponse:
+      type: object
+      properties:
+        assigned:
+          type: integer
+        failed:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+    BulkRoleBindingRemoveRequest:
+      type: object
+      required:
+        - tenant_id
+        - removals
+      properties:
+        tenant_id:
+          type: string
+        removals:
+          type: array
+          items:
+            type: object
+            required:
+              - user_id
+              - role_id
+            properties:
+              user_id:
+                type: string
+              role_id:
+                type: string
+    BulkRoleBindingRemoveResponse:
+      type: object
+      properties:
+        removed:
+          type: integer
+        failed:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+    PolicySimulateRequest:
+      type: object
+      required:
+        - tenant_id
+        - policy_id
+        - input
+      properties:
+        tenant_id:
+          type: string
+        policy_id:
+          type: string
+        input:
+          type: object
+    PolicySimulateResponse:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+        reason:
+          type: string
+    PolicyImportRequest:
+      type: object
+      required:
+        - file
+      properties:
+        file:
+          type: string
+          format: binary
+    PolicyImportResponse:
+      type: object
+      properties:
+        imported:
+          type: integer
+        failed:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+  responses:
+    Unauthorized:
+      description: Unauthorized
+    BadRequest:
+      description: Bad request
+    UnprocessableEntity:
+      description: Unprocessable entity
+    NotFound:
+      description: Not found

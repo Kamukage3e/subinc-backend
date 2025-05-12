@@ -7,6 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -19,7 +21,7 @@ func (s *PostgresStore) CreateProject(ctx context.Context, project Project) (Pro
 	}
 	project.CreatedAt = time.Now()
 	project.UpdatedAt = project.CreatedAt
-	_, err := s.db.Exec(ctx, `INSERT INTO projects (id, org_id, name, description, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+	_, err := s.DB.Exec(ctx, `INSERT INTO projects (id, org_id, name, description, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 		project.ID, project.OrgID, project.Name, project.Description, project.Status, project.CreatedAt, project.UpdatedAt)
 	if err != nil {
 		logger.LogError("CreateProject: failed", logger.ErrorField(err), logger.Any("project", project))
@@ -30,7 +32,7 @@ func (s *PostgresStore) CreateProject(ctx context.Context, project Project) (Pro
 
 func (s *PostgresStore) UpdateProject(ctx context.Context, project Project) (Project, error) {
 	project.UpdatedAt = time.Now()
-	res, err := s.db.Exec(ctx, `UPDATE projects SET name=$1, description=$2, status=$3, updated_at=$4 WHERE id=$5`,
+	res, err := s.DB.Exec(ctx, `UPDATE projects SET name=$1, description=$2, status=$3, updated_at=$4 WHERE id=$5`,
 		project.Name, project.Description, project.Status, project.UpdatedAt, project.ID)
 	if err != nil {
 		logger.LogError("UpdateProject: failed", logger.ErrorField(err), logger.Any("project", project))
@@ -48,7 +50,7 @@ func (s *PostgresStore) DeleteProject(ctx context.Context, id string) error {
 		logger.LogError("DeleteProject: missing project id")
 		return errors.New("missing project id")
 	}
-	res, err := s.db.Exec(ctx, `DELETE FROM projects WHERE id=$1`, id)
+	res, err := s.DB.Exec(ctx, `DELETE FROM projects WHERE id=$1`, id)
 	if err != nil {
 		logger.LogError("DeleteProject: failed", logger.ErrorField(err), logger.Any("id", id))
 		return wrapDBErr("delete_project", err)
@@ -63,7 +65,7 @@ func (s *PostgresStore) DeleteProject(ctx context.Context, id string) error {
 
 func (s *PostgresStore) GetProject(ctx context.Context, id string) (Project, error) {
 	var p Project
-	row := s.db.QueryRow(ctx, `SELECT id, org_id, name, description, status, created_at, updated_at FROM projects WHERE id=$1`, id)
+	row := s.DB.QueryRow(ctx, `SELECT id, org_id, name, description, status, created_at, updated_at FROM projects WHERE id=$1`, id)
 	err := row.Scan(&p.ID, &p.OrgID, &p.Name, &p.Description, &p.Status, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		logger.LogError("GetProject: failed", logger.ErrorField(err), logger.Any("id", id))
@@ -74,7 +76,7 @@ func (s *PostgresStore) GetProject(ctx context.Context, id string) (Project, err
 
 func (s *PostgresStore) ListProjects(ctx context.Context, orgID string, page, pageSize int) ([]Project, error) {
 	offset := (page - 1) * pageSize
-	rows, err := s.db.Query(ctx, `SELECT id, org_id, name, description, status, created_at, updated_at FROM projects WHERE org_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, orgID, pageSize, offset)
+	rows, err := s.DB.Query(ctx, `SELECT id, org_id, name, description, status, created_at, updated_at FROM projects WHERE org_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, orgID, pageSize, offset)
 	if err != nil {
 		logger.LogError("ListProjects: failed", logger.ErrorField(err), logger.Any("org_id", orgID))
 		return nil, wrapDBErr("list_projects", err)
@@ -95,7 +97,7 @@ func (s *PostgresStore) ListProjects(ctx context.Context, orgID string, page, pa
 // --- ProjectSettingsService ---
 func (s *PostgresStore) GetSettings(ctx context.Context, projectID string) (ProjectSettings, error) {
 	var ps ProjectSettings
-	row := s.db.QueryRow(ctx, `SELECT project_id, settings, updated_at FROM project_settings WHERE project_id=$1`, projectID)
+	row := s.DB.QueryRow(ctx, `SELECT project_id, settings, updated_at FROM project_settings WHERE project_id=$1`, projectID)
 	err := row.Scan(&ps.ProjectID, &ps.Settings, &ps.UpdatedAt)
 	if err != nil {
 		logger.LogError("GetSettings: failed", logger.ErrorField(err), logger.Any("project_id", projectID))
@@ -105,7 +107,7 @@ func (s *PostgresStore) GetSettings(ctx context.Context, projectID string) (Proj
 }
 
 func (s *PostgresStore) UpdateSettings(ctx context.Context, projectID, settings string) error {
-	_, err := s.db.Exec(ctx, `UPDATE project_settings SET settings=$1, updated_at=$2 WHERE project_id=$3`, settings, time.Now(), projectID)
+	_, err := s.DB.Exec(ctx, `UPDATE project_settings SET settings=$1, updated_at=$2 WHERE project_id=$3`, settings, time.Now(), projectID)
 	if err != nil {
 		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.Any("project_id", projectID))
 		return wrapDBErr("update_settings", err)
@@ -125,3 +127,5 @@ func (e *DBError) Error() string {
 func generateUUID() string {
 	return uuid.NewString()
 }
+
+

@@ -2,12 +2,19 @@ package rbac_management
 
 import (
 	"github.com/gofiber/fiber/v2"
+	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 )
 
-// RegisterAdminRBACRoutes allows optional RBAC middleware as a plugin.
-func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler) {
-	rbac := router.Group("/rbac-management")
+func rbacScopeExtractor(c *fiber.Ctx) (string, string) {
+	return "rbac", c.Get("X-RBAC-ID")
+}
 
+// RegisterAdminRBACRoutes allows optional RBAC middleware as a plugin.
+func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler, jwtSecretName string) {
+	rbac := router.Group("/rbac-management",
+		security_management.OIDCMiddleware(jwtSecretName),
+		security_management.NewRateLimitMiddleware(handler.RateLimitService, rbacScopeExtractor),
+	)
 	rbac.Post("/roles/create", handler.CreateRole)
 	rbac.Put("/roles/update", handler.UpdateRole)
 	rbac.Delete("/roles/delete", handler.DeleteRole)
@@ -25,7 +32,8 @@ func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler) {
 	rbac.Get("/role-bindings/list", handler.ListRoleBindings)
 	rbac.Post("/role-bindings/bulk-assign", handler.BulkAssignRoleBindings)
 	rbac.Delete("/role-bindings/bulk-remove", handler.BulkRemoveRoleBindings)
-
+	rbac.Post("/roles/restore", handler.RestoreRole)
+	
 	rbac.Post("/policies/create", handler.CreatePolicy)
 	rbac.Put("/policies/update", handler.UpdatePolicy)
 	rbac.Delete("/policies/delete", handler.DeletePolicy)
@@ -34,6 +42,7 @@ func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler) {
 	rbac.Post("/policies/simulate", handler.SimulatePolicyWhatIf)
 	rbac.Post("/policies/import", handler.ImportPolicies)
 	rbac.Get("/policies/export", handler.ExportPolicies)
+	rbac.Post("/policies/restore", handler.RestorePolicy)
 
 	rbac.Post("/api-permissions/create", handler.CreateAPIPermission)
 	rbac.Delete("/api-permissions/delete", handler.DeleteAPIPermission)
@@ -52,6 +61,6 @@ func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler) {
 	rbac.Get("/permission-templates/list", handler.ListPermissionTemplates)
 	rbac.Post("/permission-templates/apply", handler.ApplyPermissionTemplate)
 
-	rbac.Post("/roles/restore", handler.RestoreRole)
-	rbac.Post("/policies/restore", handler.RestorePolicy)
+
+
 }

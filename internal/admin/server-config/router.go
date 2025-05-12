@@ -15,4 +15,9 @@ func RegisterAdminServerConfigRoutes(router fiber.Router, handler *Handler, jwtS
 	cfg.Get("/get/:key", handler.GetConfig)
 	cfg.Post("/set", handler.SetConfig)
 	cfg.Get("/history/:key", handler.ConfigHistory)
+
+	// Add missing real handlers for migration status and config
+	cfg.Get("/migration-status", handler.ListMigrationStatus)
+	cfg.Get("/migration-status/:name", handler.GetMigrationStatus)
+	cfg.Post("/migration-status", handler.SetMigrationStatus)
 }

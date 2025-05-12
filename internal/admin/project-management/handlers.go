@@ -11,6 +11,10 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
+func NewProjectHandler(store *PostgresStore) *ProjectHandler {
+	return &ProjectHandler{Store: store}
+}
+
 func (p *Project) Validate() error {
 	if p.Name == "" {
 		return errors.New("project name must not be empty")
