@@ -126,6 +126,11 @@ type PaymentProviderConfig struct {
 	ApplePayMerchantID  string `json:"applepay_merchant_id"`
 	ApplePayAPIKey      string `json:"applepay_api_key"`
 	PaymentsDisabled    bool   `json:"payments_disabled"`
+	// Braintree owner/global config for SaaS fallback (prod only)
+	BraintreeMerchantID string `json:"braintree_merchant_id"`
+	BraintreePublicKey  string `json:"braintree_public_key"`
+	BraintreePrivateKey string `json:"braintree_private_key"`
+	BraintreeEnv        string `json:"braintree_env"`
 }
 
 // OpenAIConfig represents the owner-admin OpenAI config, stored as JSON in server_config
@@ -185,4 +190,56 @@ type WebhookConfig struct {
 type SessionConfig struct {
 	Prefix string `json:"prefix"`
 	TTL    string `json:"ttl"`
+}
+
+// ClientDBConfig represents the client-admin DB config, stored as JSON in server_config
+// This enables runtime, DB-backed, hot-reloadable DB config for client-admin
+// Key: "client_admin_db_config_{tenantID}"
+type ClientDBConfig struct {
+	Host     string `json:"host"`
+	Port     string `json:"port"`
+	User     string `json:"user"`
+	Password string `json:"password"`
+	Name     string `json:"name"`
+	SSLMode  string `json:"sslmode"`
+}
+
+// ClientRedisConfig represents the client-admin Redis config, stored as JSON in server_config
+// This enables runtime, DB-backed, hot-reloadable Redis config for client-admin
+// Key: "client_admin_redis_config_{tenantID}"
+type ClientRedisConfig struct {
+	Host         string `json:"host"`
+	Port         int    `json:"port"`
+	Password     string `json:"password"`
+	DB           int    `json:"db"`
+	PoolSize     int    `json:"pool_size"`
+	MinIdle      int    `json:"min_idle_conns"`
+	DialTimeout  string `json:"dial_timeout"`
+	ReadTimeout  string `json:"read_timeout"`
+	WriteTimeout string `json:"write_timeout"`
+}
+
+// ClientAWSConfig represents the client-admin AWS config, stored as JSON in server_config
+// This enables runtime, DB-backed, hot-reloadable AWS config for client-admin
+// Key: "client_admin_aws_config_{tenantID}"
+type ClientAWSConfig struct {
+	Region          string `json:"region"`
+	CostExplorerARN string `json:"cost_explorer_role_arn"`
+	AccessKeyID     string `json:"access_key_id"`
+	SecretAccessKey string `json:"secret_access_key"`
+	SessionToken    string `json:"session_token"`
+	AccountID       string `json:"account_id"`
+}
+
+// ClientSMTPConfig represents the client-admin SMTP/email config, stored as JSON in server_config
+// This enables runtime, DB-backed, hot-reloadable SMTP config for client-admin
+// Key: "client_admin_smtp_config_{tenantID}"
+type ClientSMTPConfig struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	From     string `json:"from"`
+	UseTLS   bool   `json:"use_tls"`
+	UseSSL   bool   `json:"use_ssl"`
 }

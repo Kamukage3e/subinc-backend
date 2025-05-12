@@ -86,7 +86,8 @@ func withDB(next fiber.Handler) fiber.Handler {
 }
 
 func main() {
-	ownerDBDSN := os.Getenv("OWNER_DB_DSN")
+
+	ownerDBDSN := "postgres://postgres:postgres@localhost:5432/subinc"
 	if ownerDBDSN == "" {
 		log.Fatalf("OWNER_DB_DSN env var required for DB bootstrap")
 	}

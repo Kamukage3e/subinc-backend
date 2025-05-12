@@ -1,42 +1,18 @@
 package organization_management
 
 import (
-	"encoding/json"
 	"errors"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	"github.com/subinc/subinc-backend/internal/pkg/auditutil"
+	"github.com/subinc/subinc-backend/internal/pkg/contextutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
 func NewOrganizationHandler(store *PostgresStore) *OrganizationHandler {
 	return &OrganizationHandler{Store: store}
-}
-
-// Helper to serialize details to string for audit logs
-func auditDetails(v interface{}) string {
-	if s, ok := v.(string); ok {
-		return s
-	}
-	b, err := json.Marshal(v)
-	if err != nil {
-		return "{}"
-	}
-	return string(b)
-}
-
-// getActorID extracts the user_id from fiber context or returns "system" if not present
-func getActorID(c *fiber.Ctx) string {
-	id := c.Get("X-Actor-ID")
-	if id != "" {
-		return id
-	}
-	id = c.Get("X-User-ID")
-	if id != "" {
-		return id
-	}
-	return ""
 }
 
 func (o *Organization) Validate() error {
@@ -54,7 +30,7 @@ func (o *Organization) Validate() error {
 
 func (h *OrganizationHandler) CreateOrganization(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "organization", "create")
+		permitted, err := h.RBACService.CheckPermission(c.Context(), contextutil.GetActorID(c), "organization", "create")
 		if err != nil {
 			logger.LogError("RBAC error", logger.ErrorField(err))
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -80,10 +56,10 @@ func (h *OrganizationHandler) CreateOrganization(c *fiber.Ctx) error {
 	if h.OrgAuditLogger != nil {
 		go h.OrgAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        org.ID,
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "create_organization",
 			TargetID:  org.ID,
-			Details:   auditDetails(input),
+			Details:   auditutil.AuditDetails(input),
 			CreatedAt: time.Now(),
 		})
 	}
@@ -92,7 +68,7 @@ func (h *OrganizationHandler) CreateOrganization(c *fiber.Ctx) error {
 
 func (h *OrganizationHandler) UpdateOrganization(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "organization", "update")
+		permitted, err := h.RBACService.CheckPermission(c.Context(), contextutil.GetActorID(c), "organization", "update")
 		if err != nil {
 			logger.LogError("RBAC error", logger.ErrorField(err))
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -122,10 +98,10 @@ func (h *OrganizationHandler) UpdateOrganization(c *fiber.Ctx) error {
 	if h.OrgAuditLogger != nil {
 		go h.OrgAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        org.ID,
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "update_organization",
 			TargetID:  org.ID,
-			Details:   auditDetails(input),
+			Details:   auditutil.AuditDetails(input),
 			CreatedAt: time.Now(),
 		})
 	}
@@ -134,7 +110,7 @@ func (h *OrganizationHandler) UpdateOrganization(c *fiber.Ctx) error {
 
 func (h *OrganizationHandler) DeleteOrganization(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "organization", "delete")
+		permitted, err := h.RBACService.CheckPermission(c.Context(), contextutil.GetActorID(c), "organization", "delete")
 		if err != nil {
 			logger.LogError("RBAC error", logger.ErrorField(err))
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -157,10 +133,10 @@ func (h *OrganizationHandler) DeleteOrganization(c *fiber.Ctx) error {
 	if h.OrgAuditLogger != nil {
 		go h.OrgAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        input.ID,
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "delete_organization",
 			TargetID:  input.ID,
-			Details:   auditDetails(map[string]interface{}{"id": input.ID}),
+			Details:   auditutil.AuditDetails(map[string]interface{}{"id": input.ID}),
 			CreatedAt: time.Now(),
 		})
 	}
@@ -169,7 +145,7 @@ func (h *OrganizationHandler) DeleteOrganization(c *fiber.Ctx) error {
 
 func (h *OrganizationHandler) GetOrganization(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "organization", "get")
+		permitted, err := h.RBACService.CheckPermission(c.Context(), contextutil.GetActorID(c), "organization", "get")
 		if err != nil {
 			logger.LogError("RBAC error", logger.ErrorField(err))
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -193,10 +169,10 @@ func (h *OrganizationHandler) GetOrganization(c *fiber.Ctx) error {
 	if h.OrgAuditLogger != nil {
 		go h.OrgAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        org.ID,
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "get_organization",
 			TargetID:  org.ID,
-			Details:   auditDetails(map[string]interface{}{"id": input.ID}),
+			Details:   auditutil.AuditDetails(map[string]interface{}{"id": input.ID}),
 			CreatedAt: time.Now(),
 		})
 	}
@@ -205,7 +181,7 @@ func (h *OrganizationHandler) GetOrganization(c *fiber.Ctx) error {
 
 func (h *OrganizationHandler) ListOrganizations(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "organization", "list")
+		permitted, err := h.RBACService.CheckPermission(c.Context(), contextutil.GetActorID(c), "organization", "list")
 		if err != nil {
 			logger.LogError("RBAC error", logger.ErrorField(err))
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -237,10 +213,10 @@ func (h *OrganizationHandler) ListOrganizations(c *fiber.Ctx) error {
 	if h.OrgAuditLogger != nil {
 		go h.OrgAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        "",
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "list_organizations",
 			TargetID:  input.OwnerID,
-			Details:   auditDetails(map[string]interface{}{"owner_id": input.OwnerID, "page": input.Page, "page_size": input.PageSize}),
+			Details:   auditutil.AuditDetails(map[string]interface{}{"owner_id": input.OwnerID, "page": input.Page, "page_size": input.PageSize}),
 			CreatedAt: time.Now(),
 		})
 	}
@@ -249,7 +225,7 @@ func (h *OrganizationHandler) ListOrganizations(c *fiber.Ctx) error {
 
 func (h *OrganizationHandler) GetSettings(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "organization", "get")
+		permitted, err := h.RBACService.CheckPermission(c.Context(), contextutil.GetActorID(c), "organization", "get")
 		if err != nil {
 			logger.LogError("RBAC error", logger.ErrorField(err))
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -273,10 +249,10 @@ func (h *OrganizationHandler) GetSettings(c *fiber.Ctx) error {
 	if h.OrgAuditLogger != nil {
 		go h.OrgAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        "",
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "get_settings",
 			TargetID:  input.OrgID,
-			Details:   auditDetails(map[string]interface{}{"org_id": input.OrgID}),
+			Details:   auditutil.AuditDetails(map[string]interface{}{"org_id": input.OrgID}),
 			CreatedAt: time.Now(),
 		})
 	}
@@ -285,7 +261,7 @@ func (h *OrganizationHandler) GetSettings(c *fiber.Ctx) error {
 
 func (h *OrganizationHandler) UpdateSettings(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "organization", "update")
+		permitted, err := h.RBACService.CheckPermission(c.Context(), contextutil.GetActorID(c), "organization", "update")
 		if err != nil {
 			logger.LogError("RBAC error", logger.ErrorField(err))
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -313,10 +289,10 @@ func (h *OrganizationHandler) UpdateSettings(c *fiber.Ctx) error {
 	if h.OrgAuditLogger != nil {
 		go h.OrgAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        "",
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "update_settings",
 			TargetID:  input.OrgID,
-			Details:   auditDetails(input),
+			Details:   auditutil.AuditDetails(input),
 			CreatedAt: time.Now(),
 		})
 	}

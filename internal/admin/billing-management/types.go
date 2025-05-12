@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 )
 
 // BillingAdminHandler is a struct that contains all the services for the billing admin
@@ -35,6 +36,7 @@ type BillingAdminHandler struct {
 	RateLimitService           security_management.RateLimitService // for distributed rate limiting
 	DisputeService             DisputeServiceInterface
 	DisputeEvidenceService     DisputeEvidenceServiceInterface
+	ConfigService              *server_config.Service // for fetching secrets, keys, and static configs from server-config
 }
 
 // Account represents a billing account
@@ -633,7 +635,7 @@ type ExchangeRate struct {
 }
 
 type PostgresStore struct {
-	DB     *pgxpool.Pool
+	DB          *pgxpool.Pool
 	AuditLogger security_management.AuditLogger
 }
 

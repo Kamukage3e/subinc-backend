@@ -3,6 +3,7 @@ package server_config
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
@@ -440,4 +441,124 @@ func (s *Service) SetOwnerSessionConfig(ctx context.Context, sessionCfg SessionC
 		return ServerConfig{}, err
 	}
 	return s.Set(ctx, "owner_admin_session_config", string(b), updatedBy)
+}
+
+// GetClientDBConfig returns the current client-admin DB config for a tenant from server_config (runtime, hot-reloadable)
+func (s *Service) GetClientDBConfig(ctx context.Context, tenantID string) (ClientDBConfig, error) {
+	if tenantID == "" {
+		return ClientDBConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_db_config_" + tenantID
+	cfg, err := s.Get(ctx, key)
+	if err != nil {
+		return ClientDBConfig{}, err
+	}
+	var dbCfg ClientDBConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &dbCfg); err != nil {
+		return ClientDBConfig{}, err
+	}
+	return dbCfg, nil
+}
+
+// SetClientDBConfig sets the client-admin DB config for a tenant in server_config (runtime, hot-reloadable)
+func (s *Service) SetClientDBConfig(ctx context.Context, tenantID string, dbCfg ClientDBConfig, updatedBy string) (ServerConfig, error) {
+	if tenantID == "" {
+		return ServerConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_db_config_" + tenantID
+	b, err := json.Marshal(dbCfg)
+	if err != nil {
+		return ServerConfig{}, err
+	}
+	return s.Set(ctx, key, string(b), updatedBy)
+}
+
+// GetClientRedisConfig returns the current client-admin Redis config for a tenant from server_config (runtime, hot-reloadable)
+func (s *Service) GetClientRedisConfig(ctx context.Context, tenantID string) (ClientRedisConfig, error) {
+	if tenantID == "" {
+		return ClientRedisConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_redis_config_" + tenantID
+	cfg, err := s.Get(ctx, key)
+	if err != nil {
+		return ClientRedisConfig{}, err
+	}
+	var redisCfg ClientRedisConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &redisCfg); err != nil {
+		return ClientRedisConfig{}, err
+	}
+	return redisCfg, nil
+}
+
+// SetClientRedisConfig sets the client-admin Redis config for a tenant in server_config (runtime, hot-reloadable)
+func (s *Service) SetClientRedisConfig(ctx context.Context, tenantID string, redisCfg ClientRedisConfig, updatedBy string) (ServerConfig, error) {
+	if tenantID == "" {
+		return ServerConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_redis_config_" + tenantID
+	b, err := json.Marshal(redisCfg)
+	if err != nil {
+		return ServerConfig{}, err
+	}
+	return s.Set(ctx, key, string(b), updatedBy)
+}
+
+// GetClientAWSConfig returns the current client-admin AWS config for a tenant from server_config (runtime, hot-reloadable)
+func (s *Service) GetClientAWSConfig(ctx context.Context, tenantID string) (ClientAWSConfig, error) {
+	if tenantID == "" {
+		return ClientAWSConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_aws_config_" + tenantID
+	cfg, err := s.Get(ctx, key)
+	if err != nil {
+		return ClientAWSConfig{}, err
+	}
+	var awsCfg ClientAWSConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &awsCfg); err != nil {
+		return ClientAWSConfig{}, err
+	}
+	return awsCfg, nil
+}
+
+// SetClientAWSConfig sets the client-admin AWS config for a tenant in server_config (runtime, hot-reloadable)
+func (s *Service) SetClientAWSConfig(ctx context.Context, tenantID string, awsCfg ClientAWSConfig, updatedBy string) (ServerConfig, error) {
+	if tenantID == "" {
+		return ServerConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_aws_config_" + tenantID
+	b, err := json.Marshal(awsCfg)
+	if err != nil {
+		return ServerConfig{}, err
+	}
+	return s.Set(ctx, key, string(b), updatedBy)
+}
+
+// GetClientSMTPConfig returns the current client-admin SMTP config for a tenant from server_config (runtime, hot-reloadable)
+func (s *Service) GetClientSMTPConfig(ctx context.Context, tenantID string) (ClientSMTPConfig, error) {
+	if tenantID == "" {
+		return ClientSMTPConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_smtp_config_" + tenantID
+	cfg, err := s.Get(ctx, key)
+	if err != nil {
+		return ClientSMTPConfig{}, err
+	}
+	var smtpCfg ClientSMTPConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &smtpCfg); err != nil {
+		return ClientSMTPConfig{}, err
+	}
+	return smtpCfg, nil
+}
+
+// SetClientSMTPConfig sets the client-admin SMTP config for a tenant in server_config (runtime, hot-reloadable)
+func (s *Service) SetClientSMTPConfig(ctx context.Context, tenantID string, smtpCfg ClientSMTPConfig, updatedBy string) (ServerConfig, error) {
+	if tenantID == "" {
+		return ServerConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_smtp_config_" + tenantID
+	b, err := json.Marshal(smtpCfg)
+	if err != nil {
+		return ServerConfig{}, err
+	}
+	return s.Set(ctx, key, string(b), updatedBy)
 }

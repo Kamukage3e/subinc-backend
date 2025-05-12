@@ -64,4 +64,17 @@ func RegisterAdminServerConfigRoutes(router fiber.Router, handler *Handler, jwtS
 
 	cfg.Get("/owner-session-config", handler.GetOwnerSessionConfig)
 	cfg.Post("/owner-session-config", handler.SetOwnerSessionConfig)
+
+	// Client-admin DB config endpoints
+	cfg.Get("/client-config/db/:tenantID", handler.GetClientDBConfig)
+	cfg.Post("/client-config/db/:tenantID", handler.SetClientDBConfig)
+	// Client-admin Redis config endpoints
+	cfg.Get("/client-config/redis/:tenantID", handler.GetClientRedisConfig)
+	cfg.Post("/client-config/redis/:tenantID", handler.SetClientRedisConfig)
+	// Client-admin AWS config endpoints
+	cfg.Get("/client-config/aws/:tenantID", handler.GetClientAWSConfig)
+	cfg.Post("/client-config/aws/:tenantID", handler.SetClientAWSConfig)
+	// Client-admin SMTP config endpoints
+	cfg.Get("/client-config/smtp/:tenantID", handler.GetClientSMTPConfig)
+	cfg.Post("/client-config/smtp/:tenantID", handler.SetClientSMTPConfig)
 }

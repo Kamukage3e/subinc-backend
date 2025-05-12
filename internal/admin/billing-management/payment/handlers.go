@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+
 	"strconv"
 	"time"
 
 	"github.com/braintree-go/braintree-go"
+
 	paypal "github.com/plutov/paypal/v4"
 	stripe "github.com/stripe/stripe-go/v75"
 	stripeAccount "github.com/stripe/stripe-go/v75/account"
@@ -15,6 +17,7 @@ import (
 	stripeRefund "github.com/stripe/stripe-go/v75/refund"
 
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -488,27 +491,104 @@ func (r *ProviderRegistry) Lookup(name string) (PaymentProvider, bool) {
 // store: payment.Store instance
 // tenantID: the tenant to look up
 // auditLogger: for audit logging
-func GetProviderForTenant(ctx context.Context, store StoreInterface, tenantID string, auditLogger security_management.AuditLogger) (PaymentProvider, error) {
+// configService: for fetching global provider config
+func GetProviderForTenant(ctx context.Context, store StoreInterface, tenantID string, auditLogger security_management.AuditLogger, configService *server_config.Service) (PaymentProvider, error) {
 	cfg, err := store.GetTenantPaymentProviderConfig(ctx, tenantID)
 	if err != nil {
+		logger.LogError("GetProviderForTenant: failed to get tenant config", logger.ErrorField(err))
 		return nil, err
 	}
-	secret, err := store.GetTenantProviderSecret(ctx, tenantID, cfg.Provider)
+	ownerCfg, err := configService.GetOwnerPaymentProviderConfig(ctx)
 	if err != nil {
-		return nil, err
+		logger.LogError("GetProviderForTenant: failed to get owner config", logger.ErrorField(err))
+		return nil, err 
+	}
+	secret, _ := store.GetTenantProviderSecret(ctx, tenantID, cfg.Provider)
+	if secret == nil {
+		secret = map[string]string{}
 	}
 	switch cfg.Provider {
 	case "stripe":
-		apiKey := secret["api_key"]
-		if apiKey == "" {
-			return nil, errors.New("stripe api_key missing for tenant")
+		apiKey := ownerCfg.StripeAPIKey
+		if v, ok := secret["api_key"]; ok && v != "" {
+			apiKey = v
 		}
-		return NewStripeProvider(ctx, store, tenantID, auditLogger)
+		if apiKey == "" {
+			logger.LogError("GetProviderForTenant: stripe api_key missing", logger.String("tenant_id", tenantID))
+			return nil, errors.New("stripe api_key missing for tenant and owner")
+		}
+		return &StripeProvider{APIKey: apiKey, AuditLogger: auditLogger, Store: store}, nil
 	case "paypal":
-		// You'd build a real PayPal client here using secret["client_id"], secret["secret"], secret["env"]
-		return NewPaypalProvider(ctx, store, tenantID, auditLogger)
+		clientID := ownerCfg.PaypalClientID
+		clientSecret := ownerCfg.PaypalClientSecret
+		if v, ok := secret["client_id"]; ok && v != "" {
+			clientID = v
+		}
+		if v, ok := secret["client_secret"]; ok && v != "" {
+			clientSecret = v
+		}
+		env := secret["env"]
+		if clientID == "" || clientSecret == "" || env == "" {
+			logger.LogError("GetProviderForTenant: paypal config missing", logger.String("tenant_id", tenantID))
+			return nil, errors.New("paypal client_id, client_secret, or env missing for tenant and owner")
+		}
+		var apiBase string
+		switch env {
+		case "sandbox":
+			apiBase = paypal.APIBaseSandBox
+		case "live":
+			apiBase = paypal.APIBaseLive
+		default:
+			logger.LogError("GetProviderForTenant: invalid paypal env", logger.String("env", env))
+			return nil, errors.New("invalid paypal env")
+		}
+		client, err := paypal.NewClient(clientID, clientSecret, apiBase)
+		if err != nil {
+			logger.LogError("GetProviderForTenant: paypal client init failed", logger.ErrorField(err))
+			return nil, err
+		}
+		return &PaypalProvider{Client: client, AuditLogger: auditLogger, Store: store}, nil
+	case "braintree":
+		merchantID := ownerCfg.BraintreeMerchantID
+		publicKey := ownerCfg.BraintreePublicKey
+		privateKey := ownerCfg.BraintreePrivateKey
+		env := ownerCfg.BraintreeEnv
+		if v, ok := secret["merchant_id"]; ok && v != "" {
+			merchantID = v
+		}
+		if v, ok := secret["public_key"]; ok && v != "" {
+			publicKey = v
+		}
+		if v, ok := secret["private_key"]; ok && v != "" {
+			privateKey = v
+		}
+		if v, ok := secret["env"]; ok && v != "" {
+			env = v
+		}
+		if merchantID == "" || publicKey == "" || privateKey == "" || env == "" {
+			logger.LogError("GetProviderForTenant: braintree config missing", logger.String("tenant_id", tenantID))
+			return nil, errors.New("braintree merchant_id, public_key, private_key, or env missing for tenant and owner")
+		}
+		var btEnv braintree.Environment
+		switch env {
+		case "sandbox":
+			btEnv = braintree.Sandbox
+		case "production":
+			btEnv = braintree.Production
+		default:
+			logger.LogError("GetProviderForTenant: invalid braintree env", logger.String("env", env))
+			return nil, errors.New("invalid braintree env")
+		}
+		client := braintree.New(btEnv, merchantID, publicKey, privateKey)
+		_, err = client.Transaction().Search(ctx, &braintree.SearchQuery{})
+		if err != nil {
+			logger.LogError("GetProviderForTenant: braintree client test failed", logger.ErrorField(err))
+			return nil, err
+		}
+		return &BraintreeProvider{Client: client, AuditLogger: auditLogger, Store: store}, nil
 	default:
-		return nil, errors.New("unsupported provider: " + cfg.Provider)
+		logger.LogError("GetProviderForTenant: unsupported provider", logger.String("provider", cfg.Provider))
+		return nil, errors.New("unsupported provider: "+cfg.Provider)
 	}
 }
 
@@ -524,28 +604,47 @@ func getActorIDFromContext(ctx context.Context) string {
 	return "system"
 }
 
-func NewStripeProvider(ctx context.Context, store StoreInterface, tenantID string, auditLogger security_management.AuditLogger) (*StripeProvider, error) {
+// NewStripeProvider returns a StripeProvider using merged owner/tenant config
+func NewStripeProvider(ctx context.Context, store StoreInterface, tenantID string, auditLogger security_management.AuditLogger, configService *server_config.Service) (*StripeProvider, error) {
+	ownerCfg, err := configService.GetOwnerPaymentProviderConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
 	secret, err := store.GetTenantProviderSecret(ctx, tenantID, "stripe")
 	if err != nil {
 		return nil, err
 	}
-	apiKey := secret["api_key"]
+	apiKey := ownerCfg.StripeAPIKey
+	if v, ok := secret["api_key"]; ok && v != "" {
+		apiKey = v
+	}
 	if apiKey == "" {
-		return nil, errors.New("stripe api_key missing for tenant")
+		return nil, errors.New("stripe api_key missing for tenant and owner")
 	}
 	return &StripeProvider{APIKey: apiKey, AuditLogger: auditLogger, Store: store}, nil
 }
 
-func NewPaypalProvider(ctx context.Context, store StoreInterface, tenantID string, auditLogger security_management.AuditLogger) (*PaypalProvider, error) {
+// NewPaypalProvider returns a PaypalProvider using merged owner/tenant config
+func NewPaypalProvider(ctx context.Context, store StoreInterface, tenantID string, auditLogger security_management.AuditLogger, configService *server_config.Service) (*PaypalProvider, error) {
+	ownerCfg, err := configService.GetOwnerPaymentProviderConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
 	secret, err := store.GetTenantProviderSecret(ctx, tenantID, "paypal")
 	if err != nil {
 		return nil, err
 	}
-	clientID := secret["client_id"]
-	clientSecret := secret["client_secret"]
+	clientID := ownerCfg.PaypalClientID
+	clientSecret := ownerCfg.PaypalClientSecret
+	if v, ok := secret["client_id"]; ok && v != "" {
+		clientID = v
+	}
+	if v, ok := secret["client_secret"]; ok && v != "" {
+		clientSecret = v
+	}
 	env := secret["env"]
 	if clientID == "" || clientSecret == "" || env == "" {
-		return nil, errors.New("paypal client_id, client_secret, or env missing for tenant")
+		return nil, errors.New("paypal client_id, client_secret, or env missing for tenant and owner")
 	}
 	var apiBase string
 	switch env {
@@ -563,17 +662,34 @@ func NewPaypalProvider(ctx context.Context, store StoreInterface, tenantID strin
 	return &PaypalProvider{Client: client, AuditLogger: auditLogger, Store: store}, nil
 }
 
-func NewBraintreeProvider(ctx context.Context, store StoreInterface, tenantID string, auditLogger security_management.AuditLogger) (*BraintreeProvider, error) {
+// NewBraintreeProvider returns a BraintreeProvider using merged owner/tenant config
+func NewBraintreeProvider(ctx context.Context, store StoreInterface, tenantID string, auditLogger security_management.AuditLogger, configService *server_config.Service) (*BraintreeProvider, error) {
+	ownerCfg, err := configService.GetOwnerPaymentProviderConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
 	secret, err := store.GetTenantProviderSecret(ctx, tenantID, "braintree")
 	if err != nil {
 		return nil, err
 	}
-	merchantID := secret["merchant_id"]
-	publicKey := secret["public_key"]
-	privateKey := secret["private_key"]
-	env := secret["env"]
+	merchantID := ownerCfg.BraintreeMerchantID
+	publicKey := ownerCfg.BraintreePublicKey
+	privateKey := ownerCfg.BraintreePrivateKey
+	env := ownerCfg.BraintreeEnv
+	if v, ok := secret["merchant_id"]; ok && v != "" {
+		merchantID = v
+	}
+	if v, ok := secret["public_key"]; ok && v != "" {
+		publicKey = v
+	}
+	if v, ok := secret["private_key"]; ok && v != "" {
+		privateKey = v
+	}
+	if v, ok := secret["env"]; ok && v != "" {
+		env = v
+	}
 	if merchantID == "" || publicKey == "" || privateKey == "" || env == "" {
-		return nil, errors.New("braintree merchant_id, public_key, private_key, or env missing for tenant")
+		return nil, errors.New("braintree merchant_id, public_key, private_key, or env missing for tenant and owner")
 	}
 	var btEnv braintree.Environment
 	switch env {
@@ -762,35 +878,47 @@ func (b *BraintreeProvider) GetPaymentStatus(ctx context.Context, paymentID stri
 	}, nil
 }
 
-func CheckProviderConnection(ctx context.Context, store StoreInterface, tenantID, providerName string) error {
+func CheckProviderConnection(ctx context.Context, store StoreInterface, tenantID, providerName string, configService *server_config.Service) error {
 	err := error(nil)
 	action := "check_provider_connection"
 	details := map[string]interface{}{"tenant_id": tenantID, "provider": providerName}
+	var ownerCfg server_config.PaymentProviderConfig
+	if configService != nil {
+		ownerCfg, _ = configService.GetOwnerPaymentProviderConfig(ctx)
+	}
 	switch providerName {
 	case "stripe":
+		apiKey := ownerCfg.StripeAPIKey
 		secret, err2 := store.GetTenantProviderSecret(ctx, tenantID, "stripe")
-		if err2 != nil {
-			err = err2
-			break
+		if err2 == nil {
+			if v, ok := secret["api_key"]; ok && v != "" {
+				apiKey = v
+			}
 		}
-		apiKey := secret["api_key"]
 		if apiKey == "" {
-			err = errors.New("stripe api_key missing for tenant")
+			err = errors.New("stripe api_key missing for tenant and owner")
 			break
 		}
 		stripe.Key = apiKey
 		_, err = stripeAccount.Get()
 	case "paypal":
+		clientID := ownerCfg.PaypalClientID
+		clientSecret := ownerCfg.PaypalClientSecret
 		secret, err2 := store.GetTenantProviderSecret(ctx, tenantID, "paypal")
-		if err2 != nil {
-			err = err2
-			break
+		if err2 == nil {
+			if v, ok := secret["client_id"]; ok && v != "" {
+				clientID = v
+			}
+			if v, ok := secret["client_secret"]; ok && v != "" {
+				clientSecret = v
+			}
 		}
-		clientID := secret["client_id"]
-		clientSecret := secret["client_secret"]
-		env := secret["env"]
+		env := ownerCfg.PaypalClientSecret
+		if v, ok := secret["env"]; ok && v != "" {
+			env = v
+		}
 		if clientID == "" || clientSecret == "" || env == "" {
-			err = errors.New("paypal client_id, client_secret, or env missing for tenant")
+			err = errors.New("paypal client_id, client_secret, or env missing for tenant and owner")
 			break
 		}
 		var apiBase string
@@ -810,17 +938,27 @@ func CheckProviderConnection(ctx context.Context, store StoreInterface, tenantID
 		}
 		_, err = client.GetAccessToken(ctx)
 	case "braintree":
+		merchantID := ownerCfg.BraintreeMerchantID
+		publicKey := ownerCfg.BraintreePublicKey
+		privateKey := ownerCfg.BraintreePrivateKey
+		env := ownerCfg.BraintreeEnv
 		secret, err2 := store.GetTenantProviderSecret(ctx, tenantID, "braintree")
-		if err2 != nil {
-			err = err2
-			break
+		if err2 == nil {
+			if v, ok := secret["merchant_id"]; ok && v != "" {
+				merchantID = v
+			}
+			if v, ok := secret["public_key"]; ok && v != "" {
+				publicKey = v
+			}
+			if v, ok := secret["private_key"]; ok && v != "" {
+				privateKey = v
+			}
+			if v, ok := secret["env"]; ok && v != "" {
+				env = v
+			}
 		}
-		merchantID := secret["merchant_id"]
-		publicKey := secret["public_key"]
-		privateKey := secret["private_key"]
-		env := secret["env"]
 		if merchantID == "" || publicKey == "" || privateKey == "" || env == "" {
-			err = errors.New("braintree merchant_id, public_key, private_key, or env missing for tenant")
+			err = errors.New("braintree merchant_id, public_key, private_key, or env missing for tenant and owner")
 			break
 		}
 		var btEnv braintree.Environment
@@ -868,7 +1006,7 @@ func RetryPayment(ctx context.Context, store StoreInterface, p interface{}) (*Pa
 		logger.LogError("RetryPayment: failed to load provider config", logger.ErrorField(err))
 		return nil, err
 	}
-	provider, err := GetProviderForTenant(ctx, store, cfg.TenantID, nil)
+	provider, err := GetProviderForTenant(ctx, store, cfg.TenantID, nil, nil)
 	if err != nil {
 		logger.LogError("RetryPayment: failed to get provider", logger.ErrorField(err))
 		return nil, err

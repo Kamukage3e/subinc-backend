@@ -1,29 +1,18 @@
 package rbac_management
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	"github.com/subinc/subinc-backend/internal/pkg/auditutil"
+	"github.com/subinc/subinc-backend/internal/pkg/contextutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-func NewRBACHandler(store *PostgresStore) *RBACHandler { 
+func NewRBACHandler(store *PostgresStore) *RBACHandler {
 	return &RBACHandler{Store: store}
-}
-
-func getActorID(c *fiber.Ctx) string {
-	id := c.Get("X-Actor-ID")
-	if id != "" {
-		return id
-	}
-	id = c.Get("X-User-ID")
-	if id != "" {
-		return id
-	}
-	return ""
 }
 
 func (r *Role) Validate() error {
@@ -77,7 +66,7 @@ func (p *Policy) Validate() error {
 
 func (h *RBACHandler) CreateRole(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -100,10 +89,10 @@ func (h *RBACHandler) CreateRole(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "create_role",
 			TargetID:  role.ID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -112,7 +101,7 @@ func (h *RBACHandler) CreateRole(c *fiber.Ctx) error {
 
 func (h *RBACHandler) UpdateRole(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -134,10 +123,10 @@ func (h *RBACHandler) UpdateRole(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "update_role",
 			TargetID:  role.ID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -146,7 +135,7 @@ func (h *RBACHandler) UpdateRole(c *fiber.Ctx) error {
 
 func (h *RBACHandler) DeleteRole(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -168,10 +157,10 @@ func (h *RBACHandler) DeleteRole(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "delete_role",
 			TargetID:  req.ID,
-			Details:   marshalAuditDetails(req),
+			Details:   auditutil.MarshalAuditDetails(req),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -196,10 +185,10 @@ func (h *RBACHandler) GetRole(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "read_role",
 			TargetID:  req.ID,
-			Details:   marshalAuditDetails(req),
+			Details:   auditutil.MarshalAuditDetails(req),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -226,10 +215,10 @@ func (h *RBACHandler) ListRoles(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "list_roles",
 			TargetID:  "",
-			Details:   marshalAuditDetails(req),
+			Details:   auditutil.MarshalAuditDetails(req),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -238,7 +227,7 @@ func (h *RBACHandler) ListRoles(c *fiber.Ctx) error {
 
 func (h *RBACHandler) CreatePermission(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -261,10 +250,10 @@ func (h *RBACHandler) CreatePermission(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "create_permission",
 			TargetID:  perm.ID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -273,7 +262,7 @@ func (h *RBACHandler) CreatePermission(c *fiber.Ctx) error {
 
 func (h *RBACHandler) UpdatePermission(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -295,10 +284,10 @@ func (h *RBACHandler) UpdatePermission(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "update_permission",
 			TargetID:  perm.ID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -307,7 +296,7 @@ func (h *RBACHandler) UpdatePermission(c *fiber.Ctx) error {
 
 func (h *RBACHandler) DeletePermission(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -329,10 +318,10 @@ func (h *RBACHandler) DeletePermission(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "delete_permission",
 			TargetID:  req.ID,
-			Details:   marshalAuditDetails(req),
+			Details:   auditutil.MarshalAuditDetails(req),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -357,10 +346,10 @@ func (h *RBACHandler) GetPermission(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "read_permission",
 			TargetID:  req.ID,
-			Details:   marshalAuditDetails(req),
+			Details:   auditutil.MarshalAuditDetails(req),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -387,10 +376,10 @@ func (h *RBACHandler) ListPermissions(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "list_permissions",
 			TargetID:  "",
-			Details:   marshalAuditDetails(req),
+			Details:   auditutil.MarshalAuditDetails(req),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -399,7 +388,7 @@ func (h *RBACHandler) ListPermissions(c *fiber.Ctx) error {
 
 func (h *RBACHandler) CreateRoleBinding(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -422,10 +411,10 @@ func (h *RBACHandler) CreateRoleBinding(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "create_role_binding",
 			TargetID:  binding.ID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -434,7 +423,7 @@ func (h *RBACHandler) CreateRoleBinding(c *fiber.Ctx) error {
 
 func (h *RBACHandler) DeleteRoleBinding(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -456,10 +445,10 @@ func (h *RBACHandler) DeleteRoleBinding(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "delete_role_binding",
 			TargetID:  req.ID,
-			Details:   marshalAuditDetails(req),
+			Details:   auditutil.MarshalAuditDetails(req),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -486,10 +475,10 @@ func (h *RBACHandler) ListRoleBindings(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "list_role_bindings",
 			TargetID:  "",
-			Details:   marshalAuditDetails(req),
+			Details:   auditutil.MarshalAuditDetails(req),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -498,7 +487,7 @@ func (h *RBACHandler) ListRoleBindings(c *fiber.Ctx) error {
 
 func (h *RBACHandler) CreatePolicy(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -521,10 +510,10 @@ func (h *RBACHandler) CreatePolicy(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "create_policy",
 			TargetID:  policy.ID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -533,7 +522,7 @@ func (h *RBACHandler) CreatePolicy(c *fiber.Ctx) error {
 
 func (h *RBACHandler) UpdatePolicy(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -555,10 +544,10 @@ func (h *RBACHandler) UpdatePolicy(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "update_policy",
 			TargetID:  policy.ID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -567,7 +556,7 @@ func (h *RBACHandler) UpdatePolicy(c *fiber.Ctx) error {
 
 func (h *RBACHandler) DeletePolicy(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -589,10 +578,10 @@ func (h *RBACHandler) DeletePolicy(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "delete_policy",
 			TargetID:  req.ID,
-			Details:   marshalAuditDetails(req),
+			Details:   auditutil.MarshalAuditDetails(req),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -617,10 +606,10 @@ func (h *RBACHandler) GetPolicy(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "read_policy",
 			TargetID:  req.ID,
-			Details:   marshalAuditDetails(req),
+			Details:   auditutil.MarshalAuditDetails(req),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -647,10 +636,10 @@ func (h *RBACHandler) ListPolicies(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "list_policies",
 			TargetID:  "",
-			Details:   marshalAuditDetails(req),
+			Details:   auditutil.MarshalAuditDetails(req),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -708,10 +697,10 @@ func (h *RBACHandler) ListAPIPermissions(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "list_api_permissions",
 			TargetID:  "",
-			Details:   marshalAuditDetails(req),
+			Details:   auditutil.MarshalAuditDetails(req),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -749,10 +738,10 @@ func (h *RBACHandler) UpdateResource(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "update_resource",
 			TargetID:  res.ID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -794,10 +783,10 @@ func (h *RBACHandler) GetResource(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "read_resource",
 			TargetID:  req.ID,
-			Details:   marshalAuditDetails(req),
+			Details:   auditutil.MarshalAuditDetails(req),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -824,29 +813,21 @@ func (h *RBACHandler) ListResources(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "list_resources",
 			TargetID:  "",
-			Details:   marshalAuditDetails(req),
+			Details:   auditutil.MarshalAuditDetails(req),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
 	return c.JSON(fiber.Map{"resources": resources, "page": req.Page, "page_size": req.PageSize})
 }
 
-func marshalAuditDetails(v interface{}) string {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return "{}"
-	}
-	return string(b)
-}
-
 // --- ABAC Policy Handlers ---
 
 func (h *RBACHandler) CreateABACPolicy(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "abac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -868,10 +849,10 @@ func (h *RBACHandler) CreateABACPolicy(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "create_abac_policy",
 			TargetID:  policy.ID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -880,7 +861,7 @@ func (h *RBACHandler) CreateABACPolicy(c *fiber.Ctx) error {
 
 func (h *RBACHandler) UpdateABACPolicy(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "abac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -899,10 +880,10 @@ func (h *RBACHandler) UpdateABACPolicy(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "update_abac_policy",
 			TargetID:  policy.ID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -911,7 +892,7 @@ func (h *RBACHandler) UpdateABACPolicy(c *fiber.Ctx) error {
 
 func (h *RBACHandler) DeleteABACPolicy(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "abac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -931,10 +912,10 @@ func (h *RBACHandler) DeleteABACPolicy(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "delete_abac_policy",
 			TargetID:  input.ID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -957,10 +938,10 @@ func (h *RBACHandler) GetABACPolicy(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "read_abac_policy",
 			TargetID:  input.ID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -991,10 +972,10 @@ func (h *RBACHandler) ListABACPolicies(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "list_abac_policies",
 			TargetID:  "",
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -1015,10 +996,10 @@ func (h *RBACHandler) EvaluateABAC(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "evaluate_abac",
 			TargetID:  input.Resource,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -1041,10 +1022,10 @@ func (h *RBACHandler) SimulatePolicy(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "simulate_policy",
 			TargetID:  input.Resource,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -1069,10 +1050,10 @@ func (h *RBACHandler) SimulatePolicyWhatIf(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "simulate_policy_what_if",
 			TargetID:  input.UserID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -1095,10 +1076,10 @@ func (h *RBACHandler) ExplainPermission(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "explain_permission",
 			TargetID:  input.Resource,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -1109,7 +1090,7 @@ func (h *RBACHandler) ExplainPermission(c *fiber.Ctx) error {
 
 func (h *RBACHandler) DelegateRole(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -1130,10 +1111,10 @@ func (h *RBACHandler) DelegateRole(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "delegate_role",
 			TargetID:  input.ToUserID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -1142,7 +1123,7 @@ func (h *RBACHandler) DelegateRole(c *fiber.Ctx) error {
 
 func (h *RBACHandler) RevokeDelegatedRole(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -1163,10 +1144,10 @@ func (h *RBACHandler) RevokeDelegatedRole(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "revoke_delegated_role",
 			TargetID:  input.ToUserID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -1198,10 +1179,10 @@ func (h *RBACHandler) ListDelegatedRoles(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "list_delegated_roles",
 			TargetID:  input.UserID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -1211,7 +1192,7 @@ func (h *RBACHandler) ListDelegatedRoles(c *fiber.Ctx) error {
 // Bulk assign roles to users
 func (h *RBACHandler) BulkAssignRoleBindings(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -1237,10 +1218,10 @@ func (h *RBACHandler) BulkAssignRoleBindings(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "bulk_assign_role_bindings",
 			TargetID:  req.RoleID,
-			Details:   marshalAuditDetails(req),
+			Details:   auditutil.MarshalAuditDetails(req),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -1250,7 +1231,7 @@ func (h *RBACHandler) BulkAssignRoleBindings(c *fiber.Ctx) error {
 // Bulk remove role bindings from users
 func (h *RBACHandler) BulkRemoveRoleBindings(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -1276,10 +1257,10 @@ func (h *RBACHandler) BulkRemoveRoleBindings(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "bulk_remove_role_bindings",
 			TargetID:  req.RoleID,
-			Details:   marshalAuditDetails(req),
+			Details:   auditutil.MarshalAuditDetails(req),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -1289,7 +1270,7 @@ func (h *RBACHandler) BulkRemoveRoleBindings(c *fiber.Ctx) error {
 // POST /delegations/delegate: delegate a role to another user with optional expiry
 func (h *RBACHandler) DelegateRoleWithExpiry(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -1313,10 +1294,10 @@ func (h *RBACHandler) DelegateRoleWithExpiry(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "delegate_role_with_expiry",
 			TargetID:  input.ToUserID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -1326,7 +1307,7 @@ func (h *RBACHandler) DelegateRoleWithExpiry(c *fiber.Ctx) error {
 // POST /delegations/revoke: revoke a delegated role
 func (h *RBACHandler) RevokeDelegatedRoleWithAudit(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -1347,10 +1328,10 @@ func (h *RBACHandler) RevokeDelegatedRoleWithAudit(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "revoke_delegated_role_with_audit",
 			TargetID:  input.ToUserID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -1388,10 +1369,10 @@ func (h *RBACHandler) ImportPolicies(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "import_policies",
 			TargetID:  input.TenantID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -1418,10 +1399,10 @@ func (h *RBACHandler) ExportPolicies(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "export_policies",
 			TargetID:  tenantID,
-			Details:   marshalAuditDetails(result),
+			Details:   auditutil.MarshalAuditDetails(result),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -1454,10 +1435,10 @@ func (h *RBACHandler) CreatePermissionTemplate(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "create_permission_template",
 			TargetID:  id,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -1494,10 +1475,10 @@ func (h *RBACHandler) ApplyPermissionTemplate(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "apply_permission_template",
 			TargetID:  input.RoleID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -1520,10 +1501,10 @@ func (h *RBACHandler) DiscoverPermissions(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "discover_permissions",
 			TargetID:  "",
-			Details:   marshalAuditDetails(result),
+			Details:   auditutil.MarshalAuditDetails(result),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -1547,10 +1528,10 @@ func (h *RBACHandler) RestoreRole(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "restore_role",
 			TargetID:  req.ID,
-			Details:   marshalAuditDetails(req),
+			Details:   auditutil.MarshalAuditDetails(req),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -1574,14 +1555,12 @@ func (h *RBACHandler) RestorePolicy(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "restore_policy",
 			TargetID:  req.ID,
-			Details:   marshalAuditDetails(req),
+			Details:   auditutil.MarshalAuditDetails(req),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
-
-

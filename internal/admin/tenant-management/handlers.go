@@ -1,13 +1,14 @@
 package tenant_management
 
 import (
-	"encoding/json"
 	"errors"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	"github.com/subinc/subinc-backend/internal/pkg/auditutil"
+	"github.com/subinc/subinc-backend/internal/pkg/contextutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -15,26 +16,6 @@ func NewTenantHandler(store *PostgresStore) *TenantAdminHandler {
 	return &TenantAdminHandler{
 		TenantStore: store,
 	}
-}
-
-func getActorID(c *fiber.Ctx) string {
-	id := c.Get("X-Actor-ID")
-	if id != "" {
-		return id
-	}
-	id = c.Get("X-User-ID")
-	if id != "" {
-		return id
-	}
-	return ""
-}
-
-func marshalAuditDetails(v interface{}) string {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return "{}"
-	}
-	return string(b)
 }
 
 func (t *Tenant) Validate() error {
@@ -49,7 +30,7 @@ func (t *Tenant) Validate() error {
 
 func (h *TenantAdminHandler) CreateTenant(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant", "create")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -75,10 +56,10 @@ func (h *TenantAdminHandler) CreateTenant(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "create_tenant",
 			TargetID:  tenant.ID,
-			Details:   marshalAuditDetails(tenant),
+			Details:   auditutil.MarshalAuditDetails(tenant),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -87,7 +68,7 @@ func (h *TenantAdminHandler) CreateTenant(c *fiber.Ctx) error {
 
 func (h *TenantAdminHandler) UpdateTenant(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant", "update")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -117,10 +98,10 @@ func (h *TenantAdminHandler) UpdateTenant(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "update_tenant",
 			TargetID:  input.ID,
-			Details:   marshalAuditDetails(input.Tenant),
+			Details:   auditutil.MarshalAuditDetails(input.Tenant),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -129,7 +110,7 @@ func (h *TenantAdminHandler) UpdateTenant(c *fiber.Ctx) error {
 
 func (h *TenantAdminHandler) DeleteTenant(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant", "delete")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -153,10 +134,10 @@ func (h *TenantAdminHandler) DeleteTenant(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "delete_tenant",
 			TargetID:  input.ID,
-			Details:   marshalAuditDetails(fiber.Map{"id": input.ID}),
+			Details:   auditutil.MarshalAuditDetails(fiber.Map{"id": input.ID}),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -165,7 +146,7 @@ func (h *TenantAdminHandler) DeleteTenant(c *fiber.Ctx) error {
 
 func (h *TenantAdminHandler) GetTenant(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant", "read")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -193,10 +174,10 @@ func (h *TenantAdminHandler) GetTenant(c *fiber.Ctx) error {
 			if h.AuditLogger != nil {
 				go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 					ID:        uuid.NewString(),
-					ActorID:   getActorID(c),
+					ActorID:   contextutil.GetActorID(c),
 					Action:    "read_tenant",
 					TargetID:  input.ID,
-					Details:   marshalAuditDetails(fiber.Map{"id": input.ID}),
+					Details:   auditutil.MarshalAuditDetails(fiber.Map{"id": input.ID}),
 					CreatedAt: time.Now().UTC(),
 				})
 			}
@@ -206,10 +187,10 @@ func (h *TenantAdminHandler) GetTenant(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "read_tenant",
 			TargetID:  input.ID,
-			Details:   marshalAuditDetails(fiber.Map{"id": input.ID}),
+			Details:   auditutil.MarshalAuditDetails(fiber.Map{"id": input.ID}),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -218,7 +199,7 @@ func (h *TenantAdminHandler) GetTenant(c *fiber.Ctx) error {
 
 func (h *TenantAdminHandler) ListTenants(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant", "list")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -241,10 +222,10 @@ func (h *TenantAdminHandler) ListTenants(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "list_tenants",
 			TargetID:  "",
-			Details:   marshalAuditDetails(filter),
+			Details:   auditutil.MarshalAuditDetails(filter),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -253,7 +234,7 @@ func (h *TenantAdminHandler) ListTenants(c *fiber.Ctx) error {
 
 func (h *TenantAdminHandler) GetTenantSettings(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant_settings", "read")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -280,10 +261,10 @@ func (h *TenantAdminHandler) GetTenantSettings(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "read_tenant_settings",
 			TargetID:  tenantID,
-			Details:   marshalAuditDetails(fiber.Map{"id": tenantID}),
+			Details:   auditutil.MarshalAuditDetails(fiber.Map{"id": tenantID}),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -292,7 +273,7 @@ func (h *TenantAdminHandler) GetTenantSettings(c *fiber.Ctx) error {
 
 func (h *TenantAdminHandler) UpdateTenantSettings(c *fiber.Ctx) error {
 	if h.RBACService != nil {
-		actorID := getActorID(c)
+		actorID := contextutil.GetActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant_settings", "update")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -327,10 +308,10 @@ func (h *TenantAdminHandler) UpdateTenantSettings(c *fiber.Ctx) error {
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
 			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
+			ActorID:   contextutil.GetActorID(c),
 			Action:    "update_tenant_settings",
 			TargetID:  input.TenantID,
-			Details:   marshalAuditDetails(input.Settings),
+			Details:   auditutil.MarshalAuditDetails(input.Settings),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -364,7 +345,7 @@ func (h *TenantAdminHandler) SetTenantStatus(c *fiber.Ctx) error {
 			ActorID:   c.Locals("actor_id").(string),
 			Action:    "set_tenant_status",
 			TargetID:  input.TenantID,
-			Details:   marshalAuditDetails(input),
+			Details:   auditutil.MarshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
@@ -376,7 +357,7 @@ func (h *TenantAdminHandler) GetTenantStatus(c *fiber.Ctx) error {
 	if tenantID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
 	}
-	
+
 	status, err := h.TenantStore.GetTenantStatus(c.Context(), tenantID)
 	if err != nil {
 		logger.LogError("GetTenantStatus: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
@@ -384,11 +365,11 @@ func (h *TenantAdminHandler) GetTenantStatus(c *fiber.Ctx) error {
 	}
 	if h.AuditLogger != nil {
 		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
-			Action:    "get_tenant_status",
-			TargetID:  tenantID,
-			Details:   marshalAuditDetails(fiber.Map{"id": tenantID}),
+			ID:       uuid.NewString(),
+			ActorID:  contextutil.GetActorID(c),
+			Action:   "get_tenant_status",
+			TargetID: tenantID,
+			Details:  auditutil.MarshalAuditDetails(fiber.Map{"id": tenantID}),
 		})
 	}
 	return c.JSON(fiber.Map{"tenant_id": tenantID, "status": status})

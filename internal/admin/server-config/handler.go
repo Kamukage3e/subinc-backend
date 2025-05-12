@@ -2,11 +2,17 @@ package server_config
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net/smtp"
 	"time"
 
+	"github.com/subinc/subinc-backend/internal/pkg/providercheck"
 
+	awsCfg "github.com/aws/aws-sdk-go-v2/config"
+	awsCreds "github.com/aws/aws-sdk-go-v2/credentials"
+	sts "github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -492,7 +498,26 @@ func (h *Handler) SetOwnerAWSConfig(c *fiber.Ctx) error {
 		h.log.Error("set_owner_aws_config failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(cfg)
+	// Test AWS connection (STS GetCallerIdentity)
+	awsResult := fiber.Map{"config": cfg, "aws_connection_ok": false}
+	ctx, cancel := context.WithTimeout(c.Context(), 3*time.Second)
+	defer cancel()
+	awsConfig, awsErr := awsCfg.LoadDefaultConfig(ctx,
+		awsCfg.WithRegion(input.Region),
+		awsCfg.WithCredentialsProvider(awsCreds.NewStaticCredentialsProvider(input.AccessKeyID, input.SecretAccessKey, input.SessionToken)),
+	)
+	if awsErr == nil {
+		stsClient := sts.NewFromConfig(awsConfig)
+		_, stsErr := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+		if stsErr == nil {
+			awsResult["aws_connection_ok"] = true
+		} else {
+			awsResult["aws_error"] = "invalid credentials or role: " + stsErr.Error()
+		}
+	} else {
+		awsResult["aws_error"] = "config error: " + awsErr.Error()
+	}
+	return c.JSON(awsResult)
 }
 
 // GetOwnerPaymentProviderConfig returns the current owner-admin payment provider config (runtime, hot-reloadable)
@@ -532,7 +557,31 @@ func (h *Handler) SetOwnerPaymentProviderConfig(c *fiber.Ctx) error {
 		h.log.Error("set_owner_payment_provider_config failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(cfg)
+	// Test payment provider connections (owner-level only, no tenant context here)
+	results := fiber.Map{"config": cfg}
+	providers := []string{"stripe", "paypal", "braintree"}
+	pcfg := &providercheck.PaymentProviderConfig{
+		StripeAPIKey:        input.StripeAPIKey,
+		PaypalClientID:      input.PaypalClientID,
+		PaypalClientSecret:  input.PaypalClientSecret,
+		GooglePayMerchantID: input.GooglePayMerchantID,
+		GooglePayAPIKey:     input.GooglePayAPIKey,
+		ApplePayMerchantID:  input.ApplePayMerchantID,
+		ApplePayAPIKey:      input.ApplePayAPIKey,
+		PaymentsDisabled:    input.PaymentsDisabled,
+		BraintreeMerchantID: input.BraintreeMerchantID,
+		BraintreePublicKey:  input.BraintreePublicKey,
+		BraintreePrivateKey: input.BraintreePrivateKey,
+		BraintreeEnv:        input.BraintreeEnv,
+	}
+	for _, provider := range providers {
+		err := providercheck.CheckPaymentProviderConnection(c.Context(), provider, pcfg)
+		results[provider+"_connection_ok"] = err == nil
+		if err != nil {
+			results[provider+"_error"] = err.Error()
+		}
+	}
+	return c.JSON(results)
 }
 
 // GetOwnerOpenAIConfig returns the current owner-admin OpenAI config (runtime, hot-reloadable)
@@ -813,6 +862,275 @@ func (h *Handler) SetOwnerSessionConfig(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(cfg)
+}
+
+// GetClientDBConfig returns the current client-admin DB config for a tenant (runtime, hot-reloadable)
+func (h *Handler) GetClientDBConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	cfg, err := h.Service.GetClientDBConfig(c.Context(), tenantID)
+	if err != nil {
+		h.log.Error("get_client_db_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "client db config not found"})
+	}
+	return c.JSON(cfg)
+}
+
+// SetClientDBConfig sets the client-admin DB config for a tenant (runtime, hot-reloadable)
+func (h *Handler) SetClientDBConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	if h.Service.RBACService != nil {
+		actorID := c.Locals("actor_id")
+		if actorID == nil {
+			actorID = "system"
+		}
+		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_db_config")
+		if err != nil || !permitted {
+			h.log.Error("SetClientDBConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input ClientDBConfig
+	if err := c.BodyParser(&input); err != nil {
+		h.log.Error("set_client_db_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	updatedBy := c.Locals("actor_id")
+	if updatedBy == nil {
+		updatedBy = "system"
+	}
+	cfg, err := h.Service.SetClientDBConfig(c.Context(), tenantID, input, updatedBy.(string))
+	if err != nil {
+		h.log.Error("set_client_db_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	// Validate DB connection
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", input.User, input.Password, input.Host, input.Port, input.Name, input.SSLMode)
+	dbpool, dbErr := pgxpool.New(c.Context(), dsn)
+	if dbErr == nil {
+		defer dbpool.Close()
+		dbErr = dbpool.Ping(c.Context())
+	}
+	result := fiber.Map{"config": cfg, "db_connection_ok": dbErr == nil}
+	if dbErr != nil {
+		result["db_error"] = dbErr.Error()
+	}
+	return c.JSON(result)
+}
+
+// GetClientRedisConfig returns the current client-admin Redis config for a tenant (runtime, hot-reloadable)
+func (h *Handler) GetClientRedisConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	cfg, err := h.Service.GetClientRedisConfig(c.Context(), tenantID)
+	if err != nil {
+		h.log.Error("get_client_redis_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "client redis config not found"})
+	}
+	return c.JSON(cfg)
+}
+
+// SetClientRedisConfig sets the client-admin Redis config for a tenant (runtime, hot-reloadable)
+func (h *Handler) SetClientRedisConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	if h.Service.RBACService != nil {
+		actorID := c.Locals("actor_id")
+		if actorID == nil {
+			actorID = "system"
+		}
+		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_redis_config")
+		if err != nil || !permitted {
+			h.log.Error("SetClientRedisConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input ClientRedisConfig
+	if err := c.BodyParser(&input); err != nil {
+		h.log.Error("set_client_redis_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	updatedBy := c.Locals("actor_id")
+	if updatedBy == nil {
+		updatedBy = "system"
+	}
+	cfg, err := h.Service.SetClientRedisConfig(c.Context(), tenantID, input, updatedBy.(string))
+	if err != nil {
+		h.log.Error("set_client_redis_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	// Validate Redis connection
+	addr := fmt.Sprintf("%s:%d", input.Host, input.Port)
+	client := redis.NewClient(&redis.Options{
+		Addr:         addr,
+		Password:     input.Password,
+		DB:           input.DB,
+		PoolSize:     input.PoolSize,
+		MinIdleConns: input.MinIdle,
+	})
+	ctx, cancel := context.WithTimeout(c.Context(), 2*time.Second)
+	defer cancel()
+	pingErr := client.Ping(ctx).Err()
+	_ = client.Close()
+	result := fiber.Map{"config": cfg, "redis_connection_ok": pingErr == nil}
+	if pingErr != nil {
+		result["redis_error"] = pingErr.Error()
+	}
+	return c.JSON(result)
+}
+
+// GetClientAWSConfig returns the current client-admin AWS config for a tenant (runtime, hot-reloadable)
+func (h *Handler) GetClientAWSConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	cfg, err := h.Service.GetClientAWSConfig(c.Context(), tenantID)
+	if err != nil {
+		h.log.Error("get_client_aws_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "client aws config not found"})
+	}
+	return c.JSON(cfg)
+}
+
+// SetClientAWSConfig sets the client-admin AWS config for a tenant (runtime, hot-reloadable)
+func (h *Handler) SetClientAWSConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	if h.Service.RBACService != nil {
+		actorID := c.Locals("actor_id")
+		if actorID == nil {
+			actorID = "system"
+		}
+		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_aws_config")
+		if err != nil || !permitted {
+			h.log.Error("SetClientAWSConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input ClientAWSConfig
+	if err := c.BodyParser(&input); err != nil {
+		h.log.Error("set_client_aws_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	updatedBy := c.Locals("actor_id")
+	if updatedBy == nil {
+		updatedBy = "system"
+	}
+	cfg, err := h.Service.SetClientAWSConfig(c.Context(), tenantID, input, updatedBy.(string))
+	if err != nil {
+		h.log.Error("set_client_aws_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	// Test AWS connection (STS GetCallerIdentity)
+	awsResult := fiber.Map{"config": cfg, "aws_connection_ok": false}
+	ctx, cancel := context.WithTimeout(c.Context(), 3*time.Second)
+	defer cancel()
+	awsConfig, awsErr := awsCfg.LoadDefaultConfig(ctx,
+		awsCfg.WithRegion(input.Region),
+		awsCfg.WithCredentialsProvider(awsCreds.NewStaticCredentialsProvider(input.AccessKeyID, input.SecretAccessKey, input.SessionToken)),
+	)
+	if awsErr == nil {
+		stsClient := sts.NewFromConfig(awsConfig)
+		_, stsErr := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+		if stsErr == nil {
+			awsResult["aws_connection_ok"] = true
+		} else {
+			awsResult["aws_error"] = "invalid credentials or role: " + stsErr.Error()
+		}
+	} else {
+		awsResult["aws_error"] = "config error: " + awsErr.Error()
+	}
+	return c.JSON(awsResult)
+}
+
+// GetClientSMTPConfig returns the current client-admin SMTP config for a tenant (runtime, hot-reloadable)
+func (h *Handler) GetClientSMTPConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	cfg, err := h.Service.GetClientSMTPConfig(c.Context(), tenantID)
+	if err != nil {
+		h.log.Error("get_client_smtp_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "client smtp config not found"})
+	}
+	return c.JSON(cfg)
+}
+
+// SetClientSMTPConfig sets the client-admin SMTP config for a tenant (runtime, hot-reloadable)
+func (h *Handler) SetClientSMTPConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	if h.Service.RBACService != nil {
+		actorID := c.Locals("actor_id")
+		if actorID == nil {
+			actorID = "system"
+		}
+		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_smtp_config")
+		if err != nil || !permitted {
+			h.log.Error("SetClientSMTPConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input ClientSMTPConfig
+	if err := c.BodyParser(&input); err != nil {
+		h.log.Error("set_client_smtp_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	updatedBy := c.Locals("actor_id")
+	if updatedBy == nil {
+		updatedBy = "system"
+	}
+	cfg, err := h.Service.SetClientSMTPConfig(c.Context(), tenantID, input, updatedBy.(string))
+	if err != nil {
+		h.log.Error("set_client_smtp_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	// Validate SMTP connection
+	addr := fmt.Sprintf("%s:%d", input.Host, input.Port)
+	var smtpErr error
+	if input.UseSSL {
+		conn, err := tls.Dial("tcp", addr, &tls.Config{InsecureSkipVerify: false})
+		if err != nil {
+			smtpErr = err
+		} else {
+			c, err := smtp.NewClient(conn, input.Host)
+			if err != nil {
+				smtpErr = err
+			} else {
+				smtpErr = c.Quit()
+			}
+		}
+	} else {
+		c, err := smtp.Dial(addr)
+		if err != nil {
+			smtpErr = err
+		} else {
+			if input.UseTLS {
+				smtpErr = c.StartTLS(&tls.Config{ServerName: input.Host, InsecureSkipVerify: false})
+			}
+			_ = c.Quit()
+		}
+	}
+	result := fiber.Map{"config": cfg, "smtp_connection_ok": smtpErr == nil}
+	if smtpErr != nil {
+		result["smtp_error"] = smtpErr.Error()
+	}
+	return c.JSON(result)
 }
 
 // isTableMissingErr returns true if the error is a missing table error (SQLSTATE 42P01)

@@ -103,7 +103,7 @@ All configuration, feature flags, and credentials are DB-backed and hot-reloadab
 
 ## Configuration Keys, Secrets, and Credentials
 
-> **Standard:** All credentials/settings (DB, Redis, AWS, SMTP, payment, etc.) must be runtime-configurable via HTTP API for both owner-admin and client-admin. After update, the app must test the connection and return the result. All config is DB-backed and hot-reloadable. No static config except OWNER_DB_DSN.
+> **Standard:** All credentials/settings (DB, Redis, AWS, SMTP, payment, etc.) must be runtime-configurable via HTTP API for both owner-admin and client-admin. After update, the app must test the connection and return the result. All config is DB-backed and hot-reloadable using the server_config table. No static config except OWNER_DB_DSN. 
 
 | Key / Header / Config         | Source                | Purpose / Usage                                 | Security Notes                                  |
 |------------------------------|-----------------------|-------------------------------------------------|-------------------------------------------------|
