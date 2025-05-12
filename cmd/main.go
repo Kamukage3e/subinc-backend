@@ -68,22 +68,22 @@ func extractDBConfig(c *fiber.Ctx) (string, error) {
 }
 
 // Middleware: inject *PostgresStore into context for each request
-func withDB(next fiber.Handler) fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		dbURL, err := extractDBConfig(c)
-		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid DB credentials"})
-		}
-		dbpool, err := pgxpool.New(context.Background(), dbURL)
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "DB connect failed"})
-		}
-		defer dbpool.Close()
-		store := &rbac_management.PostgresStore{DB: dbpool, AuditLogger: &security_management.PostgresStore{DB: dbpool}}
-		c.Locals("rbacStore", store)
-		return next(c)
-	}
-}
+// func withDB(next fiber.Handler) fiber.Handler {
+// 	return func(c *fiber.Ctx) error {
+// 		dbURL, err := extractDBConfig(c)
+// 		if err != nil {
+// 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid DB credentials"})
+// 		}
+// 		dbpool, err := pgxpool.New(context.Background(), dbURL)
+// 		if err != nil {
+// 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "DB connect failed"})
+// 		}
+// 		defer dbpool.Close()
+// 		store := &rbac_management.PostgresStore{DB: dbpool, AuditLogger: &security_management.PostgresStore{DB: dbpool}}
+// 		c.Locals("rbacStore", store)
+// 		return next(c)
+// 	}
+// }
 
 func main() {
 
@@ -146,7 +146,7 @@ func main() {
 	billing_management.RegisterAdminBillingRoutes(ownerAPI, billingHandler, jwtCfg.SecretName)
 
 	// --- Client admin routes ---
-	app.Use("/api/v1/client-admin", withDB)
+	// app.Use("/api/v1/client-admin", withDB)
 	clientAPI := app.Group("/api/v1/client-admin")
 	clientAPI.All("/*", func(c *fiber.Ctx) error {
 		dbURL, err := extractDBConfig(c)
@@ -186,11 +186,6 @@ func main() {
 		return c.Next()
 	})
 
-	clientAPI.Get("/oauth/config", getClientOAuthConfig)
-	clientAPI.Post("/oauth/config", setClientOAuthConfig)
-	clientAPI.Get("/saml/config", getClientSAMLConfig)
-	clientAPI.Post("/saml/config", setClientSAMLConfig)
-
 	if err := app.Listen(fmt.Sprintf(":%s", serverPort)); err != nil {
 		log.Fatalf("Fiber failed: %v", err)
 	}
@@ -210,61 +205,61 @@ func getAuditLogger() security_management.AuditLogger {
 	return dbState.auditLogger
 }
 
-// Handlers for client admin config
-func getClientOAuthConfig(c *fiber.Ctx) error {
-	// RBAC: only admin
-	if !isClientAdmin(c) {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden"})
-	}
-	return c.JSON(security_management.OAuthConfig{
-		Google: struct {
-			ClientID     string   `json:"client_id"`
-			ClientSecret string   `json:"client_secret"`
-			RedirectURI  string   `json:"redirect_uri"`
-			Scopes       []string `json:"scopes"`
-		}{
-			ClientID:     "google_client_id",
-			ClientSecret: "google_client_secret",
-			RedirectURI:  "google_redirect_uri",
-			Scopes:       []string{"scope1", "scope2"},
-		},
-	})
-}
+// // Handlers for client admin config
+// func getClientOAuthConfig(c *fiber.Ctx) error {
+// 	// RBAC: only admin
+// 	if !isClientAdmin(c) {
+// 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden"})
+// 	}
+// 	return c.JSON(security_management.OAuthConfig{
+// 		Google: struct {
+// 			ClientID     string   `json:"client_id"`
+// 			ClientSecret string   `json:"client_secret"`
+// 			RedirectURI  string   `json:"redirect_uri"`
+// 			Scopes       []string `json:"scopes"`
+// 		}{
+// 			ClientID:     "google_client_id",
+// 			ClientSecret: "google_client_secret",
+// 			RedirectURI:  "google_redirect_uri",
+// 			Scopes:       []string{"scope1", "scope2"},
+// 		},
+// 	})
+// }
 
-func setClientOAuthConfig(c *fiber.Ctx) error {
-	if !isClientAdmin(c) {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden"})
-	}
-	var cfg security_management.OAuthConfig
-	if err := c.BodyParser(&cfg); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	return c.SendStatus(fiber.StatusNoContent)
-}
+// func setClientOAuthConfig(c *fiber.Ctx) error {
+// 	if !isClientAdmin(c) {
+// 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden"})
+// 	}
+// 	var cfg security_management.OAuthConfig
+// 	if err := c.BodyParser(&cfg); err != nil {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+// 	}
+// 	return c.SendStatus(fiber.StatusNoContent)
+// }
 
-func getClientSAMLConfig(c *fiber.Ctx) error {
-	if !isClientAdmin(c) {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden"})
-	}
-	return c.JSON(security_management.SAMLConfig{
-		MetadataURL: "saml_metadata_url",
-		EntityID:    "saml_entity_id",
-		ACSURL:      "saml_acs_url",
-	})
-}
+// func getClientSAMLConfig(c *fiber.Ctx) error {
+// 	if !isClientAdmin(c) {
+// 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden"})
+// 	}
+// 	return c.JSON(security_management.SAMLConfig{
+// 		MetadataURL: "saml_metadata_url",
+// 		EntityID:    "saml_entity_id",
+// 		ACSURL:      "saml_acs_url",
+// 	})
+// }
 
-func setClientSAMLConfig(c *fiber.Ctx) error {
-	if !isClientAdmin(c) {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden"})
-	}
-	var cfg security_management.SAMLConfig
-	if err := c.BodyParser(&cfg); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	return c.SendStatus(fiber.StatusNoContent)
-}
+// func setClientSAMLConfig(c *fiber.Ctx) error {
+// 	if !isClientAdmin(c) {
+// 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden"})
+// 	}
+// 	var cfg security_management.SAMLConfig
+// 	if err := c.BodyParser(&cfg); err != nil {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+// 	}
+// 	return c.SendStatus(fiber.StatusNoContent)
+// }
 
-func isClientAdmin(c *fiber.Ctx) bool {
-	// Implement RBAC check for client admin
-	return c.Get("X-Admin") == "true"
-}
+// func isClientAdmin(c *fiber.Ctx) bool {
+// 	// Implement RBAC check for client admin
+// 	return c.Get("X-Admin") == "true"
+// }

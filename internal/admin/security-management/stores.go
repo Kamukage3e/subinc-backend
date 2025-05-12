@@ -16,8 +16,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 
-	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
+	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -320,7 +320,7 @@ func (s *PostgresStore) DeleteSecurityPolicy(ctx context.Context, id string) err
 
 // --- Error wrapping helper ---
 func wrapDBErr(op string, err error) error {
-	return &DBError{Op: op, Err: err}
+	return commonutil.WrapDBErr(op, err)
 }
 
 func (e *DBError) Error() string {
@@ -458,7 +458,7 @@ func (s *PostgresStore) DetectAnomalies(ctx context.Context, tenantID string) ([
 			if last.IP != ip || last.Loc != loc {
 				if created.Sub(last.Created) < time.Hour {
 					anomalies = append(anomalies, Anomaly{
-						ID:         uuidString(),
+						ID:         commonutil.GenerateUUID(),
 						Type:       "suspicious_login",
 						Details:    "Multiple locations/IPs in 1h for user " + userID,
 						DetectedAt: created,
@@ -482,7 +482,7 @@ func (s *PostgresStore) DetectAnomalies(ctx context.Context, tenantID string) ([
 			var created time.Time
 			if err := rows.Scan(&userID, &typ, &name, &created); err == nil {
 				anomalies = append(anomalies, Anomaly{
-					ID:         uuidString(),
+					ID:         commonutil.GenerateUUID(),
 					Type:       "new_device",
 					Details:    "New device: " + typ + " " + name + " for user " + userID,
 					DetectedAt: created,
@@ -500,7 +500,7 @@ func (s *PostgresStore) DetectAnomalies(ctx context.Context, tenantID string) ([
 			var count int
 			if err := rows.Scan(&userID, &count); err == nil {
 				anomalies = append(anomalies, Anomaly{
-					ID:         uuidString(),
+					ID:         commonutil.GenerateUUID(),
 					Type:       "brute_force",
 					Details:    "Brute-force: " + userID + " failed logins: " + itoa(count),
 					DetectedAt: time.Now().UTC(),
@@ -517,7 +517,7 @@ func (s *PostgresStore) DetectAnomalies(ctx context.Context, tenantID string) ([
 			var breachDetails, userID, sessionID string
 			if err := rows.Scan(&breachDetails, &userID, &sessionID); err == nil {
 				anomalies = append(anomalies, Anomaly{
-					ID:         uuidString(),
+					ID:         commonutil.GenerateUUID(),
 					Type:       "breach_active_session",
 					Details:    "User " + userID + " in breach and has active session " + sessionID,
 					DetectedAt: time.Now().UTC(),
@@ -526,19 +526,6 @@ func (s *PostgresStore) DetectAnomalies(ctx context.Context, tenantID string) ([
 		}
 	}
 	return anomalies, nil
-}
-
-func uuidString() string {
-	return time.Now().UTC().Format("20060102150405") + "-" + randomString(8)
-}
-
-func randomString(n int) string {
-	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
-	}
-	return string(b)
 }
 
 func itoa(i int) string {
@@ -784,7 +771,7 @@ func (s *PostgresStore) SendNotificationWithFallback(ctx context.Context, tenant
 		lastErr = err
 	}
 	item := NotificationQueueItem{
-		ID:        generateUUID(),
+		ID:        commonutil.GenerateUUID(),
 		Provider:  "fallback",
 		To:        to,
 		Event:     event,
@@ -860,7 +847,7 @@ func (s *PostgresStore) CreateWebhook(ctx context.Context, webhook SecurityEvent
 	if webhook.TenantID == "" || webhook.URL == "" || len(webhook.EventTypes) == 0 || webhook.Secret == "" {
 		return SecurityEventWebhook{}, errors.New("missing required fields")
 	}
-	webhook.ID = generateUUID()
+	webhook.ID = commonutil.GenerateUUID()
 	webhook.Status = "active"
 	webhook.CreatedAt = time.Now().UTC()
 	webhook.UpdatedAt = webhook.CreatedAt
@@ -948,12 +935,6 @@ func (s *PostgresStore) TriggerWebhook(ctx context.Context, id, tenantID, eventT
 	return nil
 }
 
-// generateUUID returns a new RFC4122 UUID string
-func generateUUID() string {
-	id := uuid.New()
-	return id.String()
-}
-
 // --- PasswordResetTokenService Postgres Implementation ---
 
 func (s *PostgresStore) CreateToken(ctx context.Context, userID string, expiresIn time.Duration) (PasswordResetToken, error) {
@@ -968,7 +949,7 @@ func (s *PostgresStore) CreateToken(ctx context.Context, userID string, expiresI
 	}
 	token := base64.URLEncoding.EncodeToString(b)
 	t := PasswordResetToken{
-		ID:        generateUUID(),
+		ID:        commonutil.GenerateUUID(),
 		UserID:    userID,
 		Token:     token,
 		ExpiresAt: time.Now().Add(expiresIn).UTC(),
@@ -1037,7 +1018,7 @@ func (s *PostgresStore) SetRateLimit(ctx context.Context, cfg RateLimitConfig) (
 		RETURNING id, created_at, updated_at`
 	id := cfg.ID
 	if id == "" {
-		id = generateUUID()
+		id = commonutil.GenerateUUID()
 	}
 	row := s.DB.QueryRow(ctx, upsert, id, cfg.Scope, cfg.ScopeID, cfg.Limit, cfg.WindowSeconds)
 	var createdAt, updatedAt time.Time

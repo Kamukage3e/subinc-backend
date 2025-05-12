@@ -128,7 +128,7 @@ All configuration, feature flags, and credentials are DB-backed and hot-reloadab
 | redis.*                      | server_config table, API | Redis connection config for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
 | aws.*                        | server_config table, API | AWS credentials and role ARN for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
 | stripe_api_key, paypal_client_id/secret, googlepay_*/applepay_* | server_config table, API | Payment provider config for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
-| braintree.*                  | secret store          | Braintree API credentials                       | Loaded from secret store                        |
+| braintree.*                  | server_config table, API | Braintree API credentials (merged into payment provider config) | Managed via API, never static, owner/client specific |
 | openai.api_key               | server_config table, API | OpenAI config for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
 | admin.email/username/password| server_config table, API | Initial admin credentials for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
 | hashid_salt                  | server_config table, API | Hashid salt for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
@@ -155,3 +155,29 @@ All configuration, feature flags, and credentials are DB-backed and hot-reloadab
 - Never commit real secrets to version control.
 - Rotate credentials regularly and use least privilege for all service accounts.
 - All config changes are auditable via the server_config and billing_config history tables.
+
+## Configuration Testing
+
+The system automatically verifies all credentials and configurations when they are updated, providing immediate feedback on whether the updated configuration is valid and can establish connections properly:
+
+| Configuration Type    | Testing Method                                      | Validation Response                              |
+|-----------------------|-----------------------------------------------------|--------------------------------------------------|
+| DB Connections        | Tests connection by creating a pool and pinging     | Returns connection success/error with diagnostic info |
+| Redis Connections     | Establishes connection and performs PING command    | Returns connection success/error with diagnostic info |
+| AWS Credentials       | Validates via STS GetCallerIdentity API call        | Returns authentication success/error and account info |
+| SMTP Server           | Tests connection with appropriate SSL/TLS settings  | Returns connection success/error with specific SMTP error info |
+| JWT Secrets           | Creates and validates a test token                  | Returns token creation and validation success/error |
+| OAuth Credentials     | Tests token endpoint with provided client credentials | Returns validation status with provider-specific details |
+| SAML Configuration    | Fetches metadata URL and validates XML content      | Returns metadata availability and SAML format validation |
+| Payment Providers     | Tests API connectivity for each configured provider | Returns per-provider connection status |
+| OpenAI API Keys       | Tests models API endpoint with provided credentials | Returns API key validation status |
+| Webhook Endpoints     | Tests both HEAD and POST requests with test payload | Returns endpoint reachability status |
+
+All validation results include the original configuration (with sensitive data redacted in logs) and detailed error information when connections fail, enabling quick troubleshooting of configuration issues. This system ensures that no invalid credentials or configurations can be saved without the user being notified of potential problems.
+
+**Implementation Details:**
+- Connection tests are implemented in the `providercheck` package with standardized interfaces
+- All tests include appropriate timeouts to prevent hanging requests
+- Tests use minimal API calls to validate credentials without excessive permissions
+- Validation responses include structured error information for frontend display
+- Tests are performed automatically upon configuration update without requiring separate API calls

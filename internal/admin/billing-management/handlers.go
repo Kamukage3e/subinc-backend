@@ -11,11 +11,12 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
+	// "github.com/google/uuid"
 	"github.com/jung-kurt/gofpdf"
 	"github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
 	paymentpkg "github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -3854,7 +3855,7 @@ func (h *BillingAdminHandler) CreateExchangeRate(c *fiber.Ctx) error {
 	input.QuoteCurrency = strings.ToUpper(input.QuoteCurrency)
 	input.UpdatedAt = time.Now().UTC()
 	if input.ID == "" {
-		input.ID = generateUUID()
+		input.ID = commonutil.GenerateUUID()
 	}
 	rate, err := h.Store.CreateExchangeRate(c.Context(), input)
 	if err != nil {
@@ -4013,10 +4014,6 @@ func (h *BillingAdminHandler) ListExchangeRates(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"exchange_rates": rates})
 }
 
-// generateUUID returns a new RFC4122 UUID string
-func generateUUID() string {
-	return uuid.NewString()
-}
 
 // --- TenantCurrency Handlers ---
 

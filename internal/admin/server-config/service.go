@@ -562,3 +562,205 @@ func (s *Service) SetClientSMTPConfig(ctx context.Context, tenantID string, smtp
 	}
 	return s.Set(ctx, key, string(b), updatedBy)
 }
+
+// GetOwnerSMTPConfig returns the current owner-admin SMTP config from server_config (runtime, hot-reloadable)
+func (s *Service) GetOwnerSMTPConfig(ctx context.Context) (OwnerSMTPConfig, error) {
+	cfg, err := s.Get(ctx, "owner_admin_smtp_config")
+	if err != nil {
+		return OwnerSMTPConfig{}, err
+	}
+	var smtpCfg OwnerSMTPConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &smtpCfg); err != nil {
+		return OwnerSMTPConfig{}, err
+	}
+	return smtpCfg, nil
+}
+
+// SetOwnerSMTPConfig sets the owner-admin SMTP config in server_config (runtime, hot-reloadable)
+func (s *Service) SetOwnerSMTPConfig(ctx context.Context, smtpCfg OwnerSMTPConfig, updatedBy string) (ServerConfig, error) {
+	b, err := json.Marshal(smtpCfg)
+	if err != nil {
+		return ServerConfig{}, err
+	}
+	return s.Set(ctx, "owner_admin_smtp_config", string(b), updatedBy)
+}
+
+// GetClientPaymentProviderConfig returns the current client-admin payment provider config for a tenant from server_config (runtime, hot-reloadable)
+func (s *Service) GetClientPaymentProviderConfig(ctx context.Context, tenantID string) (ClientPaymentProviderConfig, error) {
+	if tenantID == "" {
+		return ClientPaymentProviderConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_payment_provider_config_" + tenantID
+	cfg, err := s.Get(ctx, key)
+	if err != nil {
+		return ClientPaymentProviderConfig{}, err
+	}
+	var paymentCfg ClientPaymentProviderConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &paymentCfg); err != nil {
+		return ClientPaymentProviderConfig{}, err
+	}
+	return paymentCfg, nil
+}
+
+// SetClientPaymentProviderConfig sets the client-admin payment provider config for a tenant in server_config (runtime, hot-reloadable)
+func (s *Service) SetClientPaymentProviderConfig(ctx context.Context, tenantID string, paymentCfg ClientPaymentProviderConfig, updatedBy string) (ServerConfig, error) {
+	if tenantID == "" {
+		return ServerConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_payment_provider_config_" + tenantID
+	b, err := json.Marshal(paymentCfg)
+	if err != nil {
+		return ServerConfig{}, err
+	}
+	return s.Set(ctx, key, string(b), updatedBy)
+}
+
+// GetClientJWTSecretConfig returns the current client-admin JWT secret config for a tenant from server_config (runtime, hot-reloadable)
+func (s *Service) GetClientJWTSecretConfig(ctx context.Context, tenantID string) (ClientJWTSecretConfig, error) {
+	if tenantID == "" {
+		return ClientJWTSecretConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_jwt_secret_config_" + tenantID
+	cfg, err := s.Get(ctx, key)
+	if err != nil {
+		return ClientJWTSecretConfig{}, err
+	}
+	var jwtCfg ClientJWTSecretConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &jwtCfg); err != nil {
+		return ClientJWTSecretConfig{}, err
+	}
+	return jwtCfg, nil
+}
+
+// SetClientJWTSecretConfig sets the client-admin JWT secret config for a tenant in server_config (runtime, hot-reloadable)
+func (s *Service) SetClientJWTSecretConfig(ctx context.Context, tenantID string, jwtCfg ClientJWTSecretConfig, updatedBy string) (ServerConfig, error) {
+	if tenantID == "" {
+		return ServerConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_jwt_secret_config_" + tenantID
+	b, err := json.Marshal(jwtCfg)
+	if err != nil {
+		return ServerConfig{}, err
+	}
+	return s.Set(ctx, key, string(b), updatedBy)
+}
+
+// GetClientOAuthConfig returns the current client-admin OAuth config for a tenant from server_config (runtime, hot-reloadable)
+func (s *Service) GetClientOAuthConfig(ctx context.Context, tenantID string) (ClientOAuthConfig, error) {
+	if tenantID == "" {
+		return ClientOAuthConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_oauth_config_" + tenantID
+	cfg, err := s.Get(ctx, key)
+	if err != nil {
+		return ClientOAuthConfig{}, err
+	}
+	var oauthCfg ClientOAuthConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &oauthCfg); err != nil {
+		return ClientOAuthConfig{}, err
+	}
+	return oauthCfg, nil
+}
+
+// SetClientOAuthConfig sets the client-admin OAuth config for a tenant in server_config (runtime, hot-reloadable)
+func (s *Service) SetClientOAuthConfig(ctx context.Context, tenantID string, oauthCfg ClientOAuthConfig, updatedBy string) (ServerConfig, error) {
+	if tenantID == "" {
+		return ServerConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_oauth_config_" + tenantID
+	b, err := json.Marshal(oauthCfg)
+	if err != nil {
+		return ServerConfig{}, err
+	}
+	return s.Set(ctx, key, string(b), updatedBy)
+}
+
+// GetClientSAMLConfig returns the current client-admin SAML config for a tenant from server_config (runtime, hot-reloadable)
+func (s *Service) GetClientSAMLConfig(ctx context.Context, tenantID string) (ClientSAMLConfig, error) {
+	if tenantID == "" {
+		return ClientSAMLConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_saml_config_" + tenantID
+	cfg, err := s.Get(ctx, key)
+	if err != nil {
+		return ClientSAMLConfig{}, err
+	}
+	var samlCfg ClientSAMLConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &samlCfg); err != nil {
+		return ClientSAMLConfig{}, err
+	}
+	return samlCfg, nil
+}
+
+// SetClientSAMLConfig sets the client-admin SAML config for a tenant in server_config (runtime, hot-reloadable)
+func (s *Service) SetClientSAMLConfig(ctx context.Context, tenantID string, samlCfg ClientSAMLConfig, updatedBy string) (ServerConfig, error) {
+	if tenantID == "" {
+		return ServerConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_saml_config_" + tenantID
+	b, err := json.Marshal(samlCfg)
+	if err != nil {
+		return ServerConfig{}, err
+	}
+	return s.Set(ctx, key, string(b), updatedBy)
+}
+
+// GetClientOpenAIConfig returns the current client-admin OpenAI config for a tenant from server_config (runtime, hot-reloadable)
+func (s *Service) GetClientOpenAIConfig(ctx context.Context, tenantID string) (ClientOpenAIConfig, error) {
+	if tenantID == "" {
+		return ClientOpenAIConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_openai_config_" + tenantID
+	cfg, err := s.Get(ctx, key)
+	if err != nil {
+		return ClientOpenAIConfig{}, err
+	}
+	var openaiCfg ClientOpenAIConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &openaiCfg); err != nil {
+		return ClientOpenAIConfig{}, err
+	}
+	return openaiCfg, nil
+}
+
+// SetClientOpenAIConfig sets the client-admin OpenAI config for a tenant in server_config (runtime, hot-reloadable)
+func (s *Service) SetClientOpenAIConfig(ctx context.Context, tenantID string, openaiCfg ClientOpenAIConfig, updatedBy string) (ServerConfig, error) {
+	if tenantID == "" {
+		return ServerConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_openai_config_" + tenantID
+	b, err := json.Marshal(openaiCfg)
+	if err != nil {
+		return ServerConfig{}, err
+	}
+	return s.Set(ctx, key, string(b), updatedBy)
+}
+
+// GetClientWebhookConfig returns the current client-admin webhook config for a tenant from server_config (runtime, hot-reloadable)
+func (s *Service) GetClientWebhookConfig(ctx context.Context, tenantID string) (ClientWebhookConfig, error) {
+	if tenantID == "" {
+		return ClientWebhookConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_webhook_config_" + tenantID
+	cfg, err := s.Get(ctx, key)
+	if err != nil {
+		return ClientWebhookConfig{}, err
+	}
+	var webhookCfg ClientWebhookConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &webhookCfg); err != nil {
+		return ClientWebhookConfig{}, err
+	}
+	return webhookCfg, nil
+}
+
+// SetClientWebhookConfig sets the client-admin webhook config for a tenant in server_config (runtime, hot-reloadable)
+func (s *Service) SetClientWebhookConfig(ctx context.Context, tenantID string, webhookCfg ClientWebhookConfig, updatedBy string) (ServerConfig, error) {
+	if tenantID == "" {
+		return ServerConfig{}, errors.New("tenantID required")
+	}
+	key := "client_admin_webhook_config_" + tenantID
+	b, err := json.Marshal(webhookCfg)
+	if err != nil {
+		return ServerConfig{}, err
+	}
+	return s.Set(ctx, key, string(b), updatedBy)
+}

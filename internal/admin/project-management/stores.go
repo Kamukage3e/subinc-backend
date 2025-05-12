@@ -6,9 +6,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-
+	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -17,7 +16,7 @@ import (
 // --- ProjectService ---
 func (s *PostgresStore) CreateProject(ctx context.Context, project Project) (Project, error) {
 	if project.ID == "" {
-		project.ID = generateUUID()
+		project.ID = commonutil.GenerateUUID()
 	}
 	project.CreatedAt = time.Now()
 	project.UpdatedAt = project.CreatedAt
@@ -25,7 +24,7 @@ func (s *PostgresStore) CreateProject(ctx context.Context, project Project) (Pro
 		project.ID, project.OrgID, project.Name, project.Description, project.Status, project.CreatedAt, project.UpdatedAt)
 	if err != nil {
 		logger.LogError("CreateProject: failed", logger.ErrorField(err), logger.Any("project", project))
-		return Project{}, wrapDBErr("create_project", err)
+		return Project{}, commonutil.WrapDBErr("create_project", err)
 	}
 	return project, nil
 }
@@ -36,7 +35,7 @@ func (s *PostgresStore) UpdateProject(ctx context.Context, project Project) (Pro
 		project.Name, project.Description, project.Status, project.UpdatedAt, project.ID)
 	if err != nil {
 		logger.LogError("UpdateProject: failed", logger.ErrorField(err), logger.Any("project", project))
-		return Project{}, wrapDBErr("update_project", err)
+		return Project{}, commonutil.WrapDBErr("update_project", err)
 	}
 	n := res.RowsAffected()
 	if n == 0 {
@@ -53,7 +52,7 @@ func (s *PostgresStore) DeleteProject(ctx context.Context, id string) error {
 	res, err := s.DB.Exec(ctx, `DELETE FROM projects WHERE id=$1`, id)
 	if err != nil {
 		logger.LogError("DeleteProject: failed", logger.ErrorField(err), logger.Any("id", id))
-		return wrapDBErr("delete_project", err)
+		return commonutil.WrapDBErr("delete_project", err)
 	}
 	n := res.RowsAffected()
 	if n == 0 {
@@ -69,7 +68,7 @@ func (s *PostgresStore) GetProject(ctx context.Context, id string) (Project, err
 	err := row.Scan(&p.ID, &p.OrgID, &p.Name, &p.Description, &p.Status, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		logger.LogError("GetProject: failed", logger.ErrorField(err), logger.Any("id", id))
-		return Project{}, wrapDBErr("get_project", err)
+		return Project{}, commonutil.WrapDBErr("get_project", err)
 	}
 	return p, nil
 }
@@ -79,7 +78,7 @@ func (s *PostgresStore) ListProjects(ctx context.Context, orgID string, page, pa
 	rows, err := s.DB.Query(ctx, `SELECT id, org_id, name, description, status, created_at, updated_at FROM projects WHERE org_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, orgID, pageSize, offset)
 	if err != nil {
 		logger.LogError("ListProjects: failed", logger.ErrorField(err), logger.Any("org_id", orgID))
-		return nil, wrapDBErr("list_projects", err)
+		return nil, commonutil.WrapDBErr("list_projects", err)
 	}
 	defer rows.Close()
 	var projects []Project
@@ -87,7 +86,7 @@ func (s *PostgresStore) ListProjects(ctx context.Context, orgID string, page, pa
 		var p Project
 		if err := rows.Scan(&p.ID, &p.OrgID, &p.Name, &p.Description, &p.Status, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			logger.LogError("ListProjects: scan error", logger.ErrorField(err), logger.Any("org_id", orgID))
-			return nil, wrapDBErr("list_projects_scan", err)
+			return nil, commonutil.WrapDBErr("list_projects_scan", err)
 		}
 		projects = append(projects, p)
 	}
@@ -134,17 +133,4 @@ func (s *PostgresStore) UpdateSettings(ctx context.Context, projectID string, se
 		return err
 	}
 	return nil
-}
-
-// --- Helpers ---
-func wrapDBErr(op string, err error) error {
-	return &DBError{Op: op, Err: err}
-}
-
-func (e *DBError) Error() string {
-	return "db error: " + e.Op + ": " + e.Err.Error()
-}
-
-func generateUUID() string {
-	return uuid.NewString()
 }

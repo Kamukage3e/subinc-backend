@@ -8,7 +8,7 @@ import (
 )
 
 type PostgresStore struct {
-	DB         *pgxpool.Pool
+	DB          *pgxpool.Pool
 	AuditLogger security_management.AuditLogger
 }
 

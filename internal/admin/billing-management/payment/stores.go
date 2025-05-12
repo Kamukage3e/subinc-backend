@@ -28,6 +28,7 @@ func (s *Store) SetTenantPaymentProviderConfig(ctx context.Context, tenantID, pr
 		logger.LogError("SetTenantPaymentProviderConfig: provider must not be empty", logger.ErrorField(errors.New("provider must not be empty")))
 		return nil, errors.New("provider must not be empty")
 	}
+
 	const q = `
 	INSERT INTO tenant_payment_provider_config (tenant_id, provider, updated_at)
 	VALUES ($1, $2, NOW())
@@ -49,6 +50,7 @@ func (s *Store) GetTenantPaymentProviderConfig(ctx context.Context, tenantID str
 		logger.LogError("GetTenantPaymentProviderConfig: tenant_id must not be empty", logger.ErrorField(errors.New("tenant_id must not be empty")))
 		return nil, errors.New("tenant_id must not be empty")
 	}
+
 	const q = `
 	SELECT tenant_id, provider, updated_at
 	FROM tenant_payment_provider_config
@@ -107,11 +109,13 @@ func (s *Store) SetTenantProviderSecret(ctx context.Context, tenantID, provider 
 		logger.LogError("SetTenantProviderSecret: tenant_id and provider required", logger.ErrorField(errors.New("tenant_id and provider required")))
 		return errors.New("tenant_id and provider required")
 	}
+
 	cfgJSON, err := json.Marshal(config)
 	if err != nil {
 		logger.LogError("SetTenantProviderSecret: failed to marshal config", logger.ErrorField(err))
 		return errors.New("failed to marshal config")
 	}
+
 	const q = `
 	INSERT INTO tenant_provider_secret (tenant_id, provider, config_json, updated_at)
 	VALUES ($1, $2, $3, NOW())
@@ -131,6 +135,7 @@ func (s *Store) GetTenantProviderSecret(ctx context.Context, tenantID, provider 
 		logger.LogError("GetTenantProviderSecret: tenant_id and provider required", logger.ErrorField(errors.New("tenant_id and provider required")))
 		return nil, errors.New("tenant_id and provider required")
 	}
+
 	const q = `
 	SELECT config_json FROM tenant_provider_secret WHERE tenant_id = $1 AND provider = $2
 	`

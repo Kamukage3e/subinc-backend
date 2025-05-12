@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	redis "github.com/redis/go-redis/v9"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -321,7 +322,24 @@ func (h *Handler) SetOwnerJWTSecretConfig(c *fiber.Ctx) error {
 		h.log.Error("set_owner_jwt_secret_config failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(cfg)
+
+	// Validate JWT secret using the helper function
+	result := fiber.Map{"config": cfg, "jwt_secret_valid": false}
+	if input.SecretName != "" {
+		jwtConfig := &providercheck.JWTConfig{
+			Secret: input.SecretName,
+		}
+
+		if err := providercheck.CheckJWTSecret(c.Context(), jwtConfig); err != nil {
+			result["jwt_error"] = err.Error()
+		} else {
+			result["jwt_secret_valid"] = true
+		}
+	} else {
+		result["jwt_error"] = "No JWT secret provided"
+	}
+
+	return c.JSON(result)
 }
 
 // GetOwnerOAuthConfig returns the current owner-admin OAuth config (runtime, hot-reloadable)
@@ -361,7 +379,27 @@ func (h *Handler) SetOwnerOAuthConfig(c *fiber.Ctx) error {
 		h.log.Error("set_owner_oauth_config failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(cfg)
+
+	// Verify Google OAuth credentials using the helper function
+	result := fiber.Map{"config": cfg, "google_oauth_valid": false}
+	if input.Google.ClientID != "" && input.Google.ClientSecret != "" {
+		oauthConfig := &providercheck.OAuthConfig{
+			ClientID:     input.Google.ClientID,
+			ClientSecret: input.Google.ClientSecret,
+			RedirectURI:  input.Google.RedirectURI,
+			Provider:     "google",
+		}
+
+		if err := providercheck.CheckOAuthCredentials(c.Context(), oauthConfig); err != nil {
+			result["google_oauth_error"] = err.Error()
+		} else {
+			result["google_oauth_valid"] = true
+		}
+	} else {
+		result["google_oauth_error"] = "Client ID or secret missing"
+	}
+
+	return c.JSON(result)
 }
 
 // GetOwnerSAMLConfig returns the current owner-admin SAML config (runtime, hot-reloadable)
@@ -401,7 +439,24 @@ func (h *Handler) SetOwnerSAMLConfig(c *fiber.Ctx) error {
 		h.log.Error("set_owner_saml_config failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(cfg)
+
+	// Verify SAML metadata URL using the helper function
+	result := fiber.Map{"config": cfg, "saml_metadata_valid": false}
+	if input.MetadataURL != "" {
+		samlConfig := &providercheck.SAMLConfig{
+			MetadataURL: input.MetadataURL,
+		}
+
+		if err := providercheck.CheckSAMLMetadata(c.Context(), samlConfig); err != nil {
+			result["saml_metadata_error"] = err.Error()
+		} else {
+			result["saml_metadata_valid"] = true
+		}
+	} else {
+		result["saml_metadata_error"] = "No metadata URL provided"
+	}
+
+	return c.JSON(result)
 }
 
 // GetOwnerRedisConfig returns the current owner-admin Redis config (runtime, hot-reloadable)
@@ -621,7 +676,25 @@ func (h *Handler) SetOwnerOpenAIConfig(c *fiber.Ctx) error {
 		h.log.Error("set_owner_openai_config failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(cfg)
+
+	// Verify OpenAI API key using the helper function
+	result := fiber.Map{"config": cfg, "openai_api_key_valid": false}
+	if input.APIKey != "" {
+		openaiConfig := &providercheck.OpenAIConfig{
+			APIKey: input.APIKey,
+			APIURL: input.APIURL,
+		}
+
+		if err := providercheck.CheckOpenAIAPIKey(c.Context(), openaiConfig); err != nil {
+			result["openai_api_error"] = err.Error()
+		} else {
+			result["openai_api_key_valid"] = true
+		}
+	} else {
+		result["openai_api_error"] = "No API key provided"
+	}
+
+	return c.JSON(result)
 }
 
 // GetOwnerAdminUserConfig returns the current owner-admin initial admin credentials (runtime, hot-reloadable)
@@ -821,7 +894,24 @@ func (h *Handler) SetOwnerWebhookConfig(c *fiber.Ctx) error {
 		h.log.Error("set_owner_webhook_config failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(cfg)
+
+	// Test webhook endpoint connectivity using the helper function
+	result := fiber.Map{"config": cfg, "webhook_endpoint_reachable": false}
+	if input.EventsURL != "" {
+		webhookConfig := &providercheck.WebhookConfig{
+			EndpointURL: input.EventsURL,
+		}
+
+		if err := providercheck.CheckWebhookEndpoint(c.Context(), webhookConfig); err != nil {
+			result["webhook_error"] = err.Error()
+		} else {
+			result["webhook_endpoint_reachable"] = true
+		}
+	} else {
+		result["webhook_error"] = "No webhook endpoint URL provided"
+	}
+
+	return c.JSON(result)
 }
 
 // GetOwnerSessionConfig returns the current owner-admin session config (runtime, hot-reloadable)
@@ -1124,6 +1214,487 @@ func (h *Handler) SetClientSMTPConfig(c *fiber.Ctx) error {
 				smtpErr = c.StartTLS(&tls.Config{ServerName: input.Host, InsecureSkipVerify: false})
 			}
 			_ = c.Quit()
+		}
+	}
+	result := fiber.Map{"config": cfg, "smtp_connection_ok": smtpErr == nil}
+	if smtpErr != nil {
+		result["smtp_error"] = smtpErr.Error()
+	}
+	return c.JSON(result)
+}
+
+// GetClientPaymentProviderConfig returns the current client-admin payment provider config for a tenant (runtime, hot-reloadable)
+func (h *Handler) GetClientPaymentProviderConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	cfg, err := h.Service.GetClientPaymentProviderConfig(c.Context(), tenantID)
+	if err != nil {
+		h.log.Error("get_client_payment_provider_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "client payment provider config not found"})
+	}
+	return c.JSON(cfg)
+}
+
+// SetClientPaymentProviderConfig sets the client-admin payment provider config for a tenant (runtime, hot-reloadable)
+func (h *Handler) SetClientPaymentProviderConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	if h.Service.RBACService != nil {
+		actorID := c.Locals("actor_id")
+		if actorID == nil {
+			actorID = "system"
+		}
+		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_payment_provider_config")
+		if err != nil || !permitted {
+			h.log.Error("SetClientPaymentProviderConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input ClientPaymentProviderConfig
+	if err := c.BodyParser(&input); err != nil {
+		h.log.Error("set_client_payment_provider_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	updatedBy := c.Locals("actor_id")
+	if updatedBy == nil {
+		updatedBy = "system"
+	}
+	cfg, err := h.Service.SetClientPaymentProviderConfig(c.Context(), tenantID, input, updatedBy.(string))
+	if err != nil {
+		h.log.Error("set_client_payment_provider_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	// Validate payment provider connections
+	results := fiber.Map{"config": cfg}
+	var providers []string
+	if input.StripeAPIKey != "" {
+		providers = append(providers, "stripe")
+	}
+	if input.PaypalClientID != "" && input.PaypalClientSecret != "" {
+		providers = append(providers, "paypal")
+	}
+	if input.BraintreeMerchantID != "" && input.BraintreePublicKey != "" && input.BraintreePrivateKey != "" {
+		providers = append(providers, "braintree")
+	}
+	pcfg := &providercheck.PaymentProviderConfig{
+		StripeAPIKey:        input.StripeAPIKey,
+		PaypalClientID:      input.PaypalClientID,
+		PaypalClientSecret:  input.PaypalClientSecret,
+		GooglePayMerchantID: input.GooglePayMerchantID,
+		GooglePayAPIKey:     input.GooglePayAPIKey,
+		ApplePayMerchantID:  input.ApplePayMerchantID,
+		ApplePayAPIKey:      input.ApplePayAPIKey,
+		PaymentsDisabled:    input.PaymentsDisabled,
+		BraintreeMerchantID: input.BraintreeMerchantID,
+		BraintreePublicKey:  input.BraintreePublicKey,
+		BraintreePrivateKey: input.BraintreePrivateKey,
+		BraintreeEnv:        input.BraintreeEnv,
+	}
+	for _, provider := range providers {
+		err := providercheck.CheckPaymentProviderConnection(c.Context(), provider, pcfg)
+		results[provider+"_connection_ok"] = err == nil
+		if err != nil {
+			results[provider+"_error"] = err.Error()
+		}
+	}
+	return c.JSON(results)
+}
+
+// GetClientJWTSecretConfig returns the current client-admin JWT secret config for a tenant (runtime, hot-reloadable)
+func (h *Handler) GetClientJWTSecretConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	cfg, err := h.Service.GetClientJWTSecretConfig(c.Context(), tenantID)
+	if err != nil {
+		h.log.Error("get_client_jwt_secret_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "client JWT secret config not found"})
+	}
+	return c.JSON(cfg)
+}
+
+// SetClientJWTSecretConfig sets the client-admin JWT secret config for a tenant (runtime, hot-reloadable)
+func (h *Handler) SetClientJWTSecretConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	if h.Service.RBACService != nil {
+		actorID := c.Locals("actor_id")
+		if actorID == nil {
+			actorID = "system"
+		}
+		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_jwt_secret_config")
+		if err != nil || !permitted {
+			h.log.Error("SetClientJWTSecretConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input ClientJWTSecretConfig
+	if err := c.BodyParser(&input); err != nil {
+		h.log.Error("set_client_jwt_secret_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	updatedBy := c.Locals("actor_id")
+	if updatedBy == nil {
+		updatedBy = "system"
+	}
+	cfg, err := h.Service.SetClientJWTSecretConfig(c.Context(), tenantID, input, updatedBy.(string))
+	if err != nil {
+		h.log.Error("set_client_jwt_secret_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Validate JWT secret using the helper function
+	result := fiber.Map{"config": cfg, "jwt_secret_valid": false}
+	if input.SecretName != "" {
+		jwtConfig := &providercheck.JWTConfig{
+			Secret: input.SecretName,
+		}
+
+		if err := providercheck.CheckJWTSecret(c.Context(), jwtConfig); err != nil {
+			result["jwt_error"] = err.Error()
+		} else {
+			result["jwt_secret_valid"] = true
+		}
+	} else {
+		result["jwt_error"] = "No JWT secret provided"
+	}
+
+	return c.JSON(result)
+}
+
+// GetClientOAuthConfig returns the current client-admin OAuth config for a tenant (runtime, hot-reloadable)
+func (h *Handler) GetClientOAuthConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	cfg, err := h.Service.GetClientOAuthConfig(c.Context(), tenantID)
+	if err != nil {
+		h.log.Error("get_client_oauth_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "client OAuth config not found"})
+	}
+	return c.JSON(cfg)
+}
+
+// SetClientOAuthConfig sets the client-admin OAuth config for a tenant (runtime, hot-reloadable)
+func (h *Handler) SetClientOAuthConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	if h.Service.RBACService != nil {
+		actorID := c.Locals("actor_id")
+		if actorID == nil {
+			actorID = "system"
+		}
+		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_oauth_config")
+		if err != nil || !permitted {
+			h.log.Error("SetClientOAuthConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input ClientOAuthConfig
+	if err := c.BodyParser(&input); err != nil {
+		h.log.Error("set_client_oauth_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	updatedBy := c.Locals("actor_id")
+	if updatedBy == nil {
+		updatedBy = "system"
+	}
+	cfg, err := h.Service.SetClientOAuthConfig(c.Context(), tenantID, input, updatedBy.(string))
+	if err != nil {
+		h.log.Error("set_client_oauth_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Verify Google OAuth credentials using the helper function
+	result := fiber.Map{"config": cfg, "google_oauth_valid": false}
+	if input.Google.ClientID != "" && input.Google.ClientSecret != "" {
+		oauthConfig := &providercheck.OAuthConfig{
+			ClientID:     input.Google.ClientID,
+			ClientSecret: input.Google.ClientSecret,
+			RedirectURI:  input.Google.RedirectURI,
+			Provider:     "google",
+		}
+
+		if err := providercheck.CheckOAuthCredentials(c.Context(), oauthConfig); err != nil {
+			result["google_oauth_error"] = err.Error()
+		} else {
+			result["google_oauth_valid"] = true
+		}
+	} else {
+		result["google_oauth_error"] = "Client ID or secret missing"
+	}
+
+	return c.JSON(result)
+}
+
+// GetClientSAMLConfig returns the current client-admin SAML config for a tenant (runtime, hot-reloadable)
+func (h *Handler) GetClientSAMLConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	cfg, err := h.Service.GetClientSAMLConfig(c.Context(), tenantID)
+	if err != nil {
+		h.log.Error("get_client_saml_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "client SAML config not found"})
+	}
+	return c.JSON(cfg)
+}
+
+// SetClientSAMLConfig sets the client-admin SAML config for a tenant (runtime, hot-reloadable)
+func (h *Handler) SetClientSAMLConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	if h.Service.RBACService != nil {
+		actorID := c.Locals("actor_id")
+		if actorID == nil {
+			actorID = "system"
+		}
+		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_saml_config")
+		if err != nil || !permitted {
+			h.log.Error("SetClientSAMLConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input ClientSAMLConfig
+	if err := c.BodyParser(&input); err != nil {
+		h.log.Error("set_client_saml_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	updatedBy := c.Locals("actor_id")
+	if updatedBy == nil {
+		updatedBy = "system"
+	}
+	cfg, err := h.Service.SetClientSAMLConfig(c.Context(), tenantID, input, updatedBy.(string))
+	if err != nil {
+		h.log.Error("set_client_saml_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Verify SAML metadata URL using the helper function
+	result := fiber.Map{"config": cfg, "saml_metadata_valid": false}
+	if input.MetadataURL != "" {
+		samlConfig := &providercheck.SAMLConfig{
+			MetadataURL: input.MetadataURL,
+		}
+
+		if err := providercheck.CheckSAMLMetadata(c.Context(), samlConfig); err != nil {
+			result["saml_metadata_error"] = err.Error()
+		} else {
+			result["saml_metadata_valid"] = true
+		}
+	} else {
+		result["saml_metadata_error"] = "No metadata URL provided"
+	}
+
+	return c.JSON(result)
+}
+
+// GetClientOpenAIConfig returns the current client-admin OpenAI config for a tenant (runtime, hot-reloadable)
+func (h *Handler) GetClientOpenAIConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	cfg, err := h.Service.GetClientOpenAIConfig(c.Context(), tenantID)
+	if err != nil {
+		h.log.Error("get_client_openai_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "client OpenAI config not found"})
+	}
+	return c.JSON(cfg)
+}
+
+// SetClientOpenAIConfig sets the client-admin OpenAI config for a tenant (runtime, hot-reloadable)
+func (h *Handler) SetClientOpenAIConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	if h.Service.RBACService != nil {
+		actorID := c.Locals("actor_id")
+		if actorID == nil {
+			actorID = "system"
+		}
+		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_openai_config")
+		if err != nil || !permitted {
+			h.log.Error("SetClientOpenAIConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input ClientOpenAIConfig
+	if err := c.BodyParser(&input); err != nil {
+		h.log.Error("set_client_openai_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	updatedBy := c.Locals("actor_id")
+	if updatedBy == nil {
+		updatedBy = "system"
+	}
+	cfg, err := h.Service.SetClientOpenAIConfig(c.Context(), tenantID, input, updatedBy.(string))
+	if err != nil {
+		h.log.Error("set_client_openai_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Verify OpenAI API key using the helper function
+	result := fiber.Map{"config": cfg, "openai_api_key_valid": false}
+	if input.APIKey != "" {
+		openaiConfig := &providercheck.OpenAIConfig{
+			APIKey: input.APIKey,
+			APIURL: input.APIURL,
+		}
+
+		if err := providercheck.CheckOpenAIAPIKey(c.Context(), openaiConfig); err != nil {
+			result["openai_api_error"] = err.Error()
+		} else {
+			result["openai_api_key_valid"] = true
+		}
+	} else {
+		result["openai_api_error"] = "No API key provided"
+	}
+
+	return c.JSON(result)
+}
+
+// GetClientWebhookConfig returns the current client-admin webhook config for a tenant (runtime, hot-reloadable)
+func (h *Handler) GetClientWebhookConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	cfg, err := h.Service.GetClientWebhookConfig(c.Context(), tenantID)
+	if err != nil {
+		h.log.Error("get_client_webhook_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "client webhook config not found"})
+	}
+	return c.JSON(cfg)
+}
+
+// SetClientWebhookConfig sets the client-admin webhook config for a tenant (runtime, hot-reloadable)
+func (h *Handler) SetClientWebhookConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenantID")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+	}
+	if h.Service.RBACService != nil {
+		actorID := c.Locals("actor_id")
+		if actorID == nil {
+			actorID = "system"
+		}
+		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_webhook_config")
+		if err != nil || !permitted {
+			h.log.Error("SetClientWebhookConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input ClientWebhookConfig
+	if err := c.BodyParser(&input); err != nil {
+		h.log.Error("set_client_webhook_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	updatedBy := c.Locals("actor_id")
+	if updatedBy == nil {
+		updatedBy = "system"
+	}
+	cfg, err := h.Service.SetClientWebhookConfig(c.Context(), tenantID, input, updatedBy.(string))
+	if err != nil {
+		h.log.Error("set_client_webhook_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Test webhook endpoint connectivity using the helper function
+	result := fiber.Map{"config": cfg, "webhook_endpoint_reachable": false}
+	if input.EventsURL != "" {
+		webhookConfig := &providercheck.WebhookConfig{
+			EndpointURL: input.EventsURL,
+		}
+
+		if err := providercheck.CheckWebhookEndpoint(c.Context(), webhookConfig); err != nil {
+			result["webhook_error"] = err.Error()
+		} else {
+			result["webhook_endpoint_reachable"] = true
+		}
+	} else {
+		result["webhook_error"] = "No webhook endpoint URL provided"
+	}
+
+	return c.JSON(result)
+}
+
+// GetOwnerSMTPConfig returns the current owner-admin SMTP config (runtime, hot-reloadable)
+func (h *Handler) GetOwnerSMTPConfig(c *fiber.Ctx) error {
+	cfg, err := h.Service.GetOwnerSMTPConfig(c.Context())
+	if err != nil {
+		h.log.Error("get_owner_smtp_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "owner SMTP config not found"})
+	}
+	return c.JSON(cfg)
+}
+
+// SetOwnerSMTPConfig sets the owner-admin SMTP config (runtime, hot-reloadable)
+func (h *Handler) SetOwnerSMTPConfig(c *fiber.Ctx) error {
+	if h.Service.RBACService != nil {
+		actorID := c.Locals("actor_id")
+		if actorID == nil {
+			actorID = "system"
+		}
+		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set_owner_smtp_config")
+		if err != nil || !permitted {
+			h.log.Error("SetOwnerSMTPConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input OwnerSMTPConfig
+	if err := c.BodyParser(&input); err != nil {
+		h.log.Error("set_owner_smtp_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	updatedBy := c.Locals("actor_id")
+	if updatedBy == nil {
+		updatedBy = "system"
+	}
+	cfg, err := h.Service.SetOwnerSMTPConfig(c.Context(), input, updatedBy.(string))
+	if err != nil {
+		h.log.Error("set_owner_smtp_config failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Validate SMTP connection
+	addr := fmt.Sprintf("%s:%d", input.Host, input.Port)
+	var smtpErr error
+	if input.UseSSL {
+		conn, err := tls.Dial("tcp", addr, &tls.Config{InsecureSkipVerify: false})
+		if err != nil {
+			smtpErr = err
+		} else {
+			sc, err := smtp.NewClient(conn, input.Host)
+			if err != nil {
+				smtpErr = err
+			} else {
+				smtpErr = sc.Quit()
+			}
+		}
+	} else {
+		sc, err := smtp.Dial(addr)
+		if err != nil {
+			smtpErr = err
+		} else {
+			if input.UseTLS {
+				smtpErr = sc.StartTLS(&tls.Config{ServerName: input.Host, InsecureSkipVerify: false})
+			}
+			_ = sc.Quit()
 		}
 	}
 	result := fiber.Map{"config": cfg, "smtp_connection_ok": smtpErr == nil}

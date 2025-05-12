@@ -44,6 +44,9 @@ func RegisterAdminServerConfigRoutes(router fiber.Router, handler *Handler, jwtS
 	cfg.Get("/owner-payment-provider-config", handler.GetOwnerPaymentProviderConfig)
 	cfg.Post("/owner-payment-provider-config", handler.SetOwnerPaymentProviderConfig)
 
+	cfg.Get("/owner-smtp-config", handler.GetOwnerSMTPConfig)
+	cfg.Post("/owner-smtp-config", handler.SetOwnerSMTPConfig)
+
 	cfg.Get("/owner-openai-config", handler.GetOwnerOpenAIConfig)
 	cfg.Post("/owner-openai-config", handler.SetOwnerOpenAIConfig)
 
@@ -77,4 +80,28 @@ func RegisterAdminServerConfigRoutes(router fiber.Router, handler *Handler, jwtS
 	// Client-admin SMTP config endpoints
 	cfg.Get("/client-config/smtp/:tenantID", handler.GetClientSMTPConfig)
 	cfg.Post("/client-config/smtp/:tenantID", handler.SetClientSMTPConfig)
+
+	// Client-admin payment provider config endpoints
+	cfg.Get("/client-config/payment-provider/:tenantID", handler.GetClientPaymentProviderConfig)
+	cfg.Post("/client-config/payment-provider/:tenantID", handler.SetClientPaymentProviderConfig)
+
+	// Client-admin JWT secret config endpoints
+	cfg.Get("/client-config/jwt-secret/:tenantID", handler.GetClientJWTSecretConfig)
+	cfg.Post("/client-config/jwt-secret/:tenantID", handler.SetClientJWTSecretConfig)
+
+	// Client-admin OAuth config endpoints
+	cfg.Get("/client-config/oauth/:tenantID", handler.GetClientOAuthConfig)
+	cfg.Post("/client-config/oauth/:tenantID", handler.SetClientOAuthConfig)
+
+	// Client-admin SAML config endpoints
+	cfg.Get("/client-config/saml/:tenantID", handler.GetClientSAMLConfig)
+	cfg.Post("/client-config/saml/:tenantID", handler.SetClientSAMLConfig)
+
+	// Client-admin OpenAI config endpoints
+	cfg.Get("/client-config/openai/:tenantID", handler.GetClientOpenAIConfig)
+	cfg.Post("/client-config/openai/:tenantID", handler.SetClientOpenAIConfig)
+
+	// Client-admin Webhook config endpoints
+	cfg.Get("/client-config/webhook/:tenantID", handler.GetClientWebhookConfig)
+	cfg.Post("/client-config/webhook/:tenantID", handler.SetClientWebhookConfig)
 }
