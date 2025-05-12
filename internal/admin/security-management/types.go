@@ -223,3 +223,17 @@ type AuthTypeConfig struct {
 	SAMLEnabled      bool
 	SAMLOptional     bool
 }
+
+type NotificationQueueItem struct {
+	ID        string                 `json:"id"`
+	Provider  string                 `json:"provider"`
+	To        []string               `json:"to"`
+	Event     string                 `json:"event"`
+	Details   map[string]interface{} `json:"details"`
+	Retry     int                    `json:"retry"`
+	MaxRetry  int                    `json:"max_retry"`
+	Status    string                 `json:"status"` // pending, sent, failed, dead
+	LastError string                 `json:"last_error"`
+	CreatedAt time.Time              `json:"created_at"`
+	UpdatedAt time.Time              `json:"updated_at"`
+}

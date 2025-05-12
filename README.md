@@ -96,3 +96,58 @@ This repo is backend-only. No frontend code, no UI scaffolding, no non-prod cont
 ---
 
 For expert-level backend SaaS engineers only. All code and documentation are production-grade, secure, and ready for real-world deployment.
+
+## Configuration Keys, Secrets, and Credentials
+
+All configuration, secrets, and credentials are loaded securely from environment variables, config files, HTTP headers, or secret stores. No secrets are hardcoded. This section documents all required keys for production deployment.
+
+| Key / Header / Config         | Source                | Purpose / Usage                                 | Security Notes                                  |
+|------------------------------|-----------------------|-------------------------------------------------|-------------------------------------------------|
+| OWNER_CONFIG_PATH            | Env                   | Path to owner config YAML                       | Must be set for owner-admin boot                |
+| PORT                         | Env                   | HTTP server port                                | Defaults to 8080 if unset                       |
+| X-DB-Host                    | HTTP Header           | DB host (client-admin)                          | Required for multi-tenant DB routing            |
+| X-DB-Port                    | HTTP Header           | DB port (client-admin)                          | Required for multi-tenant DB routing            |
+| X-DB-User                    | HTTP Header           | DB user (client-admin)                          | Required for multi-tenant DB routing            |
+| X-DB-Password                | HTTP Header           | DB password (client-admin)                      | Required for multi-tenant DB routing            |
+| X-DB-Name                    | HTTP Header           | DB name (client-admin)                          | Required for multi-tenant DB routing            |
+| X-DB-SSLMode                 | HTTP Header           | DB SSL mode (client-admin)                      | Required for multi-tenant DB routing            |
+| X-JWT-Secret                 | HTTP Header           | JWT secret (client-admin)                       | Required for client-admin auth                  |
+| X-Log-Format                 | HTTP Header           | Log format (client-admin)                       | Optional, defaults to json                      |
+| X-Log-Color                  | HTTP Header           | Log color (client-admin)                        | Optional, defaults to false                     |
+| X-Log-Service                | HTTP Header           | Log service name (client-admin)                 | Optional, defaults to client                    |
+| X-Log-Env                    | HTTP Header           | Log environment (client-admin)                  | Optional, defaults to prod                      |
+| db.* (host, port, user, ...) | server_config table, API | DB connection for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
+| logging.*                    | server_config table, API | Logging config for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
+| jwt.secret_name              | server_config table, API | JWT secret name for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
+| oauth.google.*               | server_config table, API | Google OAuth client config for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
+| saml.*                       | server_config table, API | SAML config for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
+| redis.*                      | server_config table, API | Redis connection config for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
+| aws.*                        | server_config table, API | AWS credentials and role ARN for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
+| stripe_api_key, paypal_client_id/secret, googlepay_*/applepay_* | server_config table, API | Payment provider config for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
+| braintree.*                  | secret store          | Braintree API credentials                       | Loaded from secret store                        |
+| openai.api_key               | server_config table, API | OpenAI config for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
+| admin.email/username/password| server_config table, API | Initial admin credentials for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
+| hashid_salt                  | server_config table, API | Hashid salt for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
+| Any key in server_config     | DB table, API         | Hot-reloadable runtime config                   | Set via API, never hardcoded                    |
+| Any key in billing_config    | DB table, API         | Billing config (fees, rates, etc)               | Set via API, never hardcoded                    |
+| Provider secrets (email/sms) | secret store          | Email/SMS/Chat provider credentials             | Loaded per-tenant, never hardcoded              |
+| user_api_keys.*               | DB table, API         | Per-user API keys (create, list, revoke)        | Never exposed in logs, only shown at creation   |
+| notification_configs.*        | DB table, API         | Per-tenant notification config (channels, events, recipients, enabled) | All secrets stored encrypted, never logged      |
+| provider_secrets (email/sms/chat) | DB table, API     | Per-tenant provider secrets (tokens, webhooks, credentials) | Loaded at runtime, never hardcoded              |
+| security_event_webhooks.secret| DB table, API         | Per-tenant webhook secret for HMAC signing       | Used for event verification, never exposed      |
+| users.password_hash           | DB table              | User password hashes (bcrypt/argon2)             | Never exposed, only set/reset via secure flows  |
+| session_keys (Redis)          | Redis, per-tenant     | Per-session keys for user/session management    | Never logged, auto-expire, secure by default    |
+| password_reset_tokens        | DB table, API         | Password reset tokens (per-user, time-limited)  | Never logged, only valid for short duration     |
+| jwt_tokens                   | API, bearerFormat:JWT | JWT tokens for API auth (user, admin, tenant)   | Never logged, short-lived, bearer only          |
+| rate_limit_config            | DB table, API         | Per-tenant rate limit config                    | Runtime, hot-reloadable, never hardcoded        |
+| plugin_config                | DB table, API         | Per-tenant plugin config                        | Runtime, hot-reloadable, never hardcoded        |
+| currency_config              | DB table, API         | Per-tenant currency config                      | Runtime, hot-reloadable, never hardcoded        |
+| cors.*                       | server_config table, API | CORS config for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
+| session.*                    | server_config table, API | Session config for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
+| webhook.*                    | server_config table, API | Webhook config for owner-admin (runtime, hot-reloadable) | Managed via API, never static, owner-admin only |
+
+**Security:**
+- All secrets must be loaded from environment variables, secret stores, or secure config files.
+- Never commit real secrets to version control.
+- Rotate credentials regularly and use least privilege for all service accounts.
+- All config changes are auditable via the server_config and billing_config history tables.

@@ -16,6 +16,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 
+	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 	"golang.org/x/crypto/bcrypt"
@@ -25,6 +26,12 @@ var (
 	ErrMissingID       = errors.New("missing id for audit log")
 	ErrInvalidAuditLog = errors.New("invalid audit log: missing required fields")
 )
+
+var providerRegistry = make(map[string]NotificationProvider)
+
+func RegisterNotificationProvider(name string, provider NotificationProvider) {
+	providerRegistry[name] = provider
+}
 
 func (s *PostgresStore) ListUserSecurityEvents(ctx context.Context, userID string) ([]SecurityEvent, error) {
 	rows, err := s.DB.Query(ctx, `SELECT id, user_id, event_type, details, created_at FROM security_events WHERE user_id=$1 ORDER BY created_at DESC`, userID)
@@ -469,6 +476,7 @@ func (s *PostgresStore) DetectAnomalies(ctx context.Context, tenantID string) ([
 	const deviceQ = `SELECT user_id, type, name, created_at FROM devices WHERE tenant_id=$1 AND created_at > NOW() - INTERVAL '1 day'`
 	rows, err = s.DB.Query(ctx, deviceQ, tenantID)
 	if err == nil {
+		logger.LogInfo("DetectAnomalies: deviceQ", logger.String("tenant_id", tenantID))
 		for rows.Next() {
 			var userID, typ, name string
 			var created time.Time
@@ -486,6 +494,7 @@ func (s *PostgresStore) DetectAnomalies(ctx context.Context, tenantID string) ([
 	const bruteQ = `SELECT user_id, COUNT(*) FROM login_history WHERE tenant_id=$1 AND success=FALSE AND created_at > NOW() - INTERVAL '10 minutes' GROUP BY user_id HAVING COUNT(*) > 5`
 	rows, err = s.DB.Query(ctx, bruteQ, tenantID)
 	if err == nil {
+		logger.LogInfo("DetectAnomalies: bruteQ", logger.String("tenant_id", tenantID))
 		for rows.Next() {
 			var userID string
 			var count int
@@ -503,6 +512,7 @@ func (s *PostgresStore) DetectAnomalies(ctx context.Context, tenantID string) ([
 	const breachQ = `SELECT b.details, s.user_id, s.id FROM breaches b JOIN sessions s ON b.details LIKE '%' || s.user_id || '%' WHERE s.tenant_id=$1 AND s.expires_at > NOW()`
 	rows, err = s.DB.Query(ctx, breachQ, tenantID)
 	if err == nil {
+		logger.LogInfo("DetectAnomalies: breachQ", logger.String("tenant_id", tenantID))
 		for rows.Next() {
 			var breachDetails, userID, sessionID string
 			if err := rows.Scan(&breachDetails, &userID, &sessionID); err == nil {
@@ -533,6 +543,73 @@ func randomString(n int) string {
 
 func itoa(i int) string {
 	return fmt.Sprintf("%d", i)
+}
+
+// --- Notification Pluggable Runtime Config ---
+
+func isNotificationEnabled(ctx context.Context, s *PostgresStore, tenantID, event string, channel NotificationChannel) bool {
+	cfg, err := s.GetNotificationConfig(ctx, tenantID)
+	if err != nil {
+		logger.LogError("isNotificationEnabled: failed to get config", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return false
+	}
+	if !cfg.Enabled {
+		logger.LogInfo("isNotificationEnabled: notifications globally disabled", logger.String("tenant_id", tenantID))
+		return false
+	}
+	foundEvent := false
+	for _, e := range cfg.Events {
+		if e == event {
+			foundEvent = true
+			break
+		}
+	}
+	if !foundEvent {
+		logger.LogInfo("isNotificationEnabled: event not enabled", logger.String("event", event), logger.String("tenant_id", tenantID))
+		return false
+	}
+	foundChannel := false
+	for _, ch := range cfg.Channels {
+		if ch == channel {
+			foundChannel = true
+			break
+		}
+	}
+	if !foundChannel {
+		logger.LogInfo("isNotificationEnabled: channel not enabled", logger.String("channel", string(channel)), logger.String("tenant_id", tenantID))
+		return false
+	}
+	return true
+}
+
+func toPrettyJSON(v interface{}) string {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
+// --- Notification Send Helper ---
+
+func (s *PostgresStore) SendNotification(ctx context.Context, tenantID string, channel NotificationChannel, to []string, event string, details map[string]interface{}, maxRetry int) error {
+	if !isNotificationEnabled(ctx, s, tenantID, event, channel) {
+		logger.LogInfo("SendNotification: notification not enabled for event/channel", logger.String("tenant_id", tenantID), logger.String("event", event), logger.String("channel", string(channel)))
+		return nil
+	}
+	details["tenant_id"] = tenantID
+	provider, ok := providerRegistry[string(channel)]
+	if !ok {
+		logger.LogError("SendNotification: provider not found", logger.String("channel", string(channel)), logger.String("tenant_id", tenantID))
+		return errors.New("notification provider not found")
+	}
+	err := provider.Send(ctx, to, event, details)
+	if err == nil {
+		logger.LogInfo("SendNotification: sent", logger.String("provider", provider.Name()), logger.String("tenant_id", tenantID))
+		return nil
+	}
+	logger.LogError("SendNotification: provider failed, falling back", logger.String("provider", provider.Name()), logger.String("tenant_id", tenantID), logger.ErrorField(err))
+	return s.SendNotificationWithFallback(ctx, tenantID, to, event, details, maxRetry)
 }
 
 // --- NotificationService ---
@@ -569,47 +646,12 @@ func (s *PostgresStore) UpdateNotificationConfig(ctx context.Context, cfg Notifi
 	return nil
 }
 
-func (s *PostgresStore) SendNotification(ctx context.Context, tenantID string, event string, details map[string]interface{}) error {
-	cfg, err := s.GetNotificationConfig(ctx, tenantID)
-	if err != nil {
-		logger.LogError("SendNotification: config fetch failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return &DBError{Op: "SendNotification.config", Err: err}
-	}
-	if !cfg.Enabled {
-		logger.LogInfo("SendNotification: notifications disabled", logger.String("tenant_id", tenantID))
-		return nil
-	}
-	for _, ch := range cfg.Channels {
-		switch ch {
-		case NotificationEmail:
-			err := sendEmailProvider("smtp", cfg.Recipients, event, details)
-			if err != nil {
-				logger.LogError("SendNotification: email failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-				return &DBError{Op: "SendNotification.email", Err: err}
-			}
-		case NotificationSMS:
-			err := sendSMSProvider("twilio", cfg.Recipients, event, details)
-			if err != nil {
-				logger.LogError("SendNotification: sms failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-				return &DBError{Op: "SendNotification.sms", Err: err}
-			}
-		case NotificationSlack:
-			err := sendChatProvider("slack", cfg.Recipients, event, details)
-			if err != nil {
-				logger.LogError("SendNotification: slack failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-				return &DBError{Op: "SendNotification.slack", Err: err}
-			}
-		}
-	}
-	return nil
-}
+type SMTPProvider struct{}
 
-func sendEmailProvider(provider string, recipients []string, event string, details map[string]interface{}) error {
-	enabled, ok := emailEnabled[provider]
-	if !ok || !enabled {
-		return nil
-	}
-	cfg := emailConfig[provider]
+func (p *SMTPProvider) Name() string { return "smtp" }
+func (p *SMTPProvider) Send(ctx context.Context, to []string, event string, details map[string]interface{}) error {
+	tenantID := details["tenant_id"].(string)
+	cfg := emailConfig[tenantID]
 	host := cfg["host"]
 	port := cfg["port"]
 	user := cfg["user"]
@@ -621,17 +663,20 @@ func sendEmailProvider(provider string, recipients []string, event string, detai
 	addr := fmt.Sprintf("%s:%s", host, port)
 	subject := "[Security Event] " + event
 	body, _ := json.MarshalIndent(details, "", "  ")
-	msg := []byte(fmt.Sprintf("To: %s\r\nSubject: %s\r\n\r\n%s", recipients[0], subject, string(body)))
+	msg := []byte(fmt.Sprintf("To: %s\r\nSubject: %s\r\n\r\n%s", to[0], subject, string(body)))
 	auth := smtp.PlainAuth("", user, pass, host)
-	return smtp.SendMail(addr, auth, from, recipients, msg)
+	return smtp.SendMail(addr, auth, from, to, msg)
 }
+func (p *SMTPProvider) Status(ctx context.Context) (string, error) { return "ok", nil }
 
-func sendSMSProvider(provider string, recipients []string, event string, details map[string]interface{}) error {
-	enabled, ok := smsEnabled[provider]
-	if !ok || !enabled {
-		return nil
-	}
-	cfg := smsConfig[provider]
+// TwilioProvider
+
+type TwilioProvider struct{}
+
+func (p *TwilioProvider) Name() string { return "twilio" }
+func (p *TwilioProvider) Send(ctx context.Context, to []string, event string, details map[string]interface{}) error {
+	tenantID := details["tenant_id"].(string)
+	cfg := smsConfig[tenantID]
 	twilioSID := cfg["sid"]
 	twilioToken := cfg["token"]
 	twilioFrom := cfg["from"]
@@ -639,9 +684,9 @@ func sendSMSProvider(provider string, recipients []string, event string, details
 		return errors.New("sms provider config missing")
 	}
 	body, _ := json.Marshal(details)
-	for _, to := range recipients {
+	for _, dest := range to {
 		url := fmt.Sprintf("https://api.twilio.com/2010-04-01/Accounts/%s/Messages.json", twilioSID)
-		data := fmt.Sprintf("From=%s&To=%s&Body=%s", twilioFrom, to, event+": "+string(body))
+		data := fmt.Sprintf("From=%s&To=%s&Body=%s", twilioFrom, dest, event+": "+string(body))
 		req, _ := http.NewRequest("POST", url, bytes.NewBufferString(data))
 		req.SetBasicAuth(twilioSID, twilioToken)
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -652,39 +697,96 @@ func sendSMSProvider(provider string, recipients []string, event string, details
 	}
 	return nil
 }
+func (p *TwilioProvider) Status(ctx context.Context) (string, error) { return "ok", nil }
 
-func sendChatProvider(provider string, recipients []string, event string, details map[string]interface{}) error {
-	_ = recipients
-	enabled, ok := chatEnabled[provider]
-	if !ok || !enabled {
-		return nil
+// SlackProvider
+
+type SlackProvider struct{}
+
+func (p *SlackProvider) Name() string { return "slack" }
+func (p *SlackProvider) Send(ctx context.Context, to []string, event string, details map[string]interface{}) error {
+	tenantID := details["tenant_id"].(string)
+	cfg := chatConfig[tenantID]
+	webhook := cfg["webhook"]
+	if webhook == "" {
+		return errors.New("slack webhook config missing")
 	}
-	cfg := chatConfig[provider]
-	switch provider {
-	case "slack":
-		webhook := cfg["webhook"]
-		if webhook == "" {
-			return errors.New("slack webhook config missing")
-		}
-		payload := map[string]interface{}{
-			"text": fmt.Sprintf("*%s*\n```%s```", event, toPrettyJSON(details)),
-		}
-		b, _ := json.Marshal(payload)
-		resp, err := http.Post(webhook, "application/json", bytes.NewBuffer(b))
-		if err != nil || resp.StatusCode >= 300 {
-			return fmt.Errorf("slack webhook failed: %v", err)
-		}
-		return nil
-	case "teams":
-		return errors.New("teams not implemented")
-	default:
-		return errors.New("unknown chat provider")
+	payload := map[string]interface{}{
+		"text": fmt.Sprintf("*%s*\n```%s```", event, toPrettyJSON(details)),
 	}
+	b, _ := json.Marshal(payload)
+	resp, err := http.Post(webhook, "application/json", bytes.NewBuffer(b))
+	if err != nil || resp.StatusCode >= 300 {
+		return fmt.Errorf("slack webhook failed: %v", err)
+	}
+	return nil
+}
+func (p *SlackProvider) Status(ctx context.Context) (string, error) { return "ok", nil }
+
+func init() {
+	RegisterNotificationProvider("smtp", &SMTPProvider{})
+	RegisterNotificationProvider("twilio", &TwilioProvider{})
+	RegisterNotificationProvider("slack", &SlackProvider{})
 }
 
-func toPrettyJSON(v interface{}) string {
-	b, _ := json.MarshalIndent(v, "", "  ")
-	return string(b)
+// Update SendNotificationWithFallback and ProcessNotificationQueue to use tenantID
+func (s *PostgresStore) SendNotificationWithFallback(ctx context.Context, tenantID string, to []string, event string, details map[string]interface{}, maxRetry int) error {
+	details["tenant_id"] = tenantID
+	var lastErr error
+	for _, provider := range providerRegistry {
+		err := provider.Send(ctx, to, event, details)
+		if err == nil {
+			logger.LogInfo("SendNotificationWithFallback: sent", logger.String("provider", provider.Name()), logger.String("tenant_id", tenantID))
+			return nil
+		}
+		logger.LogError("SendNotificationWithFallback: provider failed", logger.String("provider", provider.Name()), logger.String("tenant_id", tenantID), logger.ErrorField(err))
+		lastErr = err
+	}
+	item := NotificationQueueItem{
+		ID:        generateUUID(),
+		Provider:  "fallback",
+		To:        to,
+		Event:     event,
+		Details:   details,
+		Retry:     0,
+		MaxRetry:  maxRetry,
+		Status:    "pending",
+		LastError: lastErr.Error(),
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	_ = s.AddToNotificationQueue(ctx, item)
+	return lastErr
+}
+
+func (s *PostgresStore) ProcessNotificationQueue(ctx context.Context) {
+	items, err := s.GetPendingNotificationQueue(ctx, 100)
+	if err != nil {
+		return
+	}
+	for _, item := range items {
+		for _, provider := range providerRegistry {
+			if item.Status != "pending" || item.Retry >= item.MaxRetry {
+				break
+			}
+			err := provider.Send(ctx, item.To, item.Event, item.Details)
+			if err == nil {
+				item.Status = "sent"
+				item.UpdatedAt = time.Now().UTC()
+				_ = s.UpdateNotificationQueueItem(ctx, item)
+				break
+			}
+			item.Retry++
+			item.LastError = err.Error()
+			item.UpdatedAt = time.Now().UTC()
+			if item.Retry >= item.MaxRetry {
+				item.Status = "dead"
+			} else {
+				item.Status = "pending"
+			}
+			_ = s.UpdateNotificationQueueItem(ctx, item)
+		}
+	}
 }
 
 // --- SecurityModuleConfigService ---
@@ -807,7 +909,8 @@ func (s *PostgresStore) TriggerWebhook(ctx context.Context, id, tenantID, eventT
 
 // generateUUID returns a new RFC4122 UUID string
 func generateUUID() string {
-	return "" // implement with github.com/google/uuid or similar in real code
+	id := uuid.New()
+	return id.String()
 }
 
 // --- PasswordResetTokenService Postgres Implementation ---
@@ -819,6 +922,7 @@ func (s *PostgresStore) CreateToken(ctx context.Context, userID string, expiresI
 	b := make([]byte, 32)
 	_, err := rand.Read(b)
 	if err != nil {
+		logger.LogError("CreateToken: failed to generate token", logger.ErrorField(err))
 		return PasswordResetToken{}, errors.New("failed to generate token")
 	}
 	token := base64.URLEncoding.EncodeToString(b)
@@ -874,6 +978,7 @@ func (s *PostgresStore) UseToken(ctx context.Context, token string) error {
 	}
 	n := res.RowsAffected()
 	if n == 0 {
+		logger.LogError("UseToken: token not valid or already used", logger.String("token", token))
 		return errors.New("token not valid or already used")
 	}
 	return nil
@@ -912,6 +1017,7 @@ func (s *PostgresStore) GetRateLimit(ctx context.Context, scope, scopeID string)
 	row := s.DB.QueryRow(ctx, q, scope, scopeID)
 	var cfg RateLimitConfig
 	if err := row.Scan(&cfg.ID, &cfg.Scope, &cfg.ScopeID, &cfg.Limit, &cfg.WindowSeconds, &cfg.CreatedAt, &cfg.UpdatedAt); err != nil {
+		logger.LogError("GetRateLimit: rate limit not found", logger.String("scope", scope), logger.String("scope_id", scopeID), logger.ErrorField(err))
 		return RateLimitConfig{}, errors.New("rate limit not found")
 	}
 	return cfg, nil
@@ -924,6 +1030,7 @@ func (s *PostgresStore) DeleteRateLimit(ctx context.Context, id string) error {
 	const q = `DELETE FROM rate_limits WHERE id = $1`
 	_, err := s.DB.Exec(ctx, q, id)
 	if err != nil {
+		logger.LogError("DeleteRateLimit: failed to delete rate limit", logger.String("id", id), logger.ErrorField(err))
 		return errors.New("failed to delete rate limit")
 	}
 	return nil
@@ -936,6 +1043,7 @@ func hashPassword(password string) (string, error) {
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
+		logger.LogError("hashPassword: failed to hash password", logger.ErrorField(err))
 		return "", err
 	}
 	return string(hash), nil
@@ -971,6 +1079,7 @@ func (s *PostgresStore) AuthenticateUser(ctx context.Context, email, password st
 		return User{}, wrapDBErr("authenticate_user", err)
 	}
 	if err := checkPassword(hash, password); err != nil {
+		logger.LogError("AuthenticateUser: invalid credentials", logger.ErrorField(err), logger.String("email", email))
 		return User{}, errors.New("invalid credentials")
 	}
 	return u, nil
@@ -980,6 +1089,7 @@ func generateToken(n int) (string, error) {
 	b := make([]byte, n)
 	_, err := rand.Read(b)
 	if err != nil {
+		logger.LogError("generateToken: failed to generate token", logger.ErrorField(err))
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(b), nil
@@ -995,14 +1105,16 @@ func (s *PostgresStore) ResendVerification(ctx context.Context, email string) er
 	}
 	token, err := generateToken(32)
 	if err != nil {
+		logger.LogError("ResendVerification: failed to generate token", logger.ErrorField(err), logger.String("email", email))
 		return wrapDBErr("resend_verification_token", err)
 	}
 	_, err = s.DB.Exec(ctx, `UPDATE users SET email_verification_token=$1 WHERE id=$2`, token, userID)
 	if err != nil {
+		logger.LogError("ResendVerification: failed to update token", logger.ErrorField(err), logger.String("email", email))
 		return wrapDBErr("resend_verification_update", err)
 	}
 	details := map[string]interface{}{"token": token, "user_id": userID}
-	_ = sendEmailProvider("smtp", []string{email}, "Verify your email", details)
+	s.SendNotification(ctx, "", NotificationChannel("smtp"), []string{email}, "Verify your email", details, 3)
 	return nil
 }
 
@@ -1031,7 +1143,7 @@ func (s *PostgresStore) AccountRecover(ctx context.Context, email string) error 
 	if err != nil {
 		return wrapDBErr("account_recover_token", err)
 	}
-	_ = sendEmailProvider("smtp", []string{email}, "Account recovery", map[string]interface{}{"token": token, "user_id": userID})
+	s.SendNotification(ctx, "", NotificationChannel("smtp"), []string{email}, "Account recovery", map[string]interface{}{"token": token, "user_id": userID}, 3)
 	return nil
 }
 
@@ -1046,7 +1158,7 @@ func (s *PostgresStore) SendInvite(ctx context.Context, email, role string) erro
 		logger.LogError("SendInvite failed", logger.ErrorField(err), logger.String("email", email))
 		return wrapDBErr("send_invite", err)
 	}
-	_ = sendEmailProvider("smtp", []string{email}, "You're invited", map[string]interface{}{"token": token, "role": role})
+	s.SendNotification(ctx, "", NotificationChannel("smtp"), []string{email}, "You're invited", map[string]interface{}{"token": token, "role": role}, 3)
 	return nil
 }
 
@@ -1068,6 +1180,7 @@ func (s *PostgresStore) GenerateChallenge(ctx context.Context, userID string) (m
 	var secret string
 	err := s.DB.QueryRow(ctx, getSecretQ, userID).Scan(&secret)
 	if err != nil {
+		logger.LogError("GenerateChallenge lookup failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return nil, wrapDBErr("generate_challenge_lookup", err)
 	}
 	if secret == "" {
@@ -1076,10 +1189,12 @@ func (s *PostgresStore) GenerateChallenge(ctx context.Context, userID string) (m
 			AccountName: userID,
 		})
 		if err != nil {
+			logger.LogError("GenerateChallenge: failed to generate key", logger.ErrorField(err), logger.String("user_id", userID))
 			return nil, err
 		}
 		_, err = s.DB.Exec(ctx, `UPDATE users SET mfa_secret=$1 WHERE id=$2`, key.Secret(), userID)
 		if err != nil {
+			logger.LogError("GenerateChallenge: failed to set secret", logger.ErrorField(err), logger.String("user_id", userID))
 			return nil, wrapDBErr("generate_challenge_set_secret", err)
 		}
 		return map[string]interface{}{
@@ -1090,6 +1205,7 @@ func (s *PostgresStore) GenerateChallenge(ctx context.Context, userID string) (m
 	}
 	code, err := totp.GenerateCode(secret, time.Now())
 	if err != nil {
+		logger.LogError("GenerateChallenge: failed to generate code", logger.ErrorField(err), logger.String("user_id", userID))
 		return nil, err
 	}
 	return map[string]interface{}{"challenge": code, "setup": false}, nil
@@ -1100,6 +1216,7 @@ func (s *PostgresStore) VerifyChallenge(ctx context.Context, userID, code string
 	var secret string
 	err := s.DB.QueryRow(ctx, getSecretQ, userID).Scan(&secret)
 	if err != nil {
+		logger.LogError("VerifyChallenge lookup failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return wrapDBErr("verify_challenge_lookup", err)
 	}
 	if secret == "" {
@@ -1107,6 +1224,7 @@ func (s *PostgresStore) VerifyChallenge(ctx context.Context, userID, code string
 	}
 	valid := totp.Validate(code, secret)
 	if !valid {
+		logger.LogError("VerifyChallenge: invalid code", logger.String("user_id", userID))
 		return errors.New("invalid code")
 	}
 	return nil
@@ -1130,6 +1248,7 @@ func generateSessionToken() (string, error) {
 	b := make([]byte, 32)
 	_, err := rand.Read(b)
 	if err != nil {
+		logger.LogError("generateSessionToken: failed to generate token", logger.ErrorField(err))
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
@@ -1177,4 +1296,49 @@ func (s *PostgresStore) LogoutSession(ctx context.Context, sessionID string) err
 		return wrapDBErr("logout_session", err)
 	}
 	return nil
+}
+
+func (s *PostgresStore) AddToNotificationQueue(ctx context.Context, item NotificationQueueItem) error {
+	b, _ := json.Marshal(item.Details)
+	const q = `INSERT INTO notification_queue (id, provider, to, event, details, retry, max_retry, status, last_error, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`
+	_, err := s.DB.Exec(ctx, q, item.ID, item.Provider, item.To, item.Event, string(b), item.Retry, item.MaxRetry, item.Status, item.LastError, item.CreatedAt, item.UpdatedAt)
+	if err != nil {
+		logger.LogError("AddToNotificationQueue failed", logger.ErrorField(err))
+	}
+	return err
+}
+
+func (s *PostgresStore) GetPendingNotificationQueue(ctx context.Context, limit int) ([]NotificationQueueItem, error) {
+	const q = `SELECT id, provider, to, event, details, retry, max_retry, status, last_error, created_at, updated_at FROM notification_queue WHERE status = 'pending' ORDER BY created_at ASC LIMIT $1`
+	rows, err := s.DB.Query(ctx, q, limit)
+	if err != nil {
+		logger.LogError("GetPendingNotificationQueue failed", logger.ErrorField(err))
+		return nil, err
+	}
+	defer rows.Close()
+	var out []NotificationQueueItem
+	for rows.Next() {
+		var item NotificationQueueItem
+		var toArr []byte
+		var detailsStr string
+		if err := rows.Scan(&item.ID, &item.Provider, &toArr, &item.Event, &detailsStr, &item.Retry, &item.MaxRetry, &item.Status, &item.LastError, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			logger.LogError("GetPendingNotificationQueue scan failed", logger.ErrorField(err))
+			continue
+		}
+		_ = json.Unmarshal(toArr, &item.To)
+		_ = json.Unmarshal([]byte(detailsStr), &item.Details)
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) UpdateNotificationQueueItem(ctx context.Context, item NotificationQueueItem) error {
+	b, _ := json.Marshal(item.Details)
+	const q = `UPDATE notification_queue SET retry=$1, status=$2, last_error=$3, updated_at=$4, details=$5 WHERE id=$6`
+	_, err := s.DB.Exec(ctx, q, item.Retry, item.Status, item.LastError, item.UpdatedAt, string(b), item.ID)
+	if err != nil {
+		logger.LogError("UpdateNotificationQueueItem failed", logger.ErrorField(err))
+	}
+	return err
 }

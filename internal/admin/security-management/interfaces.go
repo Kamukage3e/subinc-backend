@@ -114,3 +114,9 @@ type RateLimitService interface {
 	GetRateLimit(ctx context.Context, scope, scopeID string) (RateLimitConfig, error)
 	DeleteRateLimit(ctx context.Context, id string) error
 }
+
+type NotificationProvider interface {
+	Send(ctx context.Context, to []string, event string, details map[string]interface{}) error
+	Status(ctx context.Context) (string, error)
+	Name() string
+}
