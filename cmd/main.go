@@ -10,6 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	billing_management "github.com/subinc/subinc-backend/internal/admin/billing-management"
 	organization_management "github.com/subinc/subinc-backend/internal/admin/organization-management"
 	project_management "github.com/subinc/subinc-backend/internal/admin/project-management"
@@ -19,6 +20,7 @@ import (
 	tenant_management "github.com/subinc/subinc-backend/internal/admin/tenant-management"
 	user_management "github.com/subinc/subinc-backend/internal/admin/user-management"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
+	"github.com/subinc/subinc-backend/pkg/session"
 )
 
 // Global state for DB pool and audit logger, protected by mutex for thread safety
@@ -50,8 +52,6 @@ func (s *DynamicStore) DB() *pgxpool.Pool {
 func (s *DynamicStore) AuditLogger() security_management.AuditLogger {
 	return getAuditLogger()
 }
-
-// ... implement all required methods for each module by delegating to a new PostgresStore with current dbState ...
 
 // Helper: extract DB credentials from headers
 func extractDBConfig(c *fiber.Ctx) (string, error) {
@@ -127,7 +127,39 @@ func main() {
 	serverConfigHandler := server_config.NewHandler(serverConfigService, logr)
 	server_config.RegisterAdminServerConfigRoutes(ownerAPI, serverConfigHandler, jwtCfg.SecretName)
 	securityStore := &security_management.PostgresStore{DB: ownerDBPool}
-	securityHandler := security_management.NewSecurityHandler(securityStore)
+
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: redisAddr,
+		DB:   0,
+	})
+	if err := redisClient.Ping(context.Background()).Err(); err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
+	}
+	redisSessionManager, err := session.NewSessionManager(redisClient, logr, "sess:")
+	if err != nil {
+		log.Fatalf("Failed to create Redis session manager: %v", err)
+	}
+	redisSessionAdapter := session.NewRedisSessionAdapter(redisSessionManager)
+	securityHandler := &security_management.SecurityHandler{
+		Store:                       securityStore,
+		PasswordService:             securityStore,
+		SessionService:              redisSessionAdapter,
+		SecurityAuditLogService:     securityStore,
+		LoginHistoryService:         securityStore,
+		MFAService:                  securityStore,
+		PasswordResetTokenService:   securityStore,
+		APIKeyService:               securityStore,
+		DeviceService:               securityStore,
+		BreachService:               securityStore,
+		SecurityPolicyService:       securityStore,
+		SecurityAnalyticsService:    securityStore,
+		NotificationService:         securityStore,
+		SecurityModuleConfigService: securityStore,
+	}
 	security_management.RegisterAdminSecurityRoutes(ownerAPI, securityHandler, jwtCfg.SecretName)
 	userStore := &user_management.PostgresStore{DB: ownerDBPool, AuditLogger: securityStore}
 	userHandler := user_management.NewUserHandler(userStore)
@@ -144,6 +176,24 @@ func main() {
 	billingStore := &billing_management.PostgresStore{DB: ownerDBPool, AuditLogger: securityStore}
 	billingHandler := billing_management.NewBillingHandler(billingStore)
 	billing_management.RegisterAdminBillingRoutes(ownerAPI, billingHandler, jwtCfg.SecretName)
+
+	// --- Owner admin bootstrap (automatic, no endpoint) ---
+	userCount, err := securityStore.CountUsers(ctx)
+	if err != nil {
+		log.Fatalf("Failed to count users: %v", err)
+	}
+	if userCount == 0 {
+		ownerEmail := "admin@subinc.com"
+		ownerPassword := "admin"
+		if ownerEmail == "" || ownerPassword == "" {
+			log.Fatalf("OWNER_EMAIL and OWNER_PASSWORD env vars required for first owner admin bootstrap")
+		}
+		_, err := securityStore.RegisterUser(ctx, ownerEmail, ownerPassword)
+		if err != nil {
+			log.Fatalf("Failed to bootstrap owner admin: %v", err)
+		}
+		log.Printf("Owner admin bootstrapped: %s", ownerEmail)
+	}
 
 	// --- Client admin routes ---
 	// app.Use("/api/v1/client-admin", withDB)

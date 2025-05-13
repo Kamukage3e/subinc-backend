@@ -3,6 +3,7 @@ package server_config
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -25,6 +26,14 @@ func (s *Store) Get(ctx context.Context, key string) (ServerConfig, error) {
 	row := s.db.QueryRow(ctx, q, key)
 	var cfg ServerConfig
 	if err := row.Scan(&cfg.Key, &cfg.Value, &cfg.Version, &cfg.UpdatedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ServerConfig{
+				Key:       key,
+				Value:     "",
+				Version:   1,
+				UpdatedAt: time.Now().UTC(),
+			}, nil
+		}
 		s.log.Error("server_config get failed", logger.ErrorField(err), logger.String("key", key))
 		return ServerConfig{}, errors.New("config not found")
 	}

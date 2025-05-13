@@ -9,80 +9,139 @@ import (
 // Architectural decision: All security-management endpoints use in-memory rate limiting and strict security headers.
 // Sensitive endpoints have stricter limits.
 func RegisterAdminSecurityRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretName string) {
-	sec := router.Group("/security-management", securityHeadersMiddleware())
-
 	// General rate limiter: 30 req/min/IP
 	generalLimiter := newInMemoryRateLimiter(30, time.Minute)
 	// Sensitive: 10 req/min/IP
 	strictLimiter := newInMemoryRateLimiter(10, time.Minute)
 
-	sec.Post("/users/security-events", generalLimiter.middleware(), handler.ListUserSecurityEvents)
-	sec.Post("/users/login-history", generalLimiter.middleware(), handler.ListUserLoginHistory)
-	sec.Post("/users/mfa/enable", strictLimiter.middleware(), handler.EnableMFA)
-	sec.Post("/users/mfa/disable", strictLimiter.middleware(), handler.DisableMFA)
-	sec.Post("/users/password/reset", strictLimiter.middleware(), handler.ResetUserPassword)
-	sec.Post("/users/sessions/list", generalLimiter.middleware(), handler.ListUserSessions)
-	sec.Post("/users/sessions/revoke", generalLimiter.middleware(), handler.RevokeUserSession)
-	sec.Post("/audit-logs/list", generalLimiter.middleware(), handler.ListSecurityAuditLogs)
-	sec.Post("/users/api-keys/list", generalLimiter.middleware(), handler.ListUserAPIKeys)
-	sec.Post("/users/api-keys/create", strictLimiter.middleware(), handler.CreateUserAPIKey)
-	sec.Post("/users/api-keys/revoke", strictLimiter.middleware(), handler.RevokeUserAPIKey)
-	sec.Post("/users/devices/list", generalLimiter.middleware(), handler.ListUserDevices)
-	sec.Post("/users/devices/revoke", generalLimiter.middleware(), handler.RevokeUserDevice)
-	sec.Post("/breaches/list", generalLimiter.middleware(), handler.ListBreaches)
-	sec.Post("/policies/list", generalLimiter.middleware(), handler.ListSecurityPolicies)
-	sec.Post("/policies/create", generalLimiter.middleware(), handler.CreateSecurityPolicy)
-	sec.Post("/policies/update", generalLimiter.middleware(), handler.UpdateSecurityPolicy)
-	sec.Post("/policies/delete", generalLimiter.middleware(), handler.DeleteSecurityPolicy)
-	sec.Post("/webhooks/create", generalLimiter.middleware(), handler.CreateWebhook)
-	sec.Post("/webhooks/list", generalLimiter.middleware(), handler.ListWebhooks)
-	sec.Post("/webhooks/delete", strictLimiter.middleware(), handler.DeleteWebhook)
-	sec.Post("/webhooks/trigger", strictLimiter.middleware(), handler.TriggerWebhook)
-	sec.Post("/password-reset/request", strictLimiter.middleware(), handler.RequestPasswordResetToken)
-	sec.Post("/password-reset/verify", strictLimiter.middleware(), handler.VerifyPasswordResetToken)
-	sec.Post("/password-reset/use", strictLimiter.middleware(), handler.UsePasswordResetToken)
-	sec.Post("/rate-limit/set", strictLimiter.middleware(), handler.SetRateLimit)
-	sec.Get("/rate-limit/get", strictLimiter.middleware(), handler.GetRateLimit)
-	sec.Post("/rate-limit/delete", strictLimiter.middleware(), handler.DeleteRateLimit)
-	sec.Post("/login", strictLimiter.middleware(), handler.Login)
-	sec.Post("/logout", strictLimiter.middleware(), handler.Logout)
-	sec.Post("/register", generalLimiter.middleware(), handler.Register)
-	sec.Post("/verify-email", generalLimiter.middleware(), handler.VerifyEmail)
-	sec.Post("/resend-verification", generalLimiter.middleware(), handler.ResendVerification)
-	sec.Post("/change-password", strictLimiter.middleware(), handler.ChangePassword)
-	sec.Post("/profile/get", generalLimiter.middleware(), handler.GetProfile)
-	sec.Post("/profile/update", generalLimiter.middleware(), handler.UpdateProfile)
-	sec.Post("/account/delete", strictLimiter.middleware(), handler.DeleteAccount)
-	sec.Post("/consent", generalLimiter.middleware(), handler.Consent)
-	sec.Post("/mfa/challenge", strictLimiter.middleware(), handler.MFAChallenge)
-	sec.Post("/mfa/verify", strictLimiter.middleware(), handler.MFAVerify)
-	sec.Post("/invite/send", strictLimiter.middleware(), handler.SendInvite)
-	sec.Post("/invite/accept", generalLimiter.middleware(), handler.AcceptInvite)
-	sec.Post("/device/trust", strictLimiter.middleware(), handler.TrustDevice)
-	sec.Post("/account/recover", strictLimiter.middleware(), handler.AccountRecover)
-	sec.Get("/auth/google", strictLimiter.middleware(), handler.AuthGoogle)
-	sec.Get("/auth/google/callback", strictLimiter.middleware(), handler.AuthGoogleCallback)
-	sec.Get("/auth/saml", strictLimiter.middleware(), handler.AuthSAML)
-	sec.Get("/auth/saml/callback", strictLimiter.middleware(), handler.AuthSAMLCallback)
-	sec.Post("/token/refresh", strictLimiter.middleware(), handler.RefreshSession)
-	sec.Get("/notification/providers/status", handler.GetNotificationProvidersStatus)
-	sec.Post("/notification/queue/retry", handler.RetryNotificationQueue)
-	sec.Get("/self-service", generalLimiter.middleware(), handler.GetSelfServiceSecurity)
-	sec.Get("/notification/config", generalLimiter.middleware(), handler.GetNotificationConfig)
-	sec.Post("/notification/config", strictLimiter.middleware(), handler.UpdateNotificationConfig)
-	sec.Post("/notification/test", strictLimiter.middleware(), handler.SendTestNotification)
-	sec.Post("/module/config", strictLimiter.middleware(), handler.SetSecurityModuleConfig)
-	sec.Get("/module/config", generalLimiter.middleware(), handler.GetSecurityModuleConfig)
-	sec.Post("/notification/channel/enabled", strictLimiter.middleware(), handler.SetNotificationChannelEnabled)
-	sec.Get("/notification/channel/enabled", generalLimiter.middleware(), handler.GetNotificationChannelEnabled)
-	sec.Post("/notification/provider/config", strictLimiter.middleware(), handler.SetProviderConfig)
-	sec.Get("/notification/provider/config", generalLimiter.middleware(), handler.GetProviderConfig)
-	sec.Get("/mfa/config", generalLimiter.middleware(), handler.GetMFAConfig)
-	sec.Post("/mfa/config", strictLimiter.middleware(), handler.SetMFAConfig)
-	sec.Get("/password-policy/config", generalLimiter.middleware(), handler.GetPasswordPolicyConfig)
-	sec.Post("/password-policy/config", strictLimiter.middleware(), handler.SetPasswordPolicyConfig)
-	sec.Get("/session/config", generalLimiter.middleware(), handler.GetSessionConfig)
-	sec.Post("/session/config", strictLimiter.middleware(), handler.SetSessionConfig)
-	sec.Get("/rate-limit/config", generalLimiter.middleware(), handler.GetRateLimitConfig)
-	sec.Post("/rate-limit/config", strictLimiter.middleware(), handler.SetRateLimitConfig)
+	// --- Auth ---
+	auth := router.Group("/auth", securityHeadersMiddleware())
+	auth.Post("/login", strictLimiter.middleware(), handler.Login)
+	auth.Post("/logout", strictLimiter.middleware(), handler.Logout)
+	auth.Post("/register", generalLimiter.middleware(), handler.Register)
+	auth.Post("/verify-email", generalLimiter.middleware(), handler.VerifyEmail)
+	auth.Post("/resend-verification", generalLimiter.middleware(), handler.ResendVerification)
+	auth.Post("/change-password", strictLimiter.middleware(), handler.ChangePassword)
+	auth.Get("/google", strictLimiter.middleware(), handler.AuthGoogle)
+	auth.Get("/google/callback", strictLimiter.middleware(), handler.AuthGoogleCallback)
+	auth.Get("/saml", strictLimiter.middleware(), handler.AuthSAML)
+	auth.Get("/saml/callback", strictLimiter.middleware(), handler.AuthSAMLCallback)
+	auth.Post("/token/refresh", strictLimiter.middleware(), handler.RefreshSession)
+
+	// Apply session auth middleware to protected routes
+	sessionAuth := SessionAuthMiddleware(handler.Store)
+
+	// --- User Security Events ---
+	user := router.Group("/users", securityHeadersMiddleware(), sessionAuth)
+	user.Post("/security-events", generalLimiter.middleware(), handler.ListUserSecurityEvents)
+	user.Post("/login-history", generalLimiter.middleware(), handler.ListUserLoginHistory)
+	user.Post("/mfa/enable", strictLimiter.middleware(), handler.EnableMFA)
+	user.Post("/mfa/disable", strictLimiter.middleware(), handler.DisableMFA)
+	user.Post("/password/reset", strictLimiter.middleware(), handler.ResetUserPassword)
+	user.Post("/sessions/create", securityHeadersMiddleware(), sessionAuth, generalLimiter.middleware(), handler.CreateUserSession)
+	user.Post("/sessions/delete", securityHeadersMiddleware(), sessionAuth, generalLimiter.middleware(), handler.DeleteUserSession)
+	user.Post("/sessions/get", securityHeadersMiddleware(), sessionAuth, generalLimiter.middleware(), handler.GetUserSession)
+	user.Post("/sessions/list", securityHeadersMiddleware(), sessionAuth, generalLimiter.middleware(), handler.ListUserSessions)
+	user.Post("/sessions/revoke", generalLimiter.middleware(), handler.RevokeUserSession)
+	user.Post("/api-keys/list", generalLimiter.middleware(), handler.ListUserAPIKeys)
+	user.Post("/api-keys/create", strictLimiter.middleware(), handler.CreateUserAPIKey)
+	user.Post("/api-keys/revoke", strictLimiter.middleware(), handler.RevokeUserAPIKey)
+	user.Post("/devices/list", generalLimiter.middleware(), handler.ListUserDevices)
+	user.Post("/devices/revoke", generalLimiter.middleware(), handler.RevokeUserDevice)
+
+	// --- Audit Logs ---
+	audit := router.Group("/audit-logs", securityHeadersMiddleware(), sessionAuth)
+	audit.Post("/list", generalLimiter.middleware(), handler.ListSecurityAuditLogs)
+
+	// --- Breaches ---
+	breaches := router.Group("/breaches", securityHeadersMiddleware(), sessionAuth)
+	breaches.Post("/list", generalLimiter.middleware(), handler.ListBreaches)
+
+	// --- Security Policies ---
+	policies := router.Group("/policies", securityHeadersMiddleware(), sessionAuth)
+	policies.Post("/list", generalLimiter.middleware(), handler.ListSecurityPolicies)
+	policies.Post("/create", generalLimiter.middleware(), handler.CreateSecurityPolicy)
+	policies.Post("/update", generalLimiter.middleware(), handler.UpdateSecurityPolicy)
+	policies.Post("/delete", generalLimiter.middleware(), handler.DeleteSecurityPolicy)
+
+	// --- Webhooks ---
+	webhooks := router.Group("/webhooks", securityHeadersMiddleware(), sessionAuth)
+	webhooks.Post("/create", generalLimiter.middleware(), handler.CreateWebhook)
+	webhooks.Post("/list", generalLimiter.middleware(), handler.ListWebhooks)
+	webhooks.Post("/delete", strictLimiter.middleware(), handler.DeleteWebhook)
+	webhooks.Post("/trigger", strictLimiter.middleware(), handler.TriggerWebhook)
+
+	// --- Password Reset ---
+	// Password reset should be open without session auth
+	passwordReset := router.Group("/password-reset", securityHeadersMiddleware())
+	passwordReset.Post("/request", strictLimiter.middleware(), handler.RequestPasswordResetToken)
+	passwordReset.Post("/verify", strictLimiter.middleware(), handler.VerifyPasswordResetToken)
+	passwordReset.Post("/use", strictLimiter.middleware(), handler.UsePasswordResetToken)
+
+	// --- Rate Limit ---
+	rateLimit := router.Group("/rate-limit", securityHeadersMiddleware(), sessionAuth)
+	rateLimit.Post("/set", strictLimiter.middleware(), handler.SetRateLimit)
+	rateLimit.Get("/get", strictLimiter.middleware(), handler.GetRateLimit)
+	rateLimit.Post("/delete", strictLimiter.middleware(), handler.DeleteRateLimit)
+	rateLimit.Get("/config", generalLimiter.middleware(), handler.GetRateLimitConfig)
+	rateLimit.Post("/config", strictLimiter.middleware(), handler.SetRateLimitConfig)
+
+	// --- Profile ---
+	profile := router.Group("/profile", securityHeadersMiddleware(), sessionAuth)
+	profile.Post("/get", generalLimiter.middleware(), handler.GetProfile)
+	profile.Post("/update", generalLimiter.middleware(), handler.UpdateProfile)
+
+	// --- Account ---
+	account := router.Group("/account", securityHeadersMiddleware(), sessionAuth)
+	account.Post("/delete", strictLimiter.middleware(), handler.DeleteAccount)
+	account.Post("/recover", strictLimiter.middleware(), handler.AccountRecover)
+
+	// --- Consent ---
+	router.Post("/consent", securityHeadersMiddleware(), sessionAuth, generalLimiter.middleware(), handler.Consent)
+
+	// --- MFA ---
+	mfa := router.Group("/mfa", securityHeadersMiddleware(), sessionAuth)
+	mfa.Post("/challenge", strictLimiter.middleware(), handler.MFAChallenge)
+	mfa.Post("/verify", strictLimiter.middleware(), handler.MFAVerify)
+	mfa.Get("/config", generalLimiter.middleware(), handler.GetMFAConfig)
+	mfa.Post("/config", strictLimiter.middleware(), handler.SetMFAConfig)
+
+	// --- Invite ---
+	invite := router.Group("/invite", securityHeadersMiddleware())
+	invite.Post("/send", sessionAuth, strictLimiter.middleware(), handler.SendInvite)
+	invite.Post("/accept", generalLimiter.middleware(), handler.AcceptInvite) // Accept invite doesn't need session auth
+
+	// --- Device ---
+	device := router.Group("/device", securityHeadersMiddleware(), sessionAuth)
+	device.Post("/trust", strictLimiter.middleware(), handler.TrustDevice)
+
+	// --- Notification ---
+	notification := router.Group("/notification", securityHeadersMiddleware())
+	notification.Get("/providers/status", handler.GetNotificationProvidersStatus)
+	notification.Post("/queue/retry", handler.RetryNotificationQueue)
+	notification.Get("/config", generalLimiter.middleware(), handler.GetNotificationConfig)
+	notification.Post("/config", strictLimiter.middleware(), handler.UpdateNotificationConfig)
+	notification.Post("/test", strictLimiter.middleware(), handler.SendTestNotification)
+	notification.Post("/channel/enabled", strictLimiter.middleware(), handler.SetNotificationChannelEnabled)
+	notification.Get("/channel/enabled", generalLimiter.middleware(), handler.GetNotificationChannelEnabled)
+	notification.Post("/provider/config", strictLimiter.middleware(), handler.SetProviderConfig)
+	notification.Get("/provider/config", generalLimiter.middleware(), handler.GetProviderConfig)
+
+	// --- Module Config ---
+	module := router.Group("/module", securityHeadersMiddleware())
+	module.Post("/config", strictLimiter.middleware(), handler.SetSecurityModuleConfig)
+	module.Get("/config", generalLimiter.middleware(), handler.GetSecurityModuleConfig)
+
+	// --- Password Policy ---
+	passwordPolicy := router.Group("/password-policy", securityHeadersMiddleware())
+	passwordPolicy.Get("/config", generalLimiter.middleware(), handler.GetPasswordPolicyConfig)
+	passwordPolicy.Post("/config", strictLimiter.middleware(), handler.SetPasswordPolicyConfig)
+
+	// --- Session Config ---
+	session := router.Group("/session", securityHeadersMiddleware())
+	session.Get("/config", generalLimiter.middleware(), handler.GetSessionConfig)
+	session.Post("/config", strictLimiter.middleware(), handler.SetSessionConfig)
+
+	// --- Self Service ---
+	router.Get("/self-service", securityHeadersMiddleware(), generalLimiter.middleware(), handler.GetSelfServiceSecurity)
 }

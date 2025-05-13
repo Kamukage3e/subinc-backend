@@ -1,6 +1,7 @@
 package security_management
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"time"
@@ -60,6 +61,39 @@ func (rl *inMemoryRateLimiter) middleware() fiber.Handler {
 		filtered = append(filtered, now)
 		rl.requests[ip] = filtered
 		rl.mu.Unlock()
+		return c.Next()
+	}
+}
+
+// SessionAuthMiddleware validates session tokens provided in the Authorization header
+func SessionAuthMiddleware(sessionService interface {
+	GetSession(ctx context.Context, sessionID string) (Session, error)
+}) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		authHeader := c.Get("Authorization")
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "missing or invalid Authorization header"})
+		}
+
+		sessionID := strings.TrimPrefix(authHeader, "Bearer ")
+		if sessionID == "" {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "session token required"})
+		}
+
+		session, err := sessionService.GetSession(c.Context(), sessionID)
+		if err != nil {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid session"})
+		}
+
+		// Check if session has expired
+		if time.Now().UTC().After(session.ExpiresAt) {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "session expired"})
+		}
+
+		// Set user information in context for handlers to use
+		c.Locals("user_id", session.UserID)
+		c.Locals("session_id", session.ID)
+
 		return c.Next()
 	}
 }

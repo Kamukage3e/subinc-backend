@@ -630,7 +630,7 @@ func (s *PostgresStore) GetNotificationConfig(ctx context.Context, tenantID stri
 	return config, nil
 }
 
-func (s *PostgresStore) SetNotificationConfig(ctx context.Context, tenantID string, config NotificationConfig) error {
+func (s *PostgresStore) UpdateNotificationConfig(ctx context.Context, tenantID string, config NotificationConfig) error {
 	if err := config.Validate(); err != nil {
 		return err
 	}
@@ -1320,6 +1320,17 @@ func (s *PostgresStore) LogoutSession(ctx context.Context, sessionID string) err
 	return nil
 }
 
+func (s *PostgresStore) GetSession(ctx context.Context, sessionID string) (Session, error) {
+	const q = `SELECT id, user_id, ip, device, created_at, expires_at FROM sessions WHERE id=$1 AND expires_at > NOW()`
+	var sess Session
+	err := s.DB.QueryRow(ctx, q, sessionID).Scan(&sess.ID, &sess.UserID, &sess.IP, &sess.Device, &sess.CreatedAt, &sess.ExpiresAt)
+	if err != nil {
+		logger.LogError("GetSession failed", logger.ErrorField(err), logger.String("session_id", sessionID))
+		return Session{}, wrapDBErr("get_session", err)
+	}
+	return sess, nil
+}
+
 func (s *PostgresStore) AddToNotificationQueue(ctx context.Context, item NotificationQueueItem) error {
 	b, _ := json.Marshal(item.Details)
 	const q = `INSERT INTO notification_queue (id, provider, to, event, details, retry, max_retry, status, last_error, created_at, updated_at)
@@ -1733,8 +1744,8 @@ func (s *PostgresStore) SetSAMLConfig(ctx context.Context, tenantID string, conf
 
 // --- AuthTypeConfigDB Service ---
 func (s *PostgresStore) GetAuthTypeConfig(ctx context.Context, tenantID string) (AuthTypeConfigDB, error) {
-	if tenantID == "" {
-		return AuthTypeConfigDB{}, errors.New("tenant_id required")
+	if tenantID == "" || tenantID == "owner" {
+		return AuthTypeConfigDB{PasswordEnabled: true, OAuthEnabled: false, SAMLEnabled: false}, nil
 	}
 	key := "auth_type_config_" + tenantID
 	serverConfigService, ok := s.ServerConfigService.(interface {
@@ -1778,4 +1789,105 @@ func (s *PostgresStore) SetAuthTypeConfig(ctx context.Context, tenantID string, 
 	}
 	// hot-reload stub
 	return nil
+}
+
+// ChangePassword implements the PasswordService interface
+func (s *PostgresStore) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
+	// First verify the old password
+	var passwordHash string
+	err := s.DB.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, userID).Scan(&passwordHash)
+	if err != nil {
+		logger.LogError("ChangePassword query failed", logger.ErrorField(err), logger.String("user_id", userID))
+		return wrapDBErr("change_password", err)
+	}
+
+	// Verify old password
+	if err := checkPassword(passwordHash, oldPassword); err != nil {
+		logger.LogError("ChangePassword invalid old password", logger.ErrorField(err), logger.String("user_id", userID))
+		return errors.New("invalid old password")
+	}
+
+	// Hash the new password
+	newHash, err := hashPassword(newPassword)
+	if err != nil {
+		logger.LogError("ChangePassword failed to hash new password", logger.ErrorField(err))
+		return wrapDBErr("change_password_hash", err)
+	}
+
+	// Update the password
+	_, err = s.DB.Exec(ctx, `UPDATE users SET password_hash = $1 WHERE id = $2`, newHash, userID)
+	if err != nil {
+		logger.LogError("ChangePassword update failed", logger.ErrorField(err), logger.String("user_id", userID))
+		return wrapDBErr("change_password_update", err)
+	}
+
+	return nil
+}
+
+// Consent implements the PasswordService interface
+func (s *PostgresStore) Consent(ctx context.Context, userID, consent string) error {
+	// Store the user consent in the database
+	_, err := s.DB.Exec(ctx, `
+		INSERT INTO user_consents (user_id, consent_type, created_at)
+		VALUES ($1, $2, NOW())
+	`, userID, consent)
+	if err != nil {
+		logger.LogError("Consent failed", logger.ErrorField(err), logger.String("user_id", userID))
+		return wrapDBErr("user_consent", err)
+	}
+	return nil
+}
+
+// GetProfile implements the PasswordService interface
+func (s *PostgresStore) GetProfile(ctx context.Context, userID string) (map[string]interface{}, error) {
+	var email string
+	var createdAt time.Time
+	err := s.DB.QueryRow(ctx, `SELECT email, created_at FROM users WHERE id = $1`, userID).Scan(&email, &createdAt)
+	if err != nil {
+		logger.LogError("GetProfile query failed", logger.ErrorField(err), logger.String("user_id", userID))
+		return nil, wrapDBErr("get_profile", err)
+	}
+
+	return map[string]interface{}{
+		"id":         userID,
+		"email":      email,
+		"created_at": createdAt,
+	}, nil
+}
+
+// UpdateProfile implements the PasswordService interface
+func (s *PostgresStore) UpdateProfile(ctx context.Context, userID string, input map[string]interface{}) (map[string]interface{}, error) {
+	// For now, we only support updating email
+	email, ok := input["email"].(string)
+	if !ok || email == "" {
+		return nil, errors.New("valid email required")
+	}
+
+	_, err := s.DB.Exec(ctx, `UPDATE users SET email = $1, updated_at = NOW() WHERE id = $2`, email, userID)
+	if err != nil {
+		logger.LogError("UpdateProfile failed", logger.ErrorField(err), logger.String("user_id", userID))
+		return nil, wrapDBErr("update_profile", err)
+	}
+
+	return s.GetProfile(ctx, userID)
+}
+
+// DeleteAccount implements the PasswordService interface
+func (s *PostgresStore) DeleteAccount(ctx context.Context, userID string) error {
+	_, err := s.DB.Exec(ctx, `UPDATE users SET deleted_at = NOW() WHERE id = $1`, userID)
+	if err != nil {
+		logger.LogError("DeleteAccount failed", logger.ErrorField(err), logger.String("user_id", userID))
+		return wrapDBErr("delete_account", err)
+	}
+	return nil
+}
+
+func (s *PostgresStore) CountUsers(ctx context.Context) (int, error) {
+	var count int
+	row := s.DB.QueryRow(ctx, "SELECT COUNT(*) FROM users")
+	if err := row.Scan(&count); err != nil {
+		logger.LogError("CountUsers query failed", logger.ErrorField(err))
+		return 0, err
+	}
+	return count, nil
 }

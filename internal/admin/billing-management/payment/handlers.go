@@ -1092,7 +1092,7 @@ func (s *DisputeService) IngestDisputeEvent(ctx context.Context, d *Dispute) err
 		})
 	}
 	if s.Notify != nil {
-		_ = s.Notify.SendNotification(ctx, d.TenantID, "dispute_opened", map[string]interface{}{"dispute_id": d.ID, "payment_id": d.PaymentID, "status": d.Status, "reason": d.Reason})
+		_ = s.Notify.SendNotification(ctx, d.TenantID, security_management.NotificationEmail, []string{}, "dispute_opened", map[string]interface{}{"dispute_id": d.ID, "payment_id": d.PaymentID, "status": d.Status, "reason": d.Reason}, 3)
 	}
 	return nil
 }
@@ -1134,7 +1134,7 @@ func (s *DisputeService) UpdateDisputeStatus(ctx context.Context, disputeID stri
 		})
 	}
 	if s.Notify != nil {
-		_ = s.Notify.SendNotification(ctx, "", "dispute_status_changed", map[string]interface{}{"dispute_id": disputeID, "status": status})
+		_ = s.Notify.SendNotification(ctx, "", security_management.NotificationEmail, []string{}, "dispute_status_changed", map[string]interface{}{"dispute_id": disputeID, "status": status}, 3)
 	}
 	return nil
 }
@@ -1161,7 +1161,7 @@ func (s *DisputeEvidenceService) UploadEvidence(ctx context.Context, e *DisputeE
 		})
 	}
 	if s.Notify != nil {
-		_ = s.Notify.SendNotification(ctx, e.TenantID, "dispute_evidence_uploaded", map[string]interface{}{"evidence_id": e.ID, "dispute_id": e.DisputeID, "file_name": e.FileName})
+		_ = s.Notify.SendNotification(ctx, e.TenantID, security_management.NotificationEmail, []string{}, "dispute_evidence_uploaded", map[string]interface{}{"evidence_id": e.ID, "dispute_id": e.DisputeID, "file_name": e.FileName}, 3)
 	}
 	return nil
 }
@@ -1221,7 +1221,7 @@ func (s *DisputeEvidenceService) UpdateEvidenceStatus(ctx context.Context, evide
 		})
 	}
 	if s.Notify != nil {
-		_ = s.Notify.SendNotification(ctx, "", "dispute_evidence_status_changed", map[string]interface{}{"evidence_id": evidenceID, "provider_status": providerStatus})
+		_ = s.Notify.SendNotification(ctx, "", security_management.NotificationEmail, []string{}, "dispute_evidence_status_changed", map[string]interface{}{"evidence_id": evidenceID, "provider_status": providerStatus}, 3)
 	}
 	return nil
 }

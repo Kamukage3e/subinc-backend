@@ -224,67 +224,6 @@ func (h *SecurityHandler) ResetUserPassword(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *SecurityHandler) ListUserSessions(c *fiber.Ctx) error {
-	var input struct {
-		UserID string `json:"user_id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
-		logger.LogError("ListUserSessions: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id required"})
-	}
-	sessions, err := h.SessionService.ListUserSessions(c.Context(), input.UserID)
-	if err != nil {
-		logger.LogError("ListUserSessions: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   getActorID(c),
-		Action:    "list_user_sessions",
-		TargetID:  input.UserID,
-		Details:   marshalAuditDetails(input),
-		CreatedAt: time.Now().UTC(),
-	})
-	return c.JSON(sessions)
-}
-
-func (h *SecurityHandler) RevokeUserSession(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "session", "revoke")
-		if err != nil || !permitted {
-			logger.LogError("RevokeUserSession: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-	var input struct {
-		UserID    string `json:"user_id"`
-		SessionID string `json:"session_id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" || input.SessionID == "" {
-		logger.LogError("RevokeUserSession: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id and session id required"})
-	}
-	if err := h.SessionService.RevokeUserSession(c.Context(), input.UserID, input.SessionID); err != nil {
-		logger.LogError("RevokeUserSession: failed", logger.ErrorField(err), logger.String("user_id", input.UserID), logger.String("session_id", input.SessionID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	details := fiber.Map{"user_id": input.UserID, "session_id": input.SessionID}
-	detailsBytes, _ := json.Marshal(details)
-	detailsStr := string(detailsBytes)
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   getActorID(c),
-		Action:    "revoke_user_session",
-		TargetID:  input.SessionID,
-		Details:   detailsStr,
-		CreatedAt: time.Now().UTC(),
-	})
-	return c.SendStatus(fiber.StatusNoContent)
-}
-
 func (h *SecurityHandler) ListSecurityAuditLogs(c *fiber.Ctx) error {
 	var input struct {
 		Page     int `json:"page"`
@@ -758,7 +697,7 @@ func (h *SecurityHandler) UpdateNotificationConfig(c *fiber.Ctx) error {
 		logger.LogError("UpdateNotificationConfig: tenant_id required", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
 	}
-	if err := h.NotificationService.UpdateNotificationConfig(c.Context(), input); err != nil {
+	if err := h.NotificationService.UpdateNotificationConfig(c.Context(), input.TenantID, input); err != nil {
 		logger.LogError("UpdateNotificationConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -1928,7 +1867,6 @@ func (h *SecurityHandler) AuthSAMLCallback(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"token": sess.ID, "expires_at": sess.ExpiresAt})
 }
 
-
 func (h *SecurityHandler) GetNotificationProvidersStatus(c *fiber.Ctx) error {
 	statuses := make(map[string]string)
 	for name, provider := range providerRegistry {
@@ -2093,4 +2031,187 @@ func (h *SecurityHandler) GetRateLimitConfig(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(cfg)
+}
+
+// --- User Session CRUD Handlers (robust, prod-ready, Redis-backed) ---
+
+func (h *SecurityHandler) CreateUserSession(c *fiber.Ctx) error {
+	var input struct {
+		UserID string `json:"user_id"`
+		IP     string `json:"ip"`
+		Device string `json:"device"`
+		TTL    int64  `json:"ttl_seconds"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
+		logger.LogError("CreateUserSession: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id required"})
+	}
+	expiry := time.Duration(input.TTL) * time.Second
+	if expiry <= 0 {
+		expiry = 24 * time.Hour
+	}
+	sess, err := h.SessionService.CreateSession(c.Context(), input.UserID, input.IP, input.Device, expiry)
+	if err != nil {
+		logger.LogError("CreateUserSession: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create session"})
+	}
+	if h.SecurityAuditLogService != nil {
+		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
+			ID:        sess.ID,
+			ActorID:   input.UserID,
+			Action:    "create_user_session",
+			TargetID:  sess.ID,
+			Details:   marshalAuditDetails(input),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.Status(fiber.StatusCreated).JSON(sess)
+}
+
+func (h *SecurityHandler) DeleteUserSession(c *fiber.Ctx) error {
+	var input struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.SessionID == "" {
+		logger.LogError("DeleteUserSession: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session_id required"})
+	}
+	if err := h.SessionService.LogoutSession(c.Context(), input.SessionID); err != nil {
+		logger.LogError("DeleteUserSession: failed", logger.ErrorField(err), logger.String("session_id", input.SessionID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete session"})
+	}
+	if h.SecurityAuditLogService != nil {
+		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
+			ID:        input.SessionID,
+			ActorID:   getActorID(c),
+			Action:    "delete_user_session",
+			TargetID:  input.SessionID,
+			Details:   marshalAuditDetails(input),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *SecurityHandler) GetUserSession(c *fiber.Ctx) error {
+	var input struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.SessionID == "" {
+		logger.LogError("GetUserSession: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session_id required"})
+	}
+	sess, err := h.SessionService.GetSession(c.Context(), input.SessionID)
+	if err != nil {
+		logger.LogError("GetUserSession: failed", logger.ErrorField(err), logger.String("session_id", input.SessionID))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "session not found"})
+	}
+	if h.SecurityAuditLogService != nil {
+		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
+			ID:        sess.ID,
+			ActorID:   getActorID(c),
+			Action:    "get_user_session",
+			TargetID:  sess.ID,
+			Details:   marshalAuditDetails(input),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.JSON(sess)
+}
+
+func (h *SecurityHandler) ListUserSessions(c *fiber.Ctx) error {
+	var input struct {
+		UserID string `json:"user_id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
+		logger.LogError("ListUserSessions: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id required"})
+	}
+	sessions, err := h.SessionService.ListUserSessions(c.Context(), input.UserID)
+	if err != nil {
+		logger.LogError("ListUserSessions: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
+	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
+		ID:        uuid.NewString(),
+		ActorID:   getActorID(c),
+		Action:    "list_user_sessions",
+		TargetID:  input.UserID,
+		Details:   marshalAuditDetails(input),
+		CreatedAt: time.Now().UTC(),
+	})
+	return c.JSON(sessions)
+}
+
+func (h *SecurityHandler) RevokeUserSession(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "session", "revoke")
+		if err != nil || !permitted {
+			logger.LogError("RevokeUserSession: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input struct {
+		UserID    string `json:"user_id"`
+		SessionID string `json:"session_id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.UserID == "" || input.SessionID == "" {
+		logger.LogError("RevokeUserSession: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id and session id required"})
+	}
+	if err := h.SessionService.RevokeUserSession(c.Context(), input.UserID, input.SessionID); err != nil {
+		logger.LogError("RevokeUserSession: failed", logger.ErrorField(err), logger.String("user_id", input.UserID), logger.String("session_id", input.SessionID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
+	details := fiber.Map{"user_id": input.UserID, "session_id": input.SessionID}
+	detailsBytes, _ := json.Marshal(details)
+	detailsStr := string(detailsBytes)
+	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
+		ID:        uuid.NewString(),
+		ActorID:   getActorID(c),
+		Action:    "revoke_user_session",
+		TargetID:  input.SessionID,
+		Details:   detailsStr,
+		CreatedAt: time.Now().UTC(),
+	})
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// --- Owner Admin Bootstrap Endpoint ---
+func (h *SecurityHandler) BootstrapOwnerAdmin(c *fiber.Ctx) error {
+	// Only allow if no users exist
+	count, err := h.PasswordService.CountUsers(c.Context())
+	if err != nil {
+		logger.LogError("BootstrapOwnerAdmin: failed to count users", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
+	}
+	if count > 0 {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "owner admin already exists"})
+	}
+	var input struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.Email == "" || input.Password == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email and password required"})
+	}
+	user, err := h.PasswordService.RegisterUser(c.Context(), input.Email, input.Password)
+	if err != nil {
+		logger.LogError("BootstrapOwnerAdmin: failed to register", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.SecurityAuditLogService != nil {
+		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
+			ID:        user.ID,
+			ActorID:   user.ID,
+			Action:    "bootstrap_owner_admin",
+			TargetID:  user.ID,
+			Details:   marshalAuditDetails(input),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.Status(fiber.StatusCreated).JSON(user)
 }

@@ -34,6 +34,7 @@ type PasswordService interface {
 	SendInvite(ctx context.Context, email, role string) error
 	AcceptInvite(ctx context.Context, token, email, password string) (User, error)
 	AccountRecover(ctx context.Context, email string) error
+	CountUsers(ctx context.Context) (int, error)
 }
 
 type SessionService interface {
@@ -42,6 +43,7 @@ type SessionService interface {
 	CreateSession(ctx context.Context, userID, ip, device string, expiresIn time.Duration) (Session, error)
 	RefreshSession(ctx context.Context, sessionID string, expiresIn time.Duration) (Session, error)
 	LogoutSession(ctx context.Context, sessionID string) error
+	GetSession(ctx context.Context, sessionID string) (Session, error)
 }
 
 type SecurityAuditLogService interface {
@@ -84,8 +86,8 @@ type SecurityAnalyticsService interface {
 
 type NotificationService interface {
 	GetNotificationConfig(ctx context.Context, tenantID string) (NotificationConfig, error)
-	UpdateNotificationConfig(ctx context.Context, config NotificationConfig) error
-	SendNotification(ctx context.Context, tenantID string, event string, details map[string]interface{}) error
+	UpdateNotificationConfig(ctx context.Context, tenantID string, wconfig NotificationConfig) error
+	SendNotification(ctx context.Context, tenantID string, channel NotificationChannel, to []string, event string, details map[string]interface{}, maxRetry int) error
 }
 
 type SecurityModuleConfigService interface {

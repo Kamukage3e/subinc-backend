@@ -163,63 +163,6 @@ func (s *PostgresStore) UpdateSettings(ctx context.Context, userID string, setti
 	return nil
 }
 
-// UserSessionService
-func (s *PostgresStore) CreateSession(ctx context.Context, session UserSession) (UserSession, error) {
-	const q = `INSERT INTO user_sessions (id, user_id, ip, user_agent, expires_at, created_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, user_id, ip, user_agent, expires_at, created_at`
-	row := s.DB.QueryRow(ctx, q, session.ID, session.UserID, session.IP, session.UserAgent, session.ExpiresAt, session.CreatedAt)
-	var sss UserSession
-	if err := row.Scan(&sss.ID, &sss.UserID, &sss.IP, &sss.UserAgent, &sss.ExpiresAt, &sss.CreatedAt); err != nil {
-		logger.LogError("failed to create user session", logger.ErrorField(err), logger.String("user_id", session.UserID))
-		return UserSession{}, errors.New("failed to create user session: " + err.Error())
-	}
-	return sss, nil
-}
-
-func (s *PostgresStore) DeleteSession(ctx context.Context, id string) error {
-	const q = `DELETE FROM user_sessions WHERE id=$1`
-	_, err := s.DB.Exec(ctx, q, id)
-	if err != nil {
-		logger.LogError("failed to delete user session", logger.ErrorField(err), logger.String("id", id))
-		return errors.New("failed to delete user session: " + err.Error())
-	}
-	return nil
-}
-
-func (s *PostgresStore) GetSession(ctx context.Context, id string) (UserSession, error) {
-	const q = `SELECT id, user_id, ip, user_agent, expires_at, created_at FROM user_sessions WHERE id=$1`
-	row := s.DB.QueryRow(ctx, q, id)
-	var sss UserSession
-	if err := row.Scan(&sss.ID, &sss.UserID, &sss.IP, &sss.UserAgent, &sss.ExpiresAt, &sss.CreatedAt); err != nil {
-		logger.LogError("failed to get user session", logger.ErrorField(err), logger.String("id", id))
-		return UserSession{}, errors.New("failed to get user session: " + err.Error())
-	}
-	return sss, nil
-}
-
-func (s *PostgresStore) ListSessions(ctx context.Context, userID string, page, pageSize int) ([]UserSession, error) {
-	const q = `SELECT id, user_id, ip, user_agent, expires_at, created_at FROM user_sessions WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
-	rows, err := s.DB.Query(ctx, q, userID, pageSize, (page-1)*pageSize)
-	if err != nil {
-		logger.LogError("failed to list user sessions", logger.ErrorField(err), logger.String("user_id", userID))
-		return nil, errors.New("failed to list user sessions: " + err.Error())
-	}
-	defer rows.Close()
-	var sessions []UserSession
-	for rows.Next() {
-		var sss UserSession
-		if err := rows.Scan(&sss.ID, &sss.UserID, &sss.IP, &sss.UserAgent, &sss.ExpiresAt, &sss.CreatedAt); err != nil {
-			logger.LogError("failed to scan user session row", logger.ErrorField(err))
-			return nil, errors.New("failed to scan user session row: " + err.Error())
-		}
-		sessions = append(sessions, sss)
-	}
-	if err := rows.Err(); err != nil {
-		logger.LogError("error iterating user session rows", logger.ErrorField(err))
-		return nil, errors.New("error iterating user session rows: " + err.Error())
-	}
-	return sessions, nil
-}
-
 // UserAuditLogService
 func (s *PostgresStore) CreateAuditLog(ctx context.Context, log UserAuditLog) (UserAuditLog, error) {
 	const q = `INSERT INTO user_audit_logs (id, user_id, actor_id, action, target_id, details, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, user_id, actor_id, action, target_id, details, created_at`

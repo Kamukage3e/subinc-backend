@@ -26,13 +26,6 @@ type UserSettingsService interface {
 	UpdateSettings(ctx context.Context, userID, settings string) error
 }
 
-type UserSessionService interface {
-	CreateSession(ctx context.Context, session UserSession) (UserSession, error)
-	DeleteSession(ctx context.Context, id string) error
-	GetSession(ctx context.Context, id string) (UserSession, error)
-	ListSessions(ctx context.Context, userID string, page, pageSize int) ([]UserSession, error)
-}
-
 type UserAuditLogger = security_management.AuditLogger
 
 type OrgProjectUserService interface {

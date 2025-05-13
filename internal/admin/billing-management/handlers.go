@@ -4316,7 +4316,7 @@ func DunningJob(ctx context.Context, store paymentpkg.StoreInterface, notificati
 		if p.DunningAttempts >= dunningCfg.MaxAttempts {
 			if p.DunningState != "failed" {
 				_ = store.UpdateDunningState(ctx, p.ID, "failed", p.DunningAttempts)
-				_ = notificationService.SendNotification(ctx, tenantID, "dunning_failed", map[string]interface{}{"payment_id": p.ID, "invoice_id": p.InvoiceID})
+				_ = notificationService.SendNotification(ctx, tenantID, security_management.NotificationEmail, []string{}, "dunning_failed", map[string]interface{}{"payment_id": p.ID, "invoice_id": p.InvoiceID}, 3)
 				if auditLogger != nil {
 					_, _ = auditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
 						ActorID:   "system",
@@ -4337,7 +4337,7 @@ func DunningJob(ctx context.Context, store paymentpkg.StoreInterface, notificati
 		_ = store.UpdateDunningAttempt(ctx, p.ID, now, p.DunningAttempts+1)
 		if retryErr == nil && result.Status == "completed" {
 			_ = store.UpdateDunningState(ctx, p.ID, "recovered", p.DunningAttempts+1)
-			_ = notificationService.SendNotification(ctx, tenantID, "dunning_recovered", map[string]interface{}{"payment_id": p.ID, "invoice_id": p.InvoiceID})
+			_ = notificationService.SendNotification(ctx, tenantID, security_management.NotificationEmail, []string{}, "dunning_recovered", map[string]interface{}{"payment_id": p.ID, "invoice_id": p.InvoiceID}, 3)
 			if auditLogger != nil {
 				_, _ = auditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
 					ActorID:   "system",
@@ -4349,7 +4349,7 @@ func DunningJob(ctx context.Context, store paymentpkg.StoreInterface, notificati
 			}
 			continue
 		}
-		_ = notificationService.SendNotification(ctx, tenantID, "dunning_retry", map[string]interface{}{"payment_id": p.ID, "invoice_id": p.InvoiceID, "attempt": p.DunningAttempts + 1})
+		_ = notificationService.SendNotification(ctx, tenantID, security_management.NotificationEmail, []string{}, "dunning_retry", map[string]interface{}{"payment_id": p.ID, "invoice_id": p.InvoiceID, "attempt": p.DunningAttempts + 1}, 3)
 		if auditLogger != nil {
 			_, _ = auditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
 				ActorID:   "system",

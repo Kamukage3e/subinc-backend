@@ -11,6 +11,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
+	sm "github.com/subinc/subinc-backend/internal/admin/security-management"
 	. "github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -799,4 +800,126 @@ func (m *SessionManager) CleanExpiredSessions(ctx context.Context) (int, error) 
 
 	sessionOperations.WithLabelValues("clean_expired", "success").Inc()
 	return deletedCount, nil
+}
+
+// ListByUserID retrieves all sessions for a specific user
+func (m *SessionManager) ListByUserID(ctx context.Context, userID string) ([]*Session, error) {
+	pattern := m.formattedKey("*")
+	var out []*Session
+	var cursor uint64 = 0
+	for {
+		keys, next, err := m.client.Scan(ctx, cursor, pattern, 100).Result()
+		if err != nil {
+			return nil, err
+		}
+		if len(keys) > 0 {
+			pipe := m.client.Pipeline()
+			gets := make(map[string]*redis.StringCmd)
+			for _, key := range keys {
+				gets[key] = pipe.Get(ctx, key)
+			}
+			_, _ = pipe.Exec(ctx)
+			for _, cmd := range gets {
+				data, err := cmd.Bytes()
+				if err != nil {
+					continue
+				}
+				var s Session
+				if err := json.Unmarshal(data, &s); err != nil {
+					continue
+				}
+				if s.UserID == userID {
+					out = append(out, &s)
+				}
+			}
+		}
+		if next == 0 {
+			break
+		}
+		cursor = next
+	}
+	return out, nil
+}
+
+// --- Adapter for security_management.SessionService ---
+
+type RedisSessionAdapter struct {
+	Manager *SessionManager
+}
+
+func NewRedisSessionAdapter(manager *SessionManager) *RedisSessionAdapter {
+	return &RedisSessionAdapter{Manager: manager}
+}
+
+func (a *RedisSessionAdapter) ListUserSessions(ctx context.Context, userID string) ([]sm.Session, error) {
+	sessions, err := a.Manager.ListByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	var out []sm.Session
+	for _, s := range sessions {
+		out = append(out, sm.Session{
+			ID:        s.ID,
+			UserID:    s.UserID,
+			CreatedAt: s.CreatedAt,
+			ExpiresAt: s.ExpiresAt,
+			IP:        s.Data["ip"].(string),
+			Device:    s.Data["device"].(string),
+		})
+	}
+	return out, nil
+}
+
+func (a *RedisSessionAdapter) RevokeUserSession(ctx context.Context, userID, sessionID string) error {
+	return a.Manager.Delete(ctx, sessionID)
+}
+
+func (a *RedisSessionAdapter) CreateSession(ctx context.Context, userID, ip, device string, expiresIn time.Duration) (sm.Session, error) {
+	data := map[string]interface{}{"ip": ip, "device": device}
+	s, err := a.Manager.Create(ctx, userID, "", data)
+	if err != nil {
+		return sm.Session{}, err
+	}
+	return sm.Session{
+		ID:        s.ID,
+		UserID:    s.UserID,
+		CreatedAt: s.CreatedAt,
+		ExpiresAt: s.ExpiresAt,
+		IP:        ip,
+		Device:    device,
+	}, nil
+}
+
+func (a *RedisSessionAdapter) RefreshSession(ctx context.Context, sessionID string, expiresIn time.Duration) (sm.Session, error) {
+	s, err := a.Manager.Get(ctx, sessionID, true)
+	if err != nil {
+		return sm.Session{}, err
+	}
+	return sm.Session{
+		ID:        s.ID,
+		UserID:    s.UserID,
+		CreatedAt: s.CreatedAt,
+		ExpiresAt: s.ExpiresAt,
+		IP:        s.Data["ip"].(string),
+		Device:    s.Data["device"].(string),
+	}, nil
+}
+
+func (a *RedisSessionAdapter) LogoutSession(ctx context.Context, sessionID string) error {
+	return a.Manager.Delete(ctx, sessionID)
+}
+
+func (a *RedisSessionAdapter) GetSession(ctx context.Context, sessionID string) (sm.Session, error) {
+	s, err := a.Manager.Get(ctx, sessionID, false)
+	if err != nil {
+		return sm.Session{}, err
+	}
+	return sm.Session{
+		ID:        s.ID,
+		UserID:    s.UserID,
+		CreatedAt: s.CreatedAt,
+		ExpiresAt: s.ExpiresAt,
+		IP:        s.Data["ip"].(string),
+		Device:    s.Data["device"].(string),
+	}, nil
 }

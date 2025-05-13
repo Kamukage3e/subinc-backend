@@ -32,15 +32,6 @@ type UserProfile struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-type UserSession struct {
-	ID        string    `json:"id"`
-	UserID    string    `json:"user_id"`
-	IP        string    `json:"ip"`
-	UserAgent string    `json:"user_agent"`
-	ExpiresAt time.Time `json:"expires_at"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
 type UserAuditLog struct {
 	ID        string    `json:"id"`
 	UserID    string    `json:"user_id"`

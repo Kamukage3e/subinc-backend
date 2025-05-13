@@ -119,6 +119,9 @@ func (s *Service) GetOwnerDBConfig(ctx context.Context) (OwnerDBConfig, error) {
 	if err != nil {
 		return OwnerDBConfig{}, err
 	}
+	if cfg.Value == "" {
+		return OwnerDBConfig{}, nil
+	}
 	var dbCfg OwnerDBConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &dbCfg); err != nil {
 		return OwnerDBConfig{}, err
@@ -140,6 +143,9 @@ func (s *Service) GetOwnerLoggingConfig(ctx context.Context) (LoggingConfig, err
 	cfg, err := s.Get(ctx, "owner_admin_logging_config")
 	if err != nil {
 		return LoggingConfig{}, err
+	}
+	if cfg.Value == "" {
+		return LoggingConfig{}, nil
 	}
 	var logCfg LoggingConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &logCfg); err != nil {
@@ -163,6 +169,9 @@ func (s *Service) GetOwnerJWTSecretConfig(ctx context.Context) (JWTSecretConfig,
 	if err != nil {
 		return JWTSecretConfig{}, err
 	}
+	if cfg.Value == "" {
+		return JWTSecretConfig{}, nil
+	}
 	var jwtCfg JWTSecretConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &jwtCfg); err != nil {
 		return JWTSecretConfig{}, err
@@ -184,6 +193,9 @@ func (s *Service) GetOwnerOAuthConfig(ctx context.Context) (OAuthConfig, error) 
 	cfg, err := s.Get(ctx, "owner_admin_oauth_config")
 	if err != nil {
 		return OAuthConfig{}, err
+	}
+	if cfg.Value == "" {
+		return OAuthConfig{}, nil
 	}
 	var oauthCfg OAuthConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &oauthCfg); err != nil {
@@ -207,6 +219,9 @@ func (s *Service) GetOwnerSAMLConfig(ctx context.Context) (SAMLConfig, error) {
 	if err != nil {
 		return SAMLConfig{}, err
 	}
+	if cfg.Value == "" {
+		return SAMLConfig{}, nil
+	}
 	var samlCfg SAMLConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &samlCfg); err != nil {
 		return SAMLConfig{}, err
@@ -228,6 +243,9 @@ func (s *Service) GetOwnerRedisConfig(ctx context.Context) (RedisConfig, error) 
 	cfg, err := s.Get(ctx, "owner_admin_redis_config")
 	if err != nil {
 		return RedisConfig{}, err
+	}
+	if cfg.Value == "" {
+		return RedisConfig{}, nil
 	}
 	var redisCfg RedisConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &redisCfg); err != nil {
@@ -251,6 +269,9 @@ func (s *Service) GetOwnerAWSConfig(ctx context.Context) (AWSConfig, error) {
 	if err != nil {
 		return AWSConfig{}, err
 	}
+	if cfg.Value == "" {
+		return AWSConfig{}, nil
+	}
 	var awsCfg AWSConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &awsCfg); err != nil {
 		return AWSConfig{}, err
@@ -272,6 +293,9 @@ func (s *Service) GetOwnerPaymentProviderConfig(ctx context.Context) (PaymentPro
 	cfg, err := s.Get(ctx, "owner_admin_payment_provider_config")
 	if err != nil {
 		return PaymentProviderConfig{}, err
+	}
+	if cfg.Value == "" {
+		return PaymentProviderConfig{}, nil
 	}
 	var payCfg PaymentProviderConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &payCfg); err != nil {
@@ -295,6 +319,9 @@ func (s *Service) GetOwnerOpenAIConfig(ctx context.Context) (OpenAIConfig, error
 	if err != nil {
 		return OpenAIConfig{}, err
 	}
+	if cfg.Value == "" {
+		return OpenAIConfig{}, nil
+	}
 	var openaiCfg OpenAIConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &openaiCfg); err != nil {
 		return OpenAIConfig{}, err
@@ -316,6 +343,9 @@ func (s *Service) GetOwnerAdminUserConfig(ctx context.Context) (AdminUserConfig,
 	cfg, err := s.Get(ctx, "owner_admin_admin_user_config")
 	if err != nil {
 		return AdminUserConfig{}, err
+	}
+	if cfg.Value == "" {
+		return AdminUserConfig{}, nil
 	}
 	var adminCfg AdminUserConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &adminCfg); err != nil {
@@ -339,6 +369,9 @@ func (s *Service) GetOwnerHashIDConfig(ctx context.Context) (HashIDConfig, error
 	if err != nil {
 		return HashIDConfig{}, err
 	}
+	if cfg.Value == "" {
+		return HashIDConfig{}, nil
+	}
 	var hashidCfg HashIDConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &hashidCfg); err != nil {
 		return HashIDConfig{}, err
@@ -360,6 +393,9 @@ func (s *Service) GetOwnerCORSConfig(ctx context.Context) (CORSConfig, error) {
 	cfg, err := s.Get(ctx, "owner_admin_cors_config")
 	if err != nil {
 		return CORSConfig{}, err
+	}
+	if cfg.Value == "" {
+		return CORSConfig{}, nil
 	}
 	var corsCfg CORSConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &corsCfg); err != nil {
@@ -383,6 +419,9 @@ func (s *Service) GetOwnerBillingConfig(ctx context.Context) (BillingConfig, err
 	if err != nil {
 		return BillingConfig{}, err
 	}
+	if cfg.Value == "" {
+		return BillingConfig{}, nil
+	}
 	var billingCfg BillingConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &billingCfg); err != nil {
 		return BillingConfig{}, err
@@ -405,6 +444,9 @@ func (s *Service) GetOwnerWebhookConfig(ctx context.Context) (WebhookConfig, err
 	if err != nil {
 		return WebhookConfig{}, err
 	}
+	if cfg.Value == "" {
+		return WebhookConfig{}, nil
+	}
 	var webhookCfg WebhookConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &webhookCfg); err != nil {
 		return WebhookConfig{}, err
@@ -426,6 +468,9 @@ func (s *Service) GetOwnerSessionConfig(ctx context.Context) (SessionConfig, err
 	cfg, err := s.Get(ctx, "owner_admin_session_config")
 	if err != nil {
 		return SessionConfig{}, err
+	}
+	if cfg.Value == "" {
+		return SessionConfig{}, nil
 	}
 	var sessionCfg SessionConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &sessionCfg); err != nil {
@@ -452,6 +497,9 @@ func (s *Service) GetClientDBConfig(ctx context.Context, tenantID string) (Clien
 	cfg, err := s.Get(ctx, key)
 	if err != nil {
 		return ClientDBConfig{}, err
+	}
+	if cfg.Value == "" {
+		return ClientDBConfig{}, nil
 	}
 	var dbCfg ClientDBConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &dbCfg); err != nil {
@@ -483,6 +531,9 @@ func (s *Service) GetClientRedisConfig(ctx context.Context, tenantID string) (Cl
 	if err != nil {
 		return ClientRedisConfig{}, err
 	}
+	if cfg.Value == "" {
+		return ClientRedisConfig{}, nil
+	}
 	var redisCfg ClientRedisConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &redisCfg); err != nil {
 		return ClientRedisConfig{}, err
@@ -512,6 +563,9 @@ func (s *Service) GetClientAWSConfig(ctx context.Context, tenantID string) (Clie
 	cfg, err := s.Get(ctx, key)
 	if err != nil {
 		return ClientAWSConfig{}, err
+	}
+	if cfg.Value == "" {
+		return ClientAWSConfig{}, nil
 	}
 	var awsCfg ClientAWSConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &awsCfg); err != nil {
@@ -543,6 +597,9 @@ func (s *Service) GetClientSMTPConfig(ctx context.Context, tenantID string) (Cli
 	if err != nil {
 		return ClientSMTPConfig{}, err
 	}
+	if cfg.Value == "" {
+		return ClientSMTPConfig{}, nil
+	}
 	var smtpCfg ClientSMTPConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &smtpCfg); err != nil {
 		return ClientSMTPConfig{}, err
@@ -569,6 +626,9 @@ func (s *Service) GetOwnerSMTPConfig(ctx context.Context) (OwnerSMTPConfig, erro
 	if err != nil {
 		return OwnerSMTPConfig{}, err
 	}
+	if cfg.Value == "" {
+		return OwnerSMTPConfig{}, nil
+	}
 	var smtpCfg OwnerSMTPConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &smtpCfg); err != nil {
 		return OwnerSMTPConfig{}, err
@@ -594,6 +654,9 @@ func (s *Service) GetClientPaymentProviderConfig(ctx context.Context, tenantID s
 	cfg, err := s.Get(ctx, key)
 	if err != nil {
 		return ClientPaymentProviderConfig{}, err
+	}
+	if cfg.Value == "" {
+		return ClientPaymentProviderConfig{}, nil
 	}
 	var paymentCfg ClientPaymentProviderConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &paymentCfg); err != nil {
@@ -625,6 +688,9 @@ func (s *Service) GetClientJWTSecretConfig(ctx context.Context, tenantID string)
 	if err != nil {
 		return ClientJWTSecretConfig{}, err
 	}
+	if cfg.Value == "" {
+		return ClientJWTSecretConfig{}, nil
+	}
 	var jwtCfg ClientJWTSecretConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &jwtCfg); err != nil {
 		return ClientJWTSecretConfig{}, err
@@ -654,6 +720,9 @@ func (s *Service) GetClientOAuthConfig(ctx context.Context, tenantID string) (Cl
 	cfg, err := s.Get(ctx, key)
 	if err != nil {
 		return ClientOAuthConfig{}, err
+	}
+	if cfg.Value == "" {
+		return ClientOAuthConfig{}, nil
 	}
 	var oauthCfg ClientOAuthConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &oauthCfg); err != nil {
@@ -685,6 +754,9 @@ func (s *Service) GetClientSAMLConfig(ctx context.Context, tenantID string) (Cli
 	if err != nil {
 		return ClientSAMLConfig{}, err
 	}
+	if cfg.Value == "" {
+		return ClientSAMLConfig{}, nil
+	}
 	var samlCfg ClientSAMLConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &samlCfg); err != nil {
 		return ClientSAMLConfig{}, err
@@ -715,6 +787,9 @@ func (s *Service) GetClientOpenAIConfig(ctx context.Context, tenantID string) (C
 	if err != nil {
 		return ClientOpenAIConfig{}, err
 	}
+	if cfg.Value == "" {
+		return ClientOpenAIConfig{}, nil
+	}
 	var openaiCfg ClientOpenAIConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &openaiCfg); err != nil {
 		return ClientOpenAIConfig{}, err
@@ -744,6 +819,9 @@ func (s *Service) GetClientWebhookConfig(ctx context.Context, tenantID string) (
 	cfg, err := s.Get(ctx, key)
 	if err != nil {
 		return ClientWebhookConfig{}, err
+	}
+	if cfg.Value == "" {
+		return ClientWebhookConfig{}, nil
 	}
 	var webhookCfg ClientWebhookConfig
 	if err := json.Unmarshal([]byte(cfg.Value), &webhookCfg); err != nil {
