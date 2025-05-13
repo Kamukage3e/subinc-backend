@@ -317,7 +317,7 @@ func (h *Handler) SetOwnerJWTSecretConfig(c *fiber.Ctx) error {
 	if updatedBy == nil {
 		updatedBy = "system"
 	}
-	cfg, err := h.Service.SetOwnerJWTSecretConfig(c.Context(), input, updatedBy.(string))
+	cfg, err := h.Service.SetOwnerJWTSecretConfig(c.Context(), security_management.JWTSecretConfig{SecretName: input.SecretName}, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_owner_jwt_secret_config failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
@@ -1711,4 +1711,54 @@ func isTableMissingErr(err error) bool {
 	}
 	return (err.Error() == "ERROR: relation \"server_config\" does not exist (SQLSTATE 42P01)") ||
 		(err.Error() == "ERROR: relation \"migration_status\" does not exist (SQLSTATE 42P01)")
+}
+
+func (h *Handler) GetOwnerGraphQLConfig(c *fiber.Ctx) error {
+	cfg, err := h.Service.GetOwnerGraphQLConfig(c.Context())
+	if err != nil {
+		h.log.Error("server_config get GraphQL failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get GraphQL config"})
+	}
+	return c.JSON(cfg)
+}
+
+func (h *Handler) SetOwnerGraphQLConfig(c *fiber.Ctx) error {
+	if h.Service.RBACService != nil {
+		actorID := c.Locals("actor_id")
+		if actorID == nil {
+			actorID = "system"
+		}
+		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set")
+		if err != nil || !permitted {
+			h.log.Error("SetOwnerGraphQLConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input GraphQLConfig
+	if err := c.BodyParser(&input); err != nil {
+		h.log.Error("server_config set GraphQL failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	updatedBy := c.Locals("actor_id")
+	if updatedBy == nil {
+		updatedBy = "system"
+	}
+	cfg, err := h.Service.SetOwnerGraphQLConfig(c.Context(), input, updatedBy.(string))
+	if err != nil {
+		h.log.Error("server_config set GraphQL failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	// Audit log
+	if h.Service.AuditLogger != nil {
+		details, _ := json.Marshal(input)
+		go h.Service.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
+			ID:        uuid.NewString(),
+			ActorID:   updatedBy.(string),
+			Action:    "set_server_config_graphql",
+			TargetID:  "owner_admin_graphql_config",
+			Details:   string(details),
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	return c.JSON(cfg)
 }

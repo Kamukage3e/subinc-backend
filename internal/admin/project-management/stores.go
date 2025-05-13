@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
@@ -133,4 +136,18 @@ func (s *PostgresStore) UpdateSettings(ctx context.Context, projectID string, se
 		return err
 	}
 	return nil
+}
+
+func NewPostgresStore(db *pgxpool.Pool, serverConfigService *server_config.Service, auditLogger security_management.AuditLogger) *PostgresStore {
+	if db == nil {
+		panic("PostgresStore: DB must not be nil")
+	}
+	if serverConfigService == nil {
+		panic("PostgresStore: ServerConfigService must not be nil (required for all secrets/keys)")
+	}
+	return &PostgresStore{
+		DB:                  db,
+		ServerConfigService: serverConfigService,
+		AuditLogger:         auditLogger,
+	}
 }

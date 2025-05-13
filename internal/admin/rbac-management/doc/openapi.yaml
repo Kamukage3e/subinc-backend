@@ -884,12 +884,6 @@ paths:
       summary: List permission templates
       security:
         - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ListRequest"
       responses:
         "200":
           description: List of permission templates
@@ -902,10 +896,6 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/PermissionTemplate"
-                  page:
-                    type: integer
-                  page_size:
-                    type: integer
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -920,14 +910,24 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/IDTenantRequest"
+              type: object
+              required:
+                - role_id
+                - template_id
+              properties:
+                role_id:
+                  type: string
+                template_id:
+                  type: string
       responses:
-        "200":
+        "204":
           description: Permission template applied
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 components:
@@ -1319,15 +1319,17 @@ components:
       type: object
       required:
         - name
-        - resource
-        - action
+        - description
+        - permissions
       properties:
         name:
           type: string
-        resource:
+        description:
           type: string
-        action:
-          type: string
+        permissions:
+          type: array
+          items:
+            type: string
     PermissionTemplate:
       type: object
       properties:
@@ -1335,14 +1337,13 @@ components:
           type: string
         name:
           type: string
-        resource:
+        description:
           type: string
-        action:
-          type: string
+        permissions:
+          type: array
+          items:
+            type: string
         created_at:
-          type: string
-          format: date-time
-        updated_at:
           type: string
           format: date-time
     PermissionTemplateUpdateRequest:
@@ -1350,17 +1351,19 @@ components:
       required:
         - id
         - name
-        - resource
-        - action
+        - description
+        - permissions
       properties:
         id:
           type: string
         name:
           type: string
-        resource:
+        description:
           type: string
-        action:
-          type: string
+        permissions:
+          type: array
+          items:
+            type: string
     BulkRoleBindingAssignRequest:
       type: object
       required:

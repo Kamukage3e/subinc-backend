@@ -164,23 +164,25 @@ func (s *Service) SetOwnerLoggingConfig(ctx context.Context, logCfg LoggingConfi
 }
 
 // GetOwnerJWTSecretConfig returns the current owner-admin JWT secret config from server_config (runtime, hot-reloadable)
-func (s *Service) GetOwnerJWTSecretConfig(ctx context.Context) (JWTSecretConfig, error) {
-	cfg, err := s.Get(ctx, "owner_admin_jwt_secret_config")
+func (s *Service) GetOwnerJWTSecretConfig(ctx context.Context) (security_management.JWTSecretConfig, error) {
+	const key = "owner_admin_jwt_secret_config"
+	var value string
+	err := s.store.db.QueryRow(ctx, "SELECT value FROM server_config WHERE key = $1", key).Scan(&value)
 	if err != nil {
-		return JWTSecretConfig{}, err
+		return security_management.JWTSecretConfig{}, err
 	}
-	if cfg.Value == "" {
-		return JWTSecretConfig{}, nil
+	var localCfg struct {
+		SecretName string `json:"secret_name"`
 	}
-	var jwtCfg JWTSecretConfig
-	if err := json.Unmarshal([]byte(cfg.Value), &jwtCfg); err != nil {
-		return JWTSecretConfig{}, err
+	err = json.Unmarshal([]byte(value), &localCfg)
+	if err != nil || localCfg.SecretName == "" {
+		return security_management.JWTSecretConfig{}, errors.New("JWT secret config invalid")
 	}
-	return jwtCfg, nil
+	return security_management.JWTSecretConfig{SecretName: localCfg.SecretName}, nil
 }
 
 // SetOwnerJWTSecretConfig sets the owner-admin JWT secret config in server_config (runtime, hot-reloadable)
-func (s *Service) SetOwnerJWTSecretConfig(ctx context.Context, jwtCfg JWTSecretConfig, updatedBy string) (ServerConfig, error) {
+func (s *Service) SetOwnerJWTSecretConfig(ctx context.Context, jwtCfg security_management.JWTSecretConfig, updatedBy string) (ServerConfig, error) {
 	b, err := json.Marshal(jwtCfg)
 	if err != nil {
 		return ServerConfig{}, err
@@ -841,4 +843,29 @@ func (s *Service) SetClientWebhookConfig(ctx context.Context, tenantID string, w
 		return ServerConfig{}, err
 	}
 	return s.Set(ctx, key, string(b), updatedBy)
+}
+
+// GetOwnerGraphQLConfig returns the current owner-admin GraphQL config from server_config (runtime, hot-reloadable)
+func (s *Service) GetOwnerGraphQLConfig(ctx context.Context) (GraphQLConfig, error) {
+	cfg, err := s.Get(ctx, "owner_admin_graphql_config")
+	if err != nil {
+		return GraphQLConfig{}, err
+	}
+	if cfg.Value == "" {
+		return GraphQLConfig{Enabled: false}, nil
+	}
+	var gqlCfg GraphQLConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &gqlCfg); err != nil {
+		return GraphQLConfig{}, err
+	}
+	return gqlCfg, nil
+}
+
+// SetOwnerGraphQLConfig sets the owner-admin GraphQL config in server_config (runtime, hot-reloadable)
+func (s *Service) SetOwnerGraphQLConfig(ctx context.Context, gqlCfg GraphQLConfig, updatedBy string) (ServerConfig, error) {
+	b, err := json.Marshal(gqlCfg)
+	if err != nil {
+		return ServerConfig{}, err
+	}
+	return s.Set(ctx, "owner_admin_graphql_config", string(b), updatedBy)
 }

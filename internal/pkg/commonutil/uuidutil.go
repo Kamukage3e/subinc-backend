@@ -9,3 +9,9 @@ import (
 func GenerateUUID() string {
 	return uuid.NewString()
 }
+
+// IsValidUUID checks if a string is a valid UUID
+func IsValidUUID(id string) bool {
+	_, err := uuid.Parse(id)
+	return err == nil
+}

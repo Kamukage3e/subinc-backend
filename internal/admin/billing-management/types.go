@@ -635,8 +635,9 @@ type ExchangeRate struct {
 }
 
 type PostgresStore struct {
-	DB          *pgxpool.Pool
-	AuditLogger security_management.AuditLogger
+	DB                  *pgxpool.Pool
+	AuditLogger         security_management.AuditLogger
+	ServerConfigService *server_config.Service
 }
 
 // TenantCurrency represents the default billing currency for a tenant.

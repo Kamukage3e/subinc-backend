@@ -1,16 +1,31 @@
 package security_management
 
 import (
+	"context"
 	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// To avoid import cycles, define a minimal local interface for ServerConfigService
+// Only the method(s) needed for JWT secret fetch are included
+
+// JWTSecretConfig represents the owner-admin JWT secret config, stored as JSON in server_config
+// This enables runtime, DB-backed, hot-reloadable JWT secret config for owner-admin
+// Key: "owner_admin_jwt_secret_config"
+type JWTSecretConfig struct {
+	SecretName string `json:"secret_name"`
+}
+
+type ServerConfigService interface {
+	GetOwnerJWTSecretConfig(ctx context.Context) (JWTSecretConfig, error)
+}
+
 type PostgresStore struct {
 	DB                  *pgxpool.Pool
 	AuditLogger         AuditLogger
-	ServerConfigService interface{}
+	ServerConfigService ServerConfigService
 }
 
 // Define RBACService interface locally to avoid import cycle
@@ -52,6 +67,7 @@ type SecurityEvent struct {
 type User struct {
 	ID        string    `json:"id"`
 	Email     string    `json:"email"`
+	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

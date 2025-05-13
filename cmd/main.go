@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/graphql-go/graphql"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	billing_management "github.com/subinc/subinc-backend/internal/admin/billing-management"
@@ -19,6 +20,7 @@ import (
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	tenant_management "github.com/subinc/subinc-backend/internal/admin/tenant-management"
 	user_management "github.com/subinc/subinc-backend/internal/admin/user-management"
+	docmanagement "github.com/subinc/subinc-backend/internal/doc-management"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 	"github.com/subinc/subinc-backend/pkg/session"
 )
@@ -112,6 +114,11 @@ func main() {
 		log.Fatalf("Failed to load JWT secret config: %v", err)
 	}
 
+	gqlCfg, err := serverConfigService.GetOwnerGraphQLConfig(ctx)
+	if err != nil {
+		log.Fatalf("Failed to load GraphQL config: %v", err)
+	}
+
 	serverPort := os.Getenv("PORT")
 	if serverPort == "" {
 		serverPort = "8080"
@@ -126,7 +133,7 @@ func main() {
 	rbac_management.RegisterAdminRBACRoutes(ownerAPI, rbacHandler, jwtCfg.SecretName)
 	serverConfigHandler := server_config.NewHandler(serverConfigService, logr)
 	server_config.RegisterAdminServerConfigRoutes(ownerAPI, serverConfigHandler, jwtCfg.SecretName)
-	securityStore := &security_management.PostgresStore{DB: ownerDBPool}
+	securityStore := security_management.NewPostgresStore(ownerDBPool, serverConfigService, nil)
 
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
@@ -161,21 +168,33 @@ func main() {
 		SecurityModuleConfigService: securityStore,
 	}
 	security_management.RegisterAdminSecurityRoutes(ownerAPI, securityHandler, jwtCfg.SecretName)
-	userStore := &user_management.PostgresStore{DB: ownerDBPool, AuditLogger: securityStore}
+	userStore := user_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 	userHandler := user_management.NewUserHandler(userStore)
 	user_management.RegisterAdminUserRoutes(ownerAPI, userHandler, jwtCfg.SecretName)
-	tenantStore := &tenant_management.PostgresStore{DB: ownerDBPool, AuditLogger: securityStore}
+	tenantStore := tenant_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 	tenantHandler := tenant_management.NewTenantHandler(tenantStore)
 	tenant_management.RegisterAdminTenantRoutes(ownerAPI, tenantHandler, jwtCfg.SecretName)
-	projectStore := &project_management.PostgresStore{DB: ownerDBPool, AuditLogger: securityStore}
+	projectStore := project_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 	projectHandler := project_management.NewProjectHandler(projectStore)
 	project_management.RegisterAdminProjectRoutes(ownerAPI, projectHandler, jwtCfg.SecretName)
-	orgStore := &organization_management.PostgresStore{DB: ownerDBPool, AuditLogger: securityStore}
+	orgStore := organization_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 	orgHandler := organization_management.NewOrganizationHandler(orgStore)
 	organization_management.RegisterAdminOrganizationRoutes(ownerAPI, orgHandler, jwtCfg.SecretName)
-	billingStore := &billing_management.PostgresStore{DB: ownerDBPool, AuditLogger: securityStore}
+	billingStore := billing_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 	billingHandler := billing_management.NewBillingHandler(billingStore)
 	billing_management.RegisterAdminBillingRoutes(ownerAPI, billingHandler, jwtCfg.SecretName)
+
+	if gqlCfg.Enabled {
+		// schemaBytes, err := os.ReadFile("internal/doc-management/schema.graphqls") // Not used, schema is built programmatically
+		schema, err := graphql.NewSchema(graphql.SchemaConfig{
+			Query:    nil, // TODO: Replace with unified root query object covering all domains
+			Mutation: nil, // TODO: Replace with unified root mutation object covering all domains
+		})
+		if err != nil {
+			log.Fatalf("Failed to create GraphQL schema: %v", err)
+		}
+		docmanagement.UnifiedGraphQLHandler(app, schema)
+	}
 
 	// --- Owner admin bootstrap (automatic, no endpoint) ---
 	userCount, err := securityStore.CountUsers(ctx)
@@ -214,23 +233,23 @@ func main() {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing JWT secret"})
 		}
 		// User Management
-		userStore := &user_management.PostgresStore{DB: dbpool, AuditLogger: securityStore}
+		userStore := user_management.NewPostgresStore(dbpool, serverConfigService, securityStore)
 		userHandler := user_management.NewUserHandler(userStore)
 		user_management.RegisterAdminUserRoutes(clientAPI, userHandler, jwtSecret)
 		// Tenant Management
-		tenantStore := &tenant_management.PostgresStore{DB: dbpool, AuditLogger: securityStore}
+		tenantStore := tenant_management.NewPostgresStore(dbpool, serverConfigService, securityStore)
 		tenantHandler := tenant_management.NewTenantHandler(tenantStore)
 		tenant_management.RegisterAdminTenantRoutes(clientAPI, tenantHandler, jwtSecret)
 		// Project Management
-		projectStore := &project_management.PostgresStore{DB: dbpool, AuditLogger: securityStore}
+		projectStore := project_management.NewPostgresStore(dbpool, serverConfigService, securityStore)
 		projectHandler := project_management.NewProjectHandler(projectStore)
 		project_management.RegisterAdminProjectRoutes(clientAPI, projectHandler, jwtSecret)
 		// Organization Management
-		orgStore := &organization_management.PostgresStore{DB: dbpool, AuditLogger: securityStore}
+		orgStore := organization_management.NewPostgresStore(dbpool, serverConfigService, securityStore)
 		orgHandler := organization_management.NewOrganizationHandler(orgStore)
 		organization_management.RegisterAdminOrganizationRoutes(clientAPI, orgHandler, jwtSecret)
 		// Billing Management
-		billingStore := &billing_management.PostgresStore{DB: dbpool, AuditLogger: securityStore}
+		billingStore := billing_management.NewPostgresStore(dbpool, serverConfigService, securityStore)
 		billingHandler := billing_management.NewBillingHandler(billingStore)
 		billing_management.RegisterAdminBillingRoutes(clientAPI, billingHandler, jwtSecret)
 		return c.Next()
@@ -255,61 +274,3 @@ func getAuditLogger() security_management.AuditLogger {
 	return dbState.auditLogger
 }
 
-// // Handlers for client admin config
-// func getClientOAuthConfig(c *fiber.Ctx) error {
-// 	// RBAC: only admin
-// 	if !isClientAdmin(c) {
-// 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden"})
-// 	}
-// 	return c.JSON(security_management.OAuthConfig{
-// 		Google: struct {
-// 			ClientID     string   `json:"client_id"`
-// 			ClientSecret string   `json:"client_secret"`
-// 			RedirectURI  string   `json:"redirect_uri"`
-// 			Scopes       []string `json:"scopes"`
-// 		}{
-// 			ClientID:     "google_client_id",
-// 			ClientSecret: "google_client_secret",
-// 			RedirectURI:  "google_redirect_uri",
-// 			Scopes:       []string{"scope1", "scope2"},
-// 		},
-// 	})
-// }
-
-// func setClientOAuthConfig(c *fiber.Ctx) error {
-// 	if !isClientAdmin(c) {
-// 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden"})
-// 	}
-// 	var cfg security_management.OAuthConfig
-// 	if err := c.BodyParser(&cfg); err != nil {
-// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-// 	}
-// 	return c.SendStatus(fiber.StatusNoContent)
-// }
-
-// func getClientSAMLConfig(c *fiber.Ctx) error {
-// 	if !isClientAdmin(c) {
-// 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden"})
-// 	}
-// 	return c.JSON(security_management.SAMLConfig{
-// 		MetadataURL: "saml_metadata_url",
-// 		EntityID:    "saml_entity_id",
-// 		ACSURL:      "saml_acs_url",
-// 	})
-// }
-
-// func setClientSAMLConfig(c *fiber.Ctx) error {
-// 	if !isClientAdmin(c) {
-// 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden"})
-// 	}
-// 	var cfg security_management.SAMLConfig
-// 	if err := c.BodyParser(&cfg); err != nil {
-// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-// 	}
-// 	return c.SendStatus(fiber.StatusNoContent)
-// }
-
-// func isClientAdmin(c *fiber.Ctx) bool {
-// 	// Implement RBAC check for client admin
-// 	return c.Get("X-Admin") == "true"
-// }

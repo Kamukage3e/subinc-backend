@@ -318,3 +318,10 @@ type ClientOpenAIConfig struct {
 type ClientWebhookConfig struct {
 	EventsURL string `json:"events_url"`
 }
+
+// GraphQLConfig represents the owner-admin GraphQL config, stored as JSON in server_config
+// This enables runtime, DB-backed, hot-reloadable GraphQL enable/disable for owner-admin
+// Key: "owner_admin_graphql_config"
+type GraphQLConfig struct {
+	Enabled bool `json:"enabled"`
+}

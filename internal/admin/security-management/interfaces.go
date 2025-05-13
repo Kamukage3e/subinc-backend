@@ -122,3 +122,7 @@ type NotificationProvider interface {
 	Status(ctx context.Context) (string, error)
 	Name() string
 }
+
+type OwnerJWTSecretConfigService interface {
+	GetOwnerJWTSecretConfig(ctx context.Context) (JWTSecretConfig, error)
+}

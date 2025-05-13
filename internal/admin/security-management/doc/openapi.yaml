@@ -11,12 +11,11 @@ paths:
     post:
       tags: [SecurityEvents]
       summary: List user security events
-      operationId: listUserSecurityEvents
+      operationId: ListUserSecurityEvents
       security:
         - bearerAuth: []
       requestBody:
         required: true
-        x-codegen-request-body-name: userId
         content:
           application/json:
             schema:
@@ -32,16 +31,16 @@ paths:
                   $ref: "#/components/schemas/SecurityEvent"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
   /users/login-history:
     post:
       tags: [LoginHistory]
       summary: List user login history
-      operationId: listUserLoginHistory
+      operationId: ListUserLoginHistory
       security:
         - bearerAuth: []
       requestBody:
         required: true
-        x-codegen-request-body-name: userId
         content:
           application/json:
             schema:
@@ -57,16 +56,16 @@ paths:
                   $ref: "#/components/schemas/LoginHistory"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
   /users/mfa/enable:
     post:
       tags: [MFA]
       summary: Enable MFA for user
-      operationId: enableMFA
+      operationId: EnableMFA
       security:
         - bearerAuth: []
       requestBody:
         required: true
-        x-codegen-request-body-name: userId
         content:
           application/json:
             schema:
@@ -77,16 +76,16 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
   /users/mfa/disable:
     post:
       tags: [MFA]
       summary: Disable MFA for user
-      operationId: disableMFA
+      operationId: DisableMFA
       security:
         - bearerAuth: []
       requestBody:
         required: true
-        x-codegen-request-body-name: userId
         content:
           application/json:
             schema:
@@ -97,16 +96,16 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
   /users/password/reset:
     post:
       tags: [Password]
       summary: Reset user password
-      operationId: resetUserPassword
+      operationId: ResetUserPassword
       security:
         - bearerAuth: []
       requestBody:
         required: true
-        x-codegen-request-body-name: passwordReset
         content:
           application/json:
             schema:
@@ -117,61 +116,16 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-  /users/sessions/list:
-    post:
-      tags: [Sessions]
-      summary: List user sessions
-      operationId: listUserSessions
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        x-codegen-request-body-name: userId
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UserIDRequest"
-      responses:
-        "200":
-          description: List of sessions
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Session"
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-  /users/sessions/revoke:
-    post:
-      tags: [Sessions]
-      summary: Revoke user session
-      operationId: revokeUserSession
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        x-codegen-request-body-name: sessionRevoke
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SessionRevokeRequest"
-      responses:
-        "204":
-          description: Session revoked
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
   /audit-logs/list:
     post:
       tags: [AuditLogs]
       summary: List security audit logs
-      operationId: listSecurityAuditLogs
+      operationId: ListSecurityAuditLogs
       security:
         - bearerAuth: []
       requestBody:
         required: true
-        x-codegen-request-body-name: auditLogFilter
         content:
           application/json:
             schema:
@@ -187,16 +141,16 @@ paths:
                   $ref: "#/components/schemas/SecurityAuditLog"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
   /users/api-keys/list:
     post:
       tags: [APIKeys]
       summary: List user API keys
-      operationId: listUserAPIKeys
+      operationId: ListUserAPIKeys
       security:
         - bearerAuth: []
       requestBody:
         required: true
-        x-codegen-request-body-name: userId
         content:
           application/json:
             schema:
@@ -212,16 +166,16 @@ paths:
                   $ref: "#/components/schemas/APIKey"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
   /users/api-keys/create:
     post:
       tags: [APIKeys]
       summary: Create user API key
-      operationId: createUserAPIKey
+      operationId: CreateUserAPIKey
       security:
         - bearerAuth: []
       requestBody:
         required: true
-        x-codegen-request-body-name: apiKeyCreate
         content:
           application/json:
             schema:
@@ -235,16 +189,16 @@ paths:
                 $ref: "#/components/schemas/APIKey"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
   /users/api-keys/revoke:
     post:
       tags: [APIKeys]
       summary: Revoke user API key
-      operationId: revokeUserAPIKey
+      operationId: RevokeUserAPIKey
       security:
         - bearerAuth: []
       requestBody:
         required: true
-        x-codegen-request-body-name: apiKeyRevoke
         content:
           application/json:
             schema:
@@ -254,16 +208,16 @@ paths:
           description: API key revoked
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
   /users/devices/list:
     post:
       tags: [Devices]
       summary: List user devices
-      operationId: listUserDevices
+      operationId: ListUserDevices
       security:
         - bearerAuth: []
       requestBody:
         required: true
-        x-codegen-request-body-name: userId
         content:
           application/json:
             schema:
@@ -279,16 +233,16 @@ paths:
                   $ref: "#/components/schemas/Device"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
   /users/devices/revoke:
     post:
       tags: [Devices]
       summary: Revoke user device
-      operationId: revokeUserDevice
+      operationId: RevokeUserDevice
       security:
         - bearerAuth: []
       requestBody:
         required: true
-        x-codegen-request-body-name: deviceRevoke
         content:
           application/json:
             schema:
@@ -298,13 +252,20 @@ paths:
           description: Device revoked
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
   /breaches/list:
     post:
       tags: [Breaches]
       summary: List breaches
-      operationId: listBreaches
+      operationId: ListBreaches
       security:
         - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PageRequest"
       responses:
         "200":
           description: List of breaches
@@ -316,11 +277,12 @@ paths:
                   $ref: "#/components/schemas/Breach"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
   /policies/list:
     post:
       tags: [Policies]
       summary: List security policies
-      operationId: listSecurityPolicies
+      operationId: ListSecurityPolicies
       security:
         - bearerAuth: []
       responses:
@@ -334,16 +296,16 @@ paths:
                   $ref: "#/components/schemas/SecurityPolicy"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
   /policies/create:
     post:
       tags: [Policies]
       summary: Create security policy
-      operationId: createSecurityPolicy
+      operationId: CreateSecurityPolicy
       security:
         - bearerAuth: []
       requestBody:
         required: true
-        x-codegen-request-body-name: policyCreate
         content:
           application/json:
             schema:
@@ -357,16 +319,16 @@ paths:
                 $ref: "#/components/schemas/SecurityPolicy"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
   /policies/update:
     post:
       tags: [Policies]
       summary: Update security policy
-      operationId: updateSecurityPolicy
+      operationId: UpdateSecurityPolicy
       security:
         - bearerAuth: []
       requestBody:
         required: true
-        x-codegen-request-body-name: policyUpdate
         content:
           application/json:
             schema:
@@ -380,16 +342,16 @@ paths:
                 $ref: "#/components/schemas/SecurityPolicy"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
   /policies/delete:
     post:
       tags: [Policies]
       summary: Delete security policy
-      operationId: deleteSecurityPolicy
+      operationId: DeleteSecurityPolicy
       security:
         - bearerAuth: []
       requestBody:
         required: true
-        x-codegen-request-body-name: policyDelete
         content:
           application/json:
             schema:
@@ -399,11 +361,12 @@ paths:
           description: Policy deleted
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
   /webhooks/create:
     post:
       tags: [Webhooks]
       summary: Create webhook
-      operationId: createWebhook
+      operationId: CreateWebhook
       security:
         - bearerAuth: []
       requestBody:
@@ -426,7 +389,7 @@ paths:
     post:
       tags: [Webhooks]
       summary: List webhooks
-      operationId: listWebhooks
+      operationId: ListWebhooks
       security:
         - bearerAuth: []
       responses:
@@ -444,7 +407,7 @@ paths:
     post:
       tags: [Webhooks]
       summary: Delete webhook
-      operationId: deleteWebhook
+      operationId: DeleteWebhook
       security:
         - bearerAuth: []
       requestBody:
@@ -463,7 +426,7 @@ paths:
     post:
       tags: [Webhooks]
       summary: Trigger webhook
-      operationId: triggerWebhook
+      operationId: TriggerWebhook
       security:
         - bearerAuth: []
       requestBody:
@@ -482,7 +445,7 @@ paths:
     post:
       tags: [PasswordReset]
       summary: Request password reset token
-      operationId: requestPasswordResetToken
+      operationId: RequestPasswordResetToken
       security:
         - bearerAuth: []
       requestBody:
@@ -505,7 +468,7 @@ paths:
     post:
       tags: [PasswordReset]
       summary: Verify password reset token
-      operationId: verifyPasswordResetToken
+      operationId: VerifyPasswordResetToken
       security:
         - bearerAuth: []
       requestBody:
@@ -528,7 +491,7 @@ paths:
     post:
       tags: [PasswordReset]
       summary: Use password reset token
-      operationId: usePasswordResetToken
+      operationId: UsePasswordResetToken
       security:
         - bearerAuth: []
       requestBody:
@@ -547,7 +510,7 @@ paths:
     post:
       tags: [RateLimit]
       summary: Set rate limit
-      operationId: setRateLimit
+      operationId: SetRateLimit
       security:
         - bearerAuth: []
       requestBody:
@@ -566,7 +529,7 @@ paths:
     get:
       tags: [RateLimit]
       summary: Get rate limit
-      operationId: getRateLimit
+      operationId: GetRateLimit
       security:
         - bearerAuth: []
       parameters:
@@ -591,7 +554,7 @@ paths:
     post:
       tags: [RateLimit]
       summary: Delete rate limit
-      operationId: deleteRateLimit
+      operationId: DeleteRateLimit
       security:
         - bearerAuth: []
       requestBody:
@@ -610,7 +573,7 @@ paths:
     post:
       tags: [Auth]
       summary: User login
-      operationId: login
+      operationId: Login
       requestBody:
         required: true
         content:
@@ -629,7 +592,7 @@ paths:
     post:
       tags: [Auth]
       summary: User logout
-      operationId: logout
+      operationId: Logout
       responses:
         "204":
           description: Logout successful
@@ -638,7 +601,7 @@ paths:
     post:
       tags: [Auth]
       summary: User registration
-      operationId: register
+      operationId: Register
       requestBody:
         required: true
         content:
@@ -657,7 +620,7 @@ paths:
     post:
       tags: [Auth]
       summary: Verify email
-      operationId: verifyEmail
+      operationId: VerifyEmail
       requestBody:
         required: true
         content:
@@ -672,7 +635,7 @@ paths:
     post:
       tags: [Auth]
       summary: Resend verification email
-      operationId: resendVerification
+      operationId: ResendVerification
       requestBody:
         required: true
         content:
@@ -687,7 +650,7 @@ paths:
     post:
       tags: [Auth]
       summary: Change password
-      operationId: changePassword
+      operationId: ChangePassword
       requestBody:
         required: true
         content:
@@ -703,7 +666,7 @@ paths:
     post:
       tags: [Auth]
       summary: Request password reset
-      operationId: requestPasswordReset
+      operationId: RequestPasswordReset
       requestBody:
         required: true
         content:
@@ -722,7 +685,7 @@ paths:
     post:
       tags: [Auth]
       summary: Verify password reset token
-      operationId: verifyPasswordResetToken
+      operationId: VerifyPasswordResetToken
       requestBody:
         required: true
         content:
@@ -737,7 +700,7 @@ paths:
     post:
       tags: [Auth]
       summary: Use password reset token
-      operationId: usePasswordResetToken
+      operationId: UsePasswordResetToken
       requestBody:
         required: true
         content:
@@ -752,7 +715,7 @@ paths:
     post:
       tags: [Auth]
       summary: Refresh session token
-      operationId: refreshSession
+      operationId: RefreshSession
       responses:
         "200":
           description: Token refreshed
@@ -765,7 +728,7 @@ paths:
     post:
       tags: [Auth]
       summary: Get user profile
-      operationId: getProfile
+      operationId: GetProfile
       responses:
         "200":
           description: User profile
@@ -778,7 +741,7 @@ paths:
     post:
       tags: [Auth]
       summary: Update user profile
-      operationId: updateProfile
+      operationId: UpdateProfile
       requestBody:
         required: true
         content:
@@ -797,7 +760,7 @@ paths:
     post:
       tags: [Auth]
       summary: Delete account
-      operationId: deleteAccount
+      operationId: DeleteAccount
       responses:
         "204":
           description: Account deleted
@@ -806,7 +769,7 @@ paths:
     post:
       tags: [Auth]
       summary: Consent management
-      operationId: consent
+      operationId: Consent
       requestBody:
         required: true
         content:
@@ -821,7 +784,7 @@ paths:
     post:
       tags: [Auth]
       summary: Send invite
-      operationId: sendInvite
+      operationId: SendInvite
       requestBody:
         required: true
         content:
@@ -836,7 +799,7 @@ paths:
     post:
       tags: [Auth]
       summary: Accept invite
-      operationId: acceptInvite
+      operationId: AcceptInvite
       requestBody:
         required: true
         content:
@@ -855,7 +818,7 @@ paths:
     post:
       tags: [Auth]
       summary: Trust device
-      operationId: trustDevice
+      operationId: TrustDevice
       requestBody:
         required: true
         content:
@@ -870,7 +833,7 @@ paths:
     post:
       tags: [Auth]
       summary: Account recovery
-      operationId: accountRecover
+      operationId: AccountRecover
       requestBody:
         required: true
         content:
@@ -885,7 +848,7 @@ paths:
     post:
       tags: [Auth]
       summary: Start MFA challenge
-      operationId: mfaChallenge
+      operationId: MFAChallenge
       requestBody:
         required: true
         content:
@@ -904,7 +867,7 @@ paths:
     post:
       tags: [Auth]
       summary: Verify MFA code
-      operationId: mfaVerify
+      operationId: MFAVerify
       requestBody:
         required: true
         content:
@@ -919,7 +882,7 @@ paths:
     get:
       tags: [Auth]
       summary: Google OAuth start
-      operationId: authGoogle
+      operationId: AuthGoogle
       responses:
         "302":
           description: Redirect to Google
@@ -927,7 +890,7 @@ paths:
     get:
       tags: [Auth]
       summary: Google OAuth callback
-      operationId: authGoogleCallback
+      operationId: AuthGoogleCallback
       responses:
         "200":
           description: OAuth callback handled
@@ -935,7 +898,7 @@ paths:
     get:
       tags: [Auth]
       summary: SAML start
-      operationId: authSAML
+      operationId: AuthSAML
       responses:
         "302":
           description: Redirect to SAML provider
@@ -943,7 +906,7 @@ paths:
     get:
       tags: [Auth]
       summary: SAML callback
-      operationId: authSAMLCallback
+      operationId: AuthSAMLCallback
       responses:
         "200":
           description: SAML callback handled
@@ -951,7 +914,7 @@ paths:
     get:
       tags: [MFA]
       summary: Get MFA config
-      operationId: getMFAConfig
+      operationId: GetMFAConfig
       security:
         - bearerAuth: []
       requestBody:
@@ -975,7 +938,7 @@ paths:
     post:
       tags: [MFA]
       summary: Set MFA config
-      operationId: setMFAConfig
+      operationId: SetMFAConfig
       security:
         - bearerAuth: []
       requestBody:
@@ -1001,7 +964,7 @@ paths:
     get:
       tags: [PasswordPolicy]
       summary: Get password policy config
-      operationId: getPasswordPolicyConfig
+      operationId: GetPasswordPolicyConfig
       security:
         - bearerAuth: []
       requestBody:
@@ -1025,7 +988,7 @@ paths:
     post:
       tags: [PasswordPolicy]
       summary: Set password policy config
-      operationId: setPasswordPolicyConfig
+      operationId: SetPasswordPolicyConfig
       security:
         - bearerAuth: []
       requestBody:
@@ -1051,7 +1014,7 @@ paths:
     get:
       tags: [Session]
       summary: Get session config
-      operationId: getSessionConfig
+      operationId: GetSessionConfig
       security:
         - bearerAuth: []
       requestBody:
@@ -1075,7 +1038,7 @@ paths:
     post:
       tags: [Session]
       summary: Set session config
-      operationId: setSessionConfig
+      operationId: SetSessionConfig
       security:
         - bearerAuth: []
       requestBody:
@@ -1101,7 +1064,7 @@ paths:
     get:
       tags: [RateLimit]
       summary: Get rate limit config
-      operationId: getRateLimitConfig
+      operationId: GetRateLimitConfig
       security:
         - bearerAuth: []
       requestBody:
@@ -1127,7 +1090,7 @@ paths:
     post:
       tags: [RateLimit]
       summary: Set rate limit config
-      operationId: setRateLimitConfig
+      operationId: SetRateLimitConfig
       security:
         - bearerAuth: []
       requestBody:
@@ -1153,7 +1116,7 @@ paths:
     get:
       tags: [Notification]
       summary: Get notification channel enabled state
-      operationId: getNotificationChannelEnabled
+      operationId: GetNotificationChannelEnabled
       security:
         - bearerAuth: []
       requestBody:
@@ -1184,7 +1147,7 @@ paths:
     post:
       tags: [Notification]
       summary: Set notification channel enabled state
-      operationId: setNotificationChannelEnabled
+      operationId: SetNotificationChannelEnabled
       security:
         - bearerAuth: []
       requestBody:
@@ -1220,6 +1183,16 @@ components:
       properties:
         user_id:
           type: string
+    PageRequest:
+      type: object
+      required:
+        - page
+        - page_size
+      properties:
+        page:
+          type: integer
+        page_size:
+          type: integer
     SecurityEvent:
       type: object
       properties:
@@ -1252,33 +1225,6 @@ components:
         created_at:
           type: string
           format: date-time
-    Session:
-      type: object
-      properties:
-        id:
-          type: string
-        user_id:
-          type: string
-        ip:
-          type: string
-        device:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-        expires_at:
-          type: string
-          format: date-time
-    SessionRevokeRequest:
-      type: object
-      required:
-        - user_id
-        - session_id
-      properties:
-        user_id:
-          type: string
-        session_id:
-          type: string
     PasswordResetRequest:
       type: object
       required:
@@ -1289,6 +1235,19 @@ components:
           type: string
         new_password:
           type: string
+    AuditLogFilterRequest:
+      type: object
+      properties:
+        actor_id:
+          type: string
+        action:
+          type: string
+        target_id:
+          type: string
+        page:
+          type: integer
+        page_size:
+          type: integer
     SecurityAuditLog:
       type: object
       properties:
@@ -1305,39 +1264,116 @@ components:
         created_at:
           type: string
           format: date-time
-    AuditLogFilterRequest:
-      type: object
-      properties:
-        actor_id:
-          type: string
-        action:
-          type: string
-        target_id:
-          type: string
-        page:
-          type: integer
-        page_size:
-          type: integer
     APIKey:
       type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        name:
+          type: string
+        key:
+          type: string
+        created_at:
+          type: string
+          format: date-time
     APIKeyCreateRequest:
       type: object
+      required:
+        - user_id
+        - name
+      properties:
+        user_id:
+          type: string
+        name:
+          type: string
     APIKeyRevokeRequest:
       type: object
+      required:
+        - user_id
+        - key_id
+      properties:
+        user_id:
+          type: string
+        key_id:
+          type: string
     Device:
       type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        device_id:
+          type: string
+        device_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
     DeviceRevokeRequest:
       type: object
+      required:
+        - user_id
+        - device_id
+      properties:
+        user_id:
+          type: string
+        device_id:
+          type: string
     Breach:
       type: object
+      properties:
+        id:
+          type: string
+        description:
+          type: string
+        detected_at:
+          type: string
+          format: date-time
     SecurityPolicy:
       type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        created_at:
+          type: string
+          format: date-time
     SecurityPolicyCreateRequest:
       type: object
+      required:
+        - name
+        - description
+      properties:
+        name:
+          type: string
+        description:
+          type: string
     SecurityPolicyUpdateRequest:
       type: object
+      required:
+        - id
+        - name
+        - description
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
     SecurityPolicyDeleteRequest:
       type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
     WebhookCreateRequest:
       type: object
     WebhookDeleteRequest:

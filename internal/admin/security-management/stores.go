@@ -16,6 +16,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 
+	// "github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pquerna/otp/totp"
 	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
@@ -90,7 +92,7 @@ func (s *PostgresStore) DisableMFA(ctx context.Context, userID string) error {
 }
 
 func (s *PostgresStore) ResetUserPassword(ctx context.Context, userID, newPassword string) error {
-	_, err := s.DB.Exec(ctx, `UPDATE users SET password_hash=$1 WHERE id=$2`, newPassword, userID)
+	_, err := s.DB.Exec(ctx, `UPDATE users SET password=$1 WHERE id=$2`, newPassword, userID)
 	if err != nil {
 		logger.LogError("ResetUserPassword failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return wrapDBErr("reset_user_password", err)
@@ -147,8 +149,8 @@ func (s *PostgresStore) ListSecurityAuditLogs(ctx context.Context, page, pageSiz
 }
 
 func (s *PostgresStore) CreateSecurityAuditLog(ctx context.Context, log SecurityAuditLog) (SecurityAuditLog, error) {
-	if log.ID == "" {
-		return SecurityAuditLog{}, wrapDBErr("create_security_audit_log", ErrMissingID)
+	if log.ID == "" || !commonutil.IsValidUUID(log.ID) {
+		log.ID = commonutil.GenerateUUID()
 	}
 	if log.ActorID == "" || log.Action == "" || log.TargetID == "" {
 		return SecurityAuditLog{}, wrapDBErr("create_security_audit_log", ErrInvalidAuditLog)
@@ -1081,9 +1083,11 @@ func (s *PostgresStore) RegisterUser(ctx context.Context, email, password string
 		logger.LogError("RegisterUser hash failed", logger.ErrorField(err), logger.String("email", email))
 		return User{}, wrapDBErr("register_user_hash", err)
 	}
-	const q = `INSERT INTO users (email, password_hash, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) RETURNING id, email, created_at, updated_at`
+	id := commonutil.GenerateUUID()
+	status := "active"
+	const q = `INSERT INTO users (id, email, password, status, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW()) RETURNING id, email, status, created_at, updated_at`
 	var u User
-	err = s.DB.QueryRow(ctx, q, email, hash).Scan(&u.ID, &u.Email, &u.CreatedAt, &u.UpdatedAt)
+	err = s.DB.QueryRow(ctx, q, id, email, hash, status).Scan(&u.ID, &u.Email, &u.Status, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		logger.LogError("RegisterUser failed", logger.ErrorField(err), logger.String("email", email))
 		return User{}, wrapDBErr("register_user", err)
@@ -1092,7 +1096,7 @@ func (s *PostgresStore) RegisterUser(ctx context.Context, email, password string
 }
 
 func (s *PostgresStore) AuthenticateUser(ctx context.Context, email, password string) (User, error) {
-	const q = `SELECT id, email, password_hash, created_at, updated_at FROM users WHERE email=$1 AND deleted_at IS NULL`
+	const q = `SELECT id, email, password, created_at, updated_at FROM users WHERE email=$1 AND deleted_at IS NULL`
 	var u User
 	var hash string
 	err := s.DB.QueryRow(ctx, q, email).Scan(&u.ID, &u.Email, &hash, &u.CreatedAt, &u.UpdatedAt)
@@ -1795,7 +1799,7 @@ func (s *PostgresStore) SetAuthTypeConfig(ctx context.Context, tenantID string, 
 func (s *PostgresStore) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
 	// First verify the old password
 	var passwordHash string
-	err := s.DB.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, userID).Scan(&passwordHash)
+	err := s.DB.QueryRow(ctx, `SELECT password FROM users WHERE id = $1`, userID).Scan(&passwordHash)
 	if err != nil {
 		logger.LogError("ChangePassword query failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return wrapDBErr("change_password", err)
@@ -1811,11 +1815,11 @@ func (s *PostgresStore) ChangePassword(ctx context.Context, userID, oldPassword,
 	newHash, err := hashPassword(newPassword)
 	if err != nil {
 		logger.LogError("ChangePassword failed to hash new password", logger.ErrorField(err))
-		return wrapDBErr("change_password_hash", err)
+		return wrapDBErr("change_password", err)
 	}
 
 	// Update the password
-	_, err = s.DB.Exec(ctx, `UPDATE users SET password_hash = $1 WHERE id = $2`, newHash, userID)
+	_, err = s.DB.Exec(ctx, `UPDATE users SET password = $1 WHERE id = $2`, newHash, userID)
 	if err != nil {
 		logger.LogError("ChangePassword update failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return wrapDBErr("change_password_update", err)
@@ -1890,4 +1894,47 @@ func (s *PostgresStore) CountUsers(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	return count, nil
+}
+
+// Define a minimal interface locally to avoid import cycle
+// Only the method needed for JWT secret fetch
+
+func (s *PostgresStore) GetOwnerJWTSecretConfig(ctx context.Context) (JWTSecretConfig, error) {
+	if s.ServerConfigService != nil {
+		jwtCfg, err := s.ServerConfigService.GetOwnerJWTSecretConfig(ctx)
+		if err == nil && jwtCfg.SecretName != "" {
+			return jwtCfg, nil
+		}
+		logger.LogError("GetOwnerJWTSecretConfig: ServerConfigService failed, falling back to direct DB", logger.ErrorField(err))
+	}
+	// Fallback: direct DB query
+	const q = `SELECT value FROM server_config WHERE key = $1`
+	var value string
+	err := s.DB.QueryRow(ctx, q, "owner_admin_jwt_secret_config").Scan(&value)
+	if err != nil {
+		logger.LogError("GetOwnerJWTSecretConfig: direct DB fetch failed", logger.ErrorField(err))
+		return JWTSecretConfig{}, errors.New("JWT secret config unavailable")
+	}
+	var jwtCfg JWTSecretConfig
+	err = json.Unmarshal([]byte(value), &jwtCfg)
+	if err != nil || jwtCfg.SecretName == "" {
+		logger.LogError("GetOwnerJWTSecretConfig: invalid JSON or missing secret_name", logger.ErrorField(err))
+		return JWTSecretConfig{}, errors.New("JWT secret config invalid")
+	}
+	logger.LogWarn("GetOwnerJWTSecretConfig: used direct DB fallback for JWT secret config")
+	return jwtCfg, nil
+}
+
+func NewPostgresStore(db *pgxpool.Pool, serverConfigService ServerConfigService, auditLogger AuditLogger) *PostgresStore {
+	if db == nil {
+		panic("PostgresStore: DB must not be nil")
+	}
+	if serverConfigService == nil {
+		panic("PostgresStore: ServerConfigService must not be nil (required for all secrets/keys)")
+	}
+	return &PostgresStore{
+		DB:                  db,
+		ServerConfigService: serverConfigService,
+		AuditLogger:         auditLogger,
+	}
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
@@ -1196,31 +1197,53 @@ func (h *SecurityHandler) Login(c *fiber.Ctx) error {
 		logger.LogError("Login: failed to create session", logger.ErrorField(err), logger.String("user_id", user.ID))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create session"})
 	}
+	// --- JWT generation ---
+	jwtSecretCfg, err := h.Store.GetOwnerJWTSecretConfig(c.Context())
+	if err != nil {
+		logger.LogError("Login: failed to get JWT secret config", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "JWT secret config unavailable"})
+	}
+	if jwtSecretCfg.SecretName == "" {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "JWT secret config missing"})
+	}
+	claims := jwt.MapClaims{
+		"user_id":   user.ID,
+		"email":     user.Email,
+		"tenant_id": tenantID,
+		"exp":       time.Now().Add(24 * time.Hour).Unix(),
+		"iat":       time.Now().Unix(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(jwtSecretCfg.SecretName))
+	if err != nil {
+		logger.LogError("Login: failed to sign JWT", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to sign JWT"})
+	}
 	if h.SecurityAuditLogService != nil {
 		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        sess.ID,
-			ActorID:   user.ID,
-			Action:    "login",
-			TargetID:  user.ID,
+			ID:       sess.ID,
+			ActorID:  user.ID,
+			Action:   "login",
+			TargetID: user.ID,
 			Details:   marshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
 	}
-	return c.JSON(fiber.Map{"token": sess.ID, "expires_at": sess.ExpiresAt})
+	return c.JSON(fiber.Map{"refresh_token": sess.ID, "expires_at": sess.ExpiresAt, "session_token": tokenString})
 }
 
 func (h *SecurityHandler) RefreshSession(c *fiber.Ctx) error {
 	var input struct {
-		SessionID string `json:"session_id"`
+		RefreshToken string `json:"refresh_token"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.SessionID == "" {
+	if err := c.BodyParser(&input); err != nil || input.RefreshToken == "" {
 		logger.LogError("RefreshSession: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "refresh_token required"})
 	}
-	sess, err := h.SessionService.RefreshSession(c.Context(), input.SessionID, 24*time.Hour)
+	sess, err := h.SessionService.RefreshSession(c.Context(), input.RefreshToken, 24*time.Hour)
 	if err != nil {
-		logger.LogError("RefreshSession: failed", logger.ErrorField(err), logger.String("session_id", input.SessionID))
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid session"})
+		logger.LogError("RefreshSession: failed", logger.ErrorField(err), logger.String("refresh_token", input.RefreshToken))
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid refresh token"})
 	}
 	if h.SecurityAuditLogService != nil {
 		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
@@ -1232,27 +1255,27 @@ func (h *SecurityHandler) RefreshSession(c *fiber.Ctx) error {
 			CreatedAt: time.Now().UTC(),
 		})
 	}
-	return c.JSON(fiber.Map{"token": sess.ID, "expires_at": sess.ExpiresAt})
+	return c.JSON(fiber.Map{"refresh_token": sess.ID, "expires_at": sess.ExpiresAt})
 }
 
 func (h *SecurityHandler) Logout(c *fiber.Ctx) error {
 	var input struct {
-		SessionID string `json:"session_id"`
+		RefreshToken string `json:"refresh_token"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.SessionID == "" {
+	if err := c.BodyParser(&input); err != nil || input.RefreshToken == "" {
 		logger.LogError("Logout: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "refresh_token required"})
 	}
-	if err := h.SessionService.LogoutSession(c.Context(), input.SessionID); err != nil {
-		logger.LogError("Logout: failed", logger.ErrorField(err), logger.String("session_id", input.SessionID))
+	if err := h.SessionService.LogoutSession(c.Context(), input.RefreshToken); err != nil {
+		logger.LogError("Logout: failed", logger.ErrorField(err), logger.String("refresh_token", input.RefreshToken))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to logout"})
 	}
 	if h.SecurityAuditLogService != nil {
 		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        input.SessionID,
+			ID:        input.RefreshToken,
 			ActorID:   getActorID(c),
 			Action:    "logout",
-			TargetID:  input.SessionID,
+			TargetID:  input.RefreshToken,
 			Details:   marshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
@@ -2070,22 +2093,22 @@ func (h *SecurityHandler) CreateUserSession(c *fiber.Ctx) error {
 
 func (h *SecurityHandler) DeleteUserSession(c *fiber.Ctx) error {
 	var input struct {
-		SessionID string `json:"session_id"`
+		RefreshToken string `json:"refresh_token"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.SessionID == "" {
+	if err := c.BodyParser(&input); err != nil || input.RefreshToken == "" {
 		logger.LogError("DeleteUserSession: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "refresh_token required"})
 	}
-	if err := h.SessionService.LogoutSession(c.Context(), input.SessionID); err != nil {
-		logger.LogError("DeleteUserSession: failed", logger.ErrorField(err), logger.String("session_id", input.SessionID))
+	if err := h.SessionService.LogoutSession(c.Context(), input.RefreshToken); err != nil {
+		logger.LogError("DeleteUserSession: failed", logger.ErrorField(err), logger.String("refresh_token", input.RefreshToken))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete session"})
 	}
 	if h.SecurityAuditLogService != nil {
 		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        input.SessionID,
+			ID:        input.RefreshToken,
 			ActorID:   getActorID(c),
 			Action:    "delete_user_session",
-			TargetID:  input.SessionID,
+			TargetID:  input.RefreshToken,
 			Details:   marshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
@@ -2095,15 +2118,15 @@ func (h *SecurityHandler) DeleteUserSession(c *fiber.Ctx) error {
 
 func (h *SecurityHandler) GetUserSession(c *fiber.Ctx) error {
 	var input struct {
-		SessionID string `json:"session_id"`
+		RefreshToken string `json:"refresh_token"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.SessionID == "" {
+	if err := c.BodyParser(&input); err != nil || input.RefreshToken == "" {
 		logger.LogError("GetUserSession: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "refresh_token required"})
 	}
-	sess, err := h.SessionService.GetSession(c.Context(), input.SessionID)
+	sess, err := h.SessionService.GetSession(c.Context(), input.RefreshToken)
 	if err != nil {
-		logger.LogError("GetUserSession: failed", logger.ErrorField(err), logger.String("session_id", input.SessionID))
+		logger.LogError("GetUserSession: failed", logger.ErrorField(err), logger.String("refresh_token", input.RefreshToken))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "session not found"})
 	}
 	if h.SecurityAuditLogService != nil {
@@ -2155,25 +2178,25 @@ func (h *SecurityHandler) RevokeUserSession(c *fiber.Ctx) error {
 	}
 	var input struct {
 		UserID    string `json:"user_id"`
-		SessionID string `json:"session_id"`
+		RefreshToken string `json:"refresh_token"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" || input.SessionID == "" {
+	if err := c.BodyParser(&input); err != nil || input.UserID == "" || input.RefreshToken == "" {
 		logger.LogError("RevokeUserSession: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id and session id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id and refresh token required"})
 	}
-	if err := h.SessionService.RevokeUserSession(c.Context(), input.UserID, input.SessionID); err != nil {
-		logger.LogError("RevokeUserSession: failed", logger.ErrorField(err), logger.String("user_id", input.UserID), logger.String("session_id", input.SessionID))
+	if err := h.SessionService.RevokeUserSession(c.Context(), input.UserID, input.RefreshToken); err != nil {
+		logger.LogError("RevokeUserSession: failed", logger.ErrorField(err), logger.String("user_id", input.UserID), logger.String("refresh_token", input.RefreshToken))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	details := fiber.Map{"user_id": input.UserID, "session_id": input.SessionID}
+	details := fiber.Map{"user_id": input.UserID, "refresh_token": input.RefreshToken}
 	detailsBytes, _ := json.Marshal(details)
 	detailsStr := string(detailsBytes)
 	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
 		ID:        uuid.NewString(),
 		ActorID:   getActorID(c),
 		Action:    "revoke_user_session",
-		TargetID:  input.SessionID,
+		TargetID:  input.RefreshToken,
 		Details:   detailsStr,
 		CreatedAt: time.Now().UTC(),
 	})

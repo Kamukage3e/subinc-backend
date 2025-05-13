@@ -68,6 +68,9 @@ func RegisterAdminServerConfigRoutes(router fiber.Router, handler *Handler, jwtS
 	cfg.Get("/owner-session-config", handler.GetOwnerSessionConfig)
 	cfg.Post("/owner-session-config", handler.SetOwnerSessionConfig)
 
+	cfg.Get("/owner-graphql-config", handler.GetOwnerGraphQLConfig)
+	cfg.Post("/owner-graphql-config", handler.SetOwnerGraphQLConfig)
+
 	// Client-admin DB config endpoints
 	cfg.Get("/client-config/db/:tenantID", handler.GetClientDBConfig)
 	cfg.Post("/client-config/db/:tenantID", handler.SetClientDBConfig)

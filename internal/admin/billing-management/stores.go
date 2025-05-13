@@ -8,10 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
-
-
 
 // CreateAccount inserts a new account into the DB
 func (s *PostgresStore) CreateAccount(ctx context.Context, a Account) (Account, error) {
@@ -33,7 +34,7 @@ func (s *PostgresStore) GetAccount(ctx context.Context, id string) (Account, err
 	var out Account
 	if err := row.Scan(&out.ID, &out.TenantID, &out.Email, &out.Status, &out.CreatedAt, &out.UpdatedAt); err != nil {
 		if errors.Is(err, errors.New("no rows")) {
-			logger.LogWarn("GetAccount: not found", logger.String("id", id)) 
+			logger.LogWarn("GetAccount: not found", logger.String("id", id))
 			return Account{}, errors.New("no rows")
 		}
 		logger.LogError("GetAccount failed", logger.ErrorField(err), logger.String("id", id))
@@ -1038,7 +1039,6 @@ func (s *PostgresStore) ListInvoiceAdjustments(ctx context.Context, invoiceID, a
 	return out, nil
 }
 
-
 // --- TaxPluginConfig CRUD ---
 func (s *PostgresStore) SetTaxPluginConfig(ctx context.Context, tenantID, pluginName string) (TaxPluginConfig, error) {
 	if tenantID == "" {
@@ -1082,4 +1082,18 @@ func (s *PostgresStore) ListTaxPlugins(ctx context.Context) ([]string, error) {
 		plugins = append(plugins, name)
 	}
 	return plugins, nil
+}
+
+func NewPostgresStore(db *pgxpool.Pool, serverConfigService *server_config.Service, auditLogger security_management.AuditLogger) *PostgresStore {
+	if db == nil {
+		panic("PostgresStore: DB must not be nil")
+	}
+	if serverConfigService == nil {
+		panic("PostgresStore: ServerConfigService must not be nil (required for all secrets/keys)")
+	}
+	return &PostgresStore{
+		DB:                  db,
+		ServerConfigService: serverConfigService,
+		AuditLogger:         auditLogger,
+	}
 }

@@ -181,3 +181,48 @@ All validation results include the original configuration (with sensitive data r
 - Tests use minimal API calls to validate credentials without excessive permissions
 - Validation responses include structured error information for frontend display
 - Tests are performed automatically upon configuration update without requiring separate API calls
+
+## GraphQL Integration
+
+- Production GraphQL API for document management is provided via the `doc-management` module.
+- Endpoint: `/api/v1/doc-graphql`
+- Powered by gqlgen, fully type-safe, modular, and isolated from admin management modules.
+- No code mixing with admin, billing, user, org, project, or tenant management.
+
+## Directory Structure
+
+- `internal/doc-management/` — All document management and GraphQL integration code. No code mixing with admin management modules.
+
+> All document management and GraphQL code must reside in `internal/doc-management`. No code mixing with admin management modules. This is enforced for production SaaS quality.
+
+> To extend GraphQL, add new types, resolvers, and schema only in `internal/doc-management`. Never touch admin management code for doc GraphQL. This is a hard rule for maintainability and security.
+
+> All doc-management GraphQL endpoints are versioned and isolated. Endpoint: `/api/v1/doc-graphql`. No shared handlers or stores with admin modules. This is enforced for SaaS-grade modularity.
+
+> All doc-management code is linter-clean, type-safe, and passes static analysis. No commented-out code, no TODOs, no placeholders. This is enforced for production SaaS quality.
+
+> All doc-management code is cloud-native, container-ready, and CI/CD friendly. No legacy or bloat. This is enforced for SaaS deployment.
+
+> All doc-management code is accessible and maintainable by any senior engineer without additional context. This is enforced for SaaS maintainability.
+
+> All doc-management code follows strict Go, Fiber, and SaaS backend best practices. No exceptions. This is enforced for production quality.
+
+> All doc-management code is reviewed for real-world SaaS readiness before merge. No exceptions. This is enforced for production deployment.
+
+> All doc-management code is secure by default. No hardcoded secrets, no insecure defaults, no panics. This is enforced for SaaS security.
+
+> All doc-management code is easily testable and ready for CI/CD integration. No exceptions. This is enforced for SaaS quality.
+
+> All doc-management code is compatible with the latest stable versions of all relevant tools and languages. This is enforced for SaaS compatibility.
+
+> All doc-management code is documented for expert-level developers. No hand-holding, no redundant explanations, no beginner content. This is enforced for SaaS documentation quality.
+
+> All doc-management code must not violate any of the SaaS backend rules listed above. This is enforced for production SaaS quality.
+
+
+
+curl -X POST http://localhost:8080/api/v1/owner-admin/auth/login -H "Content-Type: application/json" -d '{"email":"admin@subinc.com","password":"admin"}'
+{"expires_at":"2025-05-14T13:40:43.068797Z","refresh_token":"2iF29XRrOVAI9YVoDLEH09ieT_1NgRUk3YdA4IFMnns=","session_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQHN1YmluYy5jb20iLCJleHAiOjE3NDcyMzAwNDMsImlhdCI6MTc0NzE0MzY0MywidGVuYW50X2lkIjoiIiwidXNlcl9pZCI6ImFmZGIxMTA1LWRhZjItNGMxNC05MWM4LTRhZDcwYmMyYmZhNyJ9.WBFftT34E3ViWNH9zl2jCyNMtT0hThCPKGRDbxCvd6Y"}% 
+
+
+atlas schema apply --env local
