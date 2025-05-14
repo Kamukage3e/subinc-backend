@@ -2,8 +2,6 @@ package user_management
 
 import (
 	"context"
-
-	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 )
 
 type UserService interface {
@@ -25,8 +23,6 @@ type UserSettingsService interface {
 	GetSettings(ctx context.Context, userID string) (map[string]interface{}, error)
 	UpdateSettings(ctx context.Context, userID, settings string) error
 }
-
-type UserAuditLogger = security_management.AuditLogger
 
 type OrgProjectUserService interface {
 	// Org membership

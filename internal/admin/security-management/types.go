@@ -35,6 +35,13 @@ type RBACService interface {
 	CheckPermission(ctx interface{}, actorID, resource, action string) (bool, error)
 }
 
+// Define a minimal UserService interface locally to avoid import cycle
+// Only the method(s) needed for password reset notification are included
+
+type UserService interface {
+	GetUser(ctx context.Context, id string) (User, error)
+}
+
 type SecurityHandler struct {
 	SecurityEventService        SecurityEventService
 	SecurityEventWebhookService SecurityEventWebhookService
@@ -54,6 +61,7 @@ type SecurityHandler struct {
 	SecurityAnalyticsService    SecurityAnalyticsService
 	NotificationService         NotificationService
 	SecurityModuleConfigService SecurityModuleConfigService
+	UserService                 UserService
 }
 
 type SecurityEvent struct {

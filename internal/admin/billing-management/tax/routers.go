@@ -1,0 +1,68 @@
+package tax
+
+import (
+	"context"
+	"encoding/json"
+	"time"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
+	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	commonutil "github.com/subinc/subinc-backend/internal/pkg/commonutil"
+	auditutil "github.com/subinc/subinc-backend/internal/pkg/auditutil"
+)
+
+func AuditLoggerMiddleware(auditLogger security_management.AuditLogger) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		ctx := context.WithValue(c.UserContext(), "auditLogger", auditLogger)
+		c.SetUserContext(ctx)
+		err := c.Next()
+
+		method := c.Method()
+		if method == fiber.MethodPost || method == fiber.MethodPut || method == fiber.MethodDelete {
+			route := c.Route().Path
+			actorID := commonutil.GetActorID(c)
+			var details map[string]interface{}
+			var targetID string
+			if c.Body() != nil && len(c.Body()) > 0 {
+				if err := json.Unmarshal(c.Body(), &details); err != nil {
+					details = map[string]interface{}{"body": string(c.Body())}
+				} else {
+					if id, ok := details["id"].(string); ok {
+						targetID = id
+					} else if tid, ok := details["target_id"].(string); ok {
+						targetID = tid
+					} else if aid, ok := details["account_id"].(string); ok {
+						targetID = aid
+					} else if rid, ok := details["req"].(map[string]interface{}); ok {
+						if ridVal, ok := rid["ID"].(string); ok {
+							targetID = ridVal
+						}
+					}
+				}
+			} else {
+				details = map[string]interface{}{}
+			}
+			auditLog := security_management.SecurityAuditLog{
+				ID:        uuid.NewString(),
+				ActorID:   actorID,
+				Action:    route + ":" + method,
+				TargetID:  targetID,
+				Details:   auditutil.AuditDetails(details),
+				CreatedAt: time.Now().UTC(),
+			}
+			_, _ = auditLogger.CreateSecurityAuditLog(ctx, auditLog)
+		}
+		return err
+	}
+}
+
+
+func RegisterTaxRoutes(router fiber.Router, handler *TaxHandler, auditLogger security_management.AuditLogger) {
+	taxRouter := router.Group("/tax", AuditLoggerMiddleware(auditLogger))
+
+	taxRouter.Post("/tax-info/set", handler.SetTaxInfo)
+	taxRouter.Get("/tax-info/get", handler.GetTaxInfo)
+	taxRouter.Post("/tax-plugin/list", handler.ListTaxPlugins)
+	taxRouter.Post("/tax-plugin/set", handler.SetTaxPluginConfig)
+}

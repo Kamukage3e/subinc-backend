@@ -39,13 +39,7 @@ func (e *Error) Unwrap() error {
 }
 
 // NewValidationError returns a validation error for a specific field
-func NewValidationError(field, msg string) *Error {
-	return &Error{
-		Code:    "VALIDATION_ERROR",
-		Message: msg,
-		Field:   field,
-	}
-}
+
 
 // NewNotFoundError returns a not found error for a resource
 func NewNotFoundError(resource string) *Error {
@@ -94,4 +88,13 @@ func IsConflictError(err error) bool {
 func IsInternalError(err error) bool {
 	e, ok := err.(*Error)
 	return ok && e.Code == "INTERNAL_ERROR"
+}
+
+
+func NewValidationError(field, msg string) *Error {
+	return &Error{
+		Code:    "VALIDATION_ERROR",
+		Message: msg,
+		Field:   field,
+	}
 }

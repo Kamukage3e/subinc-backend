@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-
 	"strconv"
 	"time"
 
@@ -16,18 +15,479 @@ import (
 	stripePaymentIntent "github.com/stripe/stripe-go/v75/paymentintent"
 	stripeRefund "github.com/stripe/stripe-go/v75/refund"
 
+	"github.com/gofiber/fiber/v2"
+	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
+	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-// DisputeStoreInterface abstracts dispute storage for testability and multi-tenant support
-// All methods must be robust, multi-tenant, and audit-friendly
-type DisputeStoreInterface interface {
-	CreateDispute(ctx context.Context, d *Dispute) error
-	GetDispute(ctx context.Context, disputeID string) (*Dispute, error)
-	ListDisputes(ctx context.Context, tenantID, paymentID string, status DisputeStatus, page, pageSize int) ([]*Dispute, error)
-	UpdateDisputeStatus(ctx context.Context, disputeID string, status DisputeStatus, evidenceSubmitted *time.Time) error
+// PaymentHandler is the handler for payment-related routes
+type PaymentHandler struct {
+	PaymentService       PaymentService
+	RefundService        RefundService
+	PaymentMethodService PaymentMethodService
+	ManualRefundService  ManualRefundService
+
+	RBACService      rbac_management.RBACService          // optional, may be nil
+	RateLimitService security_management.RateLimitService // for distributed rate limiting
+	ConfigService    *server_config.Service               // for fetching secrets, keys, and static configs from server-config
+	Logger           logger.Logger                        // add logger for webhook and handler logging
+	Notify           security_management.NotificationService
+	StoreRegistry    StoreInterface
+}
+
+// NewPaymentHandler creates a new payment handler
+func NewPaymentHandler(
+	paymentService PaymentService,
+	refundService RefundService,
+	manualRefundService ManualRefundService,
+	paymentMethodService PaymentMethodService,
+
+	rbacService rbac_management.RBACService,
+	rateLimitService security_management.RateLimitService,
+	configService *server_config.Service,
+	logger logger.Logger,
+	notify security_management.NotificationService,
+	storeRegistry StoreInterface,
+) *PaymentHandler {
+	return &PaymentHandler{
+		PaymentService:       paymentService,
+		RefundService:        refundService,
+		PaymentMethodService: paymentMethodService,
+		ManualRefundService:  manualRefundService,
+		RBACService:          rbacService,
+		RateLimitService:     rateLimitService,
+		ConfigService:        configService,
+		Logger:               logger,
+		Notify:               notify,
+		StoreRegistry:        storeRegistry,
+	}
+}
+
+// CreatePayment handles payment creation
+func (h *PaymentHandler) CreatePayment(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment", "create")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	var input Payment
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("CreatePayment: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+
+	payment, err := h.PaymentService.CreatePayment(input)
+	if err != nil {
+		logger.LogError("CreatePayment: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create payment"})
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(payment)
+}
+
+// RefundPayment handles payment refund
+func (h *PaymentHandler) RefundPayment(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment", "refund")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	var input RefundPaymentRequest
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("RefundPayment: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+
+	result, err := h.PaymentService.RefundPayment(c.Context(), &input)
+	if err != nil {
+		logger.LogError("RefundPayment: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to refund payment"})
+	}
+
+	return c.JSON(result)
+}
+
+// GetPaymentStatus handles payment status retrieval
+func (h *PaymentHandler) GetPaymentStatus(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment", "read")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	paymentID := c.Query("payment_id")
+	if paymentID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "payment_id is required"})
+	}
+
+	status, err := h.PaymentService.GetPaymentStatus(c.Context(), paymentID)
+	if err != nil {
+		logger.LogError("GetPaymentStatus: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get payment status"})
+	}
+
+	return c.JSON(status)
+}
+
+// UpdatePayment handles payment update
+func (h *PaymentHandler) UpdatePayment(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment", "update")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	var input Payment
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("UpdatePayment: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+
+	payment, err := h.PaymentService.UpdatePayment(input)
+	if err != nil {
+		logger.LogError("UpdatePayment: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update payment"})
+	}
+
+	return c.JSON(payment)
+}
+
+// GetPayment handles payment retrieval
+func (h *PaymentHandler) GetPayment(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment", "read")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	id := c.Query("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
+	}
+
+	payment, err := h.PaymentService.GetPayment(id)
+	if err != nil {
+		logger.LogError("GetPayment: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get payment"})
+	}
+
+	return c.JSON(payment)
+}
+
+// ListPayments handles payment listing
+func (h *PaymentHandler) ListPayments(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment", "list")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	invoiceID := c.Query("invoice_id")
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	pageSize, _ := strconv.Atoi(c.Query("page_size", "20"))
+
+	payments, err := h.PaymentService.ListPayments(invoiceID, page, pageSize)
+	if err != nil {
+		logger.LogError("ListPayments: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list payments"})
+	}
+
+	return c.JSON(fiber.Map{"payments": payments, "page": page, "page_size": pageSize})
+}
+
+// CreatePaymentMethod handles payment method creation
+func (h *PaymentHandler) CreatePaymentMethod(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment_method", "create")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	var input struct {
+		PaymentMethod PaymentMethod     `json:"payment_method"`
+		PaymentData   map[string]string `json:"payment_data"`
+	}
+
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("CreatePaymentMethod: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+
+	method, err := h.PaymentMethodService.CreatePaymentMethod(input.PaymentMethod, input.PaymentData)
+	if err != nil {
+		logger.LogError("CreatePaymentMethod: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create payment method"})
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(method)
+}
+
+// UpdatePaymentMethod handles payment method update
+func (h *PaymentHandler) UpdatePaymentMethod(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment_method", "update")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	var input PaymentMethod
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("UpdatePaymentMethod: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+
+	method, err := h.PaymentMethodService.UpdatePaymentMethod(input)
+	if err != nil {
+		logger.LogError("UpdatePaymentMethod: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update payment method"})
+	}
+
+	return c.JSON(method)
+}
+
+// PatchPaymentMethod handles payment method patching
+func (h *PaymentHandler) PatchPaymentMethod(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment_method", "patch")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	var input struct {
+		ID         string `json:"id"`
+		SetDefault *bool  `json:"set_default"`
+		Status     string `json:"status"`
+	}
+
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("PatchPaymentMethod: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+
+	if input.ID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
+	}
+
+	if err := h.PaymentMethodService.PatchPaymentMethod(input.ID, input.SetDefault, input.Status); err != nil {
+		logger.LogError("PatchPaymentMethod: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to patch payment method"})
+	}
+
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// DeletePaymentMethod handles payment method deletion
+func (h *PaymentHandler) DeletePaymentMethod(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment_method", "delete")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	id := c.Query("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
+	}
+
+	if err := h.PaymentMethodService.DeletePaymentMethod(id); err != nil {
+		logger.LogError("DeletePaymentMethod: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete payment method"})
+	}
+
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// GetPaymentMethod handles payment method retrieval
+func (h *PaymentHandler) GetPaymentMethod(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment_method", "read")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	id := c.Query("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
+	}
+
+	method, err := h.PaymentMethodService.GetPaymentMethod(id)
+	if err != nil {
+		logger.LogError("GetPaymentMethod: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get payment method"})
+	}
+
+	return c.JSON(method)
+}
+
+// ListPaymentMethods handles payment method listing
+func (h *PaymentHandler) ListPaymentMethods(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment_method", "list")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	accountID := c.Query("account_id")
+	status := c.Query("status")
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	pageSize, _ := strconv.Atoi(c.Query("page_size", "20"))
+
+	methods, err := h.PaymentMethodService.ListPaymentMethods(accountID, status, page, pageSize)
+	if err != nil {
+		logger.LogError("ListPaymentMethods: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list payment methods"})
+	}
+
+	return c.JSON(fiber.Map{"payment_methods": methods, "page": page, "page_size": pageSize})
+}
+
+// CreateRefund handles refund creation
+func (h *PaymentHandler) CreateRefund(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "refund", "create")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	var input Refund
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("CreateRefund: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+
+	refund, err := h.RefundService.CreateRefund(input)
+	if err != nil {
+		logger.LogError("CreateRefund: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create refund"})
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(refund)
+}
+
+// UpdateRefund handles refund update
+func (h *PaymentHandler) UpdateRefund(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "refund", "update")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	id := c.Query("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
+	}
+
+	if err := h.RefundService.UpdateRefund(id); err != nil {
+		logger.LogError("UpdateRefund: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update refund"})
+	}
+
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// DeleteRefund handles refund deletion
+func (h *PaymentHandler) DeleteRefund(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "refund", "delete")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	id := c.Query("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
+	}
+
+	if err := h.RefundService.DeleteRefund(id); err != nil {
+		logger.LogError("DeleteRefund: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete refund"})
+	}
+
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// GetRefund handles refund retrieval
+func (h *PaymentHandler) GetRefund(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "refund", "read")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	id := c.Query("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
+	}
+
+	refund, err := h.RefundService.GetRefund(id)
+	if err != nil {
+		logger.LogError("GetRefund: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get refund"})
+	}
+
+	return c.JSON(refund)
+}
+
+// ListRefunds handles refund listing
+func (h *PaymentHandler) ListRefunds(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "refund", "list")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	paymentID := c.Query("payment_id")
+	invoiceID := c.Query("invoice_id")
+	status := c.Query("status")
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	pageSize, _ := strconv.Atoi(c.Query("page_size", "20"))
+
+	refunds, err := h.RefundService.ListRefunds(paymentID, invoiceID, status, page, pageSize)
+	if err != nil {
+		logger.LogError("ListRefunds: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list refunds"})
+	}
+
+	return c.JSON(fiber.Map{"refunds": refunds, "page": page, "page_size": pageSize})
 }
 
 func MarshalAuditDetails(v interface{}) string {
@@ -146,15 +606,7 @@ func (p *PaypalProvider) CreatePayment(ctx context.Context, req *CreatePaymentRe
 	cap := capture.PurchaseUnits[0].Payments.Captures[0]
 	amount, _ := strconv.ParseFloat(cap.Amount.Value, 64)
 	logger.LogInfo("paypal.create_payment.success", logger.String("capture_id", cap.ID), logger.Float64("amount", amount), logger.String("currency", cap.Amount.Currency))
-	if p.AuditLogger != nil {
-		go p.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-			ActorID:   getActorIDFromContext(ctx),
-			Action:    "paypal_create_payment",
-			TargetID:  cap.ID,
-			Details:   MarshalAuditDetails(map[string]interface{}{"amount": amount, "currency": cap.Amount.Currency, "status": cap.Status, "raw": cap}),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
+
 	result := &PaymentResult{
 		PaymentID: cap.ID,
 		Status:    cap.Status,
@@ -240,7 +692,7 @@ func (p *PaypalProvider) GetPaymentStatus(ctx context.Context, paymentID string)
 		logger.LogError("paypal.get_payment_status.missing_payment_id", logger.ErrorField(err))
 		return nil, err
 	}
-	result, err := p.Store.GetPayment(ctx, paymentID)
+	result, err := p.Store.GetPaymentResult(ctx, paymentID)
 	if err != nil {
 		logger.LogError("paypal.get_payment_status.get_payment_failed", logger.ErrorField(err))
 		if p.AuditLogger != nil {
@@ -435,7 +887,7 @@ func (s *StripeProvider) GetPaymentStatus(ctx context.Context, paymentID string)
 		logger.LogError("stripe.get_payment_status.missing_payment_id", logger.ErrorField(err))
 		return nil, err
 	}
-	result, err := s.Store.GetPayment(ctx, paymentID)
+	result, err := s.Store.GetPaymentResult(ctx, paymentID)
 	if err != nil {
 		logger.LogError("stripe.get_payment_status.get_payment_failed", logger.ErrorField(err))
 		if s.AuditLogger != nil {
@@ -501,7 +953,7 @@ func GetProviderForTenant(ctx context.Context, store StoreInterface, tenantID st
 	ownerCfg, err := configService.GetOwnerPaymentProviderConfig(ctx)
 	if err != nil {
 		logger.LogError("GetProviderForTenant: failed to get owner config", logger.ErrorField(err))
-		return nil, err 
+		return nil, err
 	}
 	secret, _ := store.GetTenantProviderSecret(ctx, tenantID, cfg.Provider)
 	if secret == nil {
@@ -581,14 +1033,10 @@ func GetProviderForTenant(ctx context.Context, store StoreInterface, tenantID st
 		}
 		client := braintree.New(btEnv, merchantID, publicKey, privateKey)
 		_, err = client.Transaction().Search(ctx, &braintree.SearchQuery{})
-		if err != nil {
-			logger.LogError("GetProviderForTenant: braintree client test failed", logger.ErrorField(err))
-			return nil, err
-		}
 		return &BraintreeProvider{Client: client, AuditLogger: auditLogger, Store: store}, nil
 	default:
 		logger.LogError("GetProviderForTenant: unsupported provider", logger.String("provider", cfg.Provider))
-		return nil, errors.New("unsupported provider: "+cfg.Provider)
+		return nil, errors.New("unsupported provider: " + cfg.Provider)
 	}
 }
 
@@ -602,280 +1050,6 @@ func getActorIDFromContext(ctx context.Context) string {
 		}
 	}
 	return "system"
-}
-
-// NewStripeProvider returns a StripeProvider using merged owner/tenant config
-func NewStripeProvider(ctx context.Context, store StoreInterface, tenantID string, auditLogger security_management.AuditLogger, configService *server_config.Service) (*StripeProvider, error) {
-	ownerCfg, err := configService.GetOwnerPaymentProviderConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-	secret, err := store.GetTenantProviderSecret(ctx, tenantID, "stripe")
-	if err != nil {
-		return nil, err
-	}
-	apiKey := ownerCfg.StripeAPIKey
-	if v, ok := secret["api_key"]; ok && v != "" {
-		apiKey = v
-	}
-	if apiKey == "" {
-		return nil, errors.New("stripe api_key missing for tenant and owner")
-	}
-	return &StripeProvider{APIKey: apiKey, AuditLogger: auditLogger, Store: store}, nil
-}
-
-// NewPaypalProvider returns a PaypalProvider using merged owner/tenant config
-func NewPaypalProvider(ctx context.Context, store StoreInterface, tenantID string, auditLogger security_management.AuditLogger, configService *server_config.Service) (*PaypalProvider, error) {
-	ownerCfg, err := configService.GetOwnerPaymentProviderConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-	secret, err := store.GetTenantProviderSecret(ctx, tenantID, "paypal")
-	if err != nil {
-		return nil, err
-	}
-	clientID := ownerCfg.PaypalClientID
-	clientSecret := ownerCfg.PaypalClientSecret
-	if v, ok := secret["client_id"]; ok && v != "" {
-		clientID = v
-	}
-	if v, ok := secret["client_secret"]; ok && v != "" {
-		clientSecret = v
-	}
-	env := secret["env"]
-	if clientID == "" || clientSecret == "" || env == "" {
-		return nil, errors.New("paypal client_id, client_secret, or env missing for tenant and owner")
-	}
-	var apiBase string
-	switch env {
-	case "sandbox":
-		apiBase = paypal.APIBaseSandBox
-	case "live":
-		apiBase = paypal.APIBaseLive
-	default:
-		return nil, errors.New("invalid paypal env")
-	}
-	client, err := paypal.NewClient(clientID, clientSecret, apiBase)
-	if err != nil {
-		return nil, err
-	}
-	return &PaypalProvider{Client: client, AuditLogger: auditLogger, Store: store}, nil
-}
-
-// NewBraintreeProvider returns a BraintreeProvider using merged owner/tenant config
-func NewBraintreeProvider(ctx context.Context, store StoreInterface, tenantID string, auditLogger security_management.AuditLogger, configService *server_config.Service) (*BraintreeProvider, error) {
-	ownerCfg, err := configService.GetOwnerPaymentProviderConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-	secret, err := store.GetTenantProviderSecret(ctx, tenantID, "braintree")
-	if err != nil {
-		return nil, err
-	}
-	merchantID := ownerCfg.BraintreeMerchantID
-	publicKey := ownerCfg.BraintreePublicKey
-	privateKey := ownerCfg.BraintreePrivateKey
-	env := ownerCfg.BraintreeEnv
-	if v, ok := secret["merchant_id"]; ok && v != "" {
-		merchantID = v
-	}
-	if v, ok := secret["public_key"]; ok && v != "" {
-		publicKey = v
-	}
-	if v, ok := secret["private_key"]; ok && v != "" {
-		privateKey = v
-	}
-	if v, ok := secret["env"]; ok && v != "" {
-		env = v
-	}
-	if merchantID == "" || publicKey == "" || privateKey == "" || env == "" {
-		return nil, errors.New("braintree merchant_id, public_key, private_key, or env missing for tenant and owner")
-	}
-	var btEnv braintree.Environment
-	switch env {
-	case "sandbox":
-		btEnv = braintree.Sandbox
-	case "production":
-		btEnv = braintree.Production
-	default:
-		return nil, errors.New("invalid braintree env")
-	}
-	client := braintree.New(btEnv, merchantID, publicKey, privateKey)
-	_, err = client.Transaction().Search(ctx, &braintree.SearchQuery{})
-	return &BraintreeProvider{Client: client, AuditLogger: auditLogger, Store: store}, err
-}
-
-func (b *BraintreeProvider) CreatePayment(ctx context.Context, req *CreatePaymentRequest) (*PaymentResult, error) {
-	if req == nil {
-		err := errors.New("request must not be nil")
-		logger.LogError("braintree.create_payment.invalid_request", logger.ErrorField(err))
-		return nil, err
-	}
-	if req.Amount <= 0 {
-		err := errors.New("amount must be positive")
-		logger.LogError("braintree.create_payment.invalid_amount", logger.ErrorField(err))
-		return nil, err
-	}
-	if req.Currency == "" {
-		err := errors.New("currency must not be empty")
-		logger.LogError("braintree.create_payment.missing_currency", logger.ErrorField(err))
-		return nil, err
-	}
-	if req.Source == "" {
-		err := errors.New("source must not be empty")
-		logger.LogError("braintree.create_payment.missing_source", logger.ErrorField(err))
-		return nil, err
-	}
-	var paymentMethod string
-	switch req.Source {
-	case PaymentMethodCard:
-		paymentMethod = req.Metadata["nonce"]
-	case PaymentMethodGooglePay:
-		paymentMethod = req.Metadata["nonce"]
-	case PaymentMethodApplePay:
-		paymentMethod = req.Metadata["nonce"]
-	default:
-		err := errors.New("unsupported payment method for Braintree")
-		logger.LogError("braintree.create_payment.unsupported_method", logger.ErrorField(err), logger.String("source", req.Source))
-		if b.AuditLogger != nil {
-			go b.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-				ActorID:   getActorIDFromContext(ctx),
-				Action:    "braintree_create_payment_unsupported_method",
-				TargetID:  "",
-				Details:   MarshalAuditDetails(map[string]interface{}{"source": req.Source, "error": err.Error()}),
-				CreatedAt: time.Now().UTC(),
-			})
-		}
-		return nil, err
-	}
-	if paymentMethod == "" {
-		err := errors.New("payment method nonce required")
-		logger.LogError("braintree.create_payment.missing_nonce", logger.ErrorField(err))
-		return nil, err
-	}
-	btReq := &braintree.TransactionRequest{
-		Type:               "sale",
-		Amount:             braintree.NewDecimal(int64(req.Amount*100), 2),
-		PaymentMethodNonce: paymentMethod,
-		Options: &braintree.TransactionOptions{
-			SubmitForSettlement: true,
-		},
-		OrderId: req.Metadata["order_id"],
-	}
-	btTx, err := b.Client.Transaction().Create(ctx, btReq)
-	if err != nil {
-		logger.LogError("braintree.create_payment.failed", logger.ErrorField(err))
-		return nil, errors.New("braintree: failed to create transaction")
-	}
-	result := &PaymentResult{
-		PaymentID: btTx.Id,
-		Status:    string(btTx.Status),
-		Amount:    req.Amount,
-		Currency:  req.Currency,
-		CreatedAt: time.Now().UTC(),
-		Provider:  "braintree",
-		Raw:       btTx,
-	}
-	if err := b.Store.SavePayment(ctx, result); err != nil {
-		logger.LogError("braintree.create_payment.save_payment_failed", logger.ErrorField(err))
-		return nil, err
-	}
-	if b.AuditLogger != nil {
-		go b.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-			ActorID:   getActorIDFromContext(ctx),
-			Action:    "braintree_create_payment",
-			TargetID:  btTx.Id,
-			Details:   MarshalAuditDetails(map[string]interface{}{"amount": req.Amount, "currency": req.Currency, "status": btTx.Status, "raw": btTx}),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
-	return result, nil
-}
-
-func (b *BraintreeProvider) RefundPayment(ctx context.Context, req *RefundPaymentRequest) (*PaymentResult, error) {
-	if req == nil {
-		err := errors.New("request must not be nil")
-		logger.LogError("braintree.refund_payment.invalid_request", logger.ErrorField(err))
-		return nil, err
-	}
-	if req.Amount <= 0 {
-		err := errors.New("amount must be positive")
-		logger.LogError("braintree.refund_payment.invalid_amount", logger.ErrorField(err))
-		return nil, err
-	}
-	if req.PaymentID == "" {
-		err := errors.New("payment_id must not be empty")
-		logger.LogError("braintree.refund_payment.missing_payment_id", logger.ErrorField(err))
-		return nil, err
-	}
-	btTx, err := b.Client.Transaction().Refund(ctx, req.PaymentID)
-	if err != nil {
-		logger.LogError("braintree.refund_payment.failed", logger.ErrorField(err))
-		return nil, errors.New("braintree: failed to refund transaction")
-	}
-	result := &PaymentResult{
-		PaymentID: req.PaymentID,
-		Status:    string(btTx.Status),
-		Amount:    req.Amount,
-		Currency:  req.Currency,
-		CreatedAt: time.Now().UTC(),
-		Provider:  "braintree",
-		Raw:       btTx,
-	}
-	if err := b.Store.SavePayment(ctx, result); err != nil {
-		logger.LogError("braintree.refund_payment.save_payment_failed", logger.ErrorField(err))
-		return nil, err
-	}
-	if b.AuditLogger != nil {
-		go b.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-			ActorID:   getActorIDFromContext(ctx),
-			Action:    "braintree_refund_payment",
-			TargetID:  req.PaymentID,
-			Details:   MarshalAuditDetails(map[string]interface{}{"amount": req.Amount, "currency": req.Currency, "status": btTx.Status, "raw": btTx}),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
-	return result, nil
-}
-
-func (b *BraintreeProvider) GetPaymentStatus(ctx context.Context, paymentID string) (*PaymentStatus, error) {
-	if paymentID == "" {
-		err := errors.New("payment_id must not be empty")
-		logger.LogError("braintree.get_payment_status.missing_payment_id", logger.ErrorField(err))
-		return nil, err
-	}
-	result, err := b.Store.GetPayment(ctx, paymentID)
-	if err != nil {
-		logger.LogError("braintree.get_payment_status.get_payment_failed", logger.ErrorField(err))
-		if b.AuditLogger != nil {
-			go b.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-				ActorID:   getActorIDFromContext(ctx),
-				Action:    "braintree_get_payment_status_failed",
-				TargetID:  paymentID,
-				Details:   MarshalAuditDetails(map[string]interface{}{"error": err.Error()}),
-				CreatedAt: time.Now().UTC(),
-			})
-		}
-		return nil, err
-	}
-	if b.AuditLogger != nil {
-		go b.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-			ActorID:   getActorIDFromContext(ctx),
-			Action:    "braintree_get_payment_status",
-			TargetID:  paymentID,
-			Details:   MarshalAuditDetails(result),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
-	return &PaymentStatus{
-		PaymentID: result.PaymentID,
-		Status:    result.Status,
-		Amount:    result.Amount,
-		Currency:  result.Currency,
-		UpdatedAt: result.CreatedAt,
-		Provider:  result.Provider,
-		Raw:       result.Raw,
-	}, nil
 }
 
 func CheckProviderConnection(ctx context.Context, store StoreInterface, tenantID, providerName string, configService *server_config.Service) error {
@@ -913,10 +1087,7 @@ func CheckProviderConnection(ctx context.Context, store StoreInterface, tenantID
 				clientSecret = v
 			}
 		}
-		env := ownerCfg.PaypalClientSecret
-		if v, ok := secret["env"]; ok && v != "" {
-			env = v
-		}
+		env := secret["env"]
 		if clientID == "" || clientSecret == "" || env == "" {
 			err = errors.New("paypal client_id, client_secret, or env missing for tenant and owner")
 			break
@@ -996,7 +1167,7 @@ func RetryPayment(ctx context.Context, store StoreInterface, p interface{}) (*Pa
 		logger.LogError("RetryPayment: invalid payment type", logger.ErrorField(errors.New("invalid payment type")))
 		return nil, errors.New("invalid payment type")
 	}
-	pay, err := store.GetPayment(ctx, failed.ID)
+	pay, err := store.GetPaymentResult(ctx, failed.ID)
 	if err != nil {
 		logger.LogError("RetryPayment: failed to load payment", logger.ErrorField(err))
 		return nil, err
@@ -1054,174 +1225,144 @@ func RetryPayment(ctx context.Context, store StoreInterface, p interface{}) (*Pa
 		return &PaymentResult{PaymentID: pay.PaymentID, Status: "failed", Amount: pay.Amount, Currency: pay.Currency, CreatedAt: time.Now().UTC(), Provider: pay.Provider}, err
 	}
 	// Audit log success
-	auditLogger, _ := ctx.Value("audit_logger").(security_management.AuditLogger)
-	if auditLogger != nil {
-		go auditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-			ActorID:   getActorIDFromContext(ctx),
-			Action:    "retry_payment_success",
-			TargetID:  result.PaymentID,
-			Details:   MarshalAuditDetails(result),
-			CreatedAt: time.Now().UTC(),
-		})
+	return result, nil
+}
+
+func (b *BraintreeProvider) CreatePayment(ctx context.Context, req *CreatePaymentRequest) (*PaymentResult, error) {
+	if req == nil {
+		err := errors.New("request must not be nil")
+		logger.LogError("braintree.create_payment.invalid_request", logger.ErrorField(err))
+		return nil, err
+	}
+	if req.Amount <= 0 {
+		err := errors.New("amount must be positive")
+		logger.LogError("braintree.create_payment.invalid_amount", logger.ErrorField(err))
+		return nil, err
+	}
+	if req.Currency == "" {
+		err := errors.New("currency must not be empty")
+		logger.LogError("braintree.create_payment.missing_currency", logger.ErrorField(err))
+		return nil, err
+	}
+	if req.Source == "" {
+		err := errors.New("source must not be empty")
+		logger.LogError("braintree.create_payment.missing_source", logger.ErrorField(err))
+		return nil, err
+	}
+	if b.Client == nil {
+		err := errors.New("braintree client not initialized")
+		logger.LogError("braintree.create_payment.client_not_initialized", logger.ErrorField(err))
+		return nil, err
+	}
+	btReq := &braintree.TransactionRequest{
+		Type:               "sale",
+		Amount:             braintree.NewDecimal(int64(req.Amount*100), 2),
+		PaymentMethodNonce: req.Source,
+		Options: &braintree.TransactionOptions{
+			SubmitForSettlement: true,
+		},
+		OrderId:      req.Metadata["order_id"],
+		CustomFields: req.Metadata,
+	}
+	tr, err := b.Client.Transaction().Create(ctx, btReq)
+	if err != nil {
+		logger.LogError("braintree.create_payment.failed", logger.ErrorField(err))
+		return nil, errors.New("braintree: failed to create transaction")
+	}
+	result := &PaymentResult{
+		PaymentID: tr.Id,
+		Status:    string(tr.Status),
+		Amount:    req.Amount,
+		Currency:  req.Currency,
+		CreatedAt: time.Now().UTC(),
+		Provider:  "braintree",
+		Raw:       tr,
+	}
+	if err := b.Store.SavePayment(ctx, result); err != nil {
+		logger.LogError("braintree.create_payment.save_payment_failed", logger.ErrorField(err))
+		return nil, err
 	}
 	return result, nil
 }
 
-// DisputeService handles dispute/chargeback logic for all providers
-// All methods are robust, multi-tenant, audit-logged, and notify on state change
-
-// IngestDisputeEvent ingests a dispute/chargeback event from a provider webhook
-func (s *DisputeService) IngestDisputeEvent(ctx context.Context, d *Dispute) error {
-	if d == nil {
-		return errors.New("dispute must not be nil")
-	}
-	d.CreatedAt = time.Now().UTC()
-	d.UpdatedAt = d.CreatedAt
-	err := s.Store.CreateDispute(ctx, d)
-	if err != nil {
-		logger.LogError("IngestDisputeEvent: create failed", logger.ErrorField(err))
-		return err
-	}
-	if s.AuditLogger != nil {
-		go s.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-			ActorID:   getActorIDFromContext(ctx),
-			Action:    "dispute_ingest",
-			TargetID:  d.ID,
-			Details:   MarshalAuditDetails(d),
-			CreatedAt: d.CreatedAt,
-		})
-	}
-	if s.Notify != nil {
-		_ = s.Notify.SendNotification(ctx, d.TenantID, security_management.NotificationEmail, []string{}, "dispute_opened", map[string]interface{}{"dispute_id": d.ID, "payment_id": d.PaymentID, "status": d.Status, "reason": d.Reason}, 3)
-	}
-	return nil
-}
-
-// ListDisputes returns disputes for a tenant/payment
-func (s *DisputeService) ListDisputes(ctx context.Context, tenantID, paymentID string, status DisputeStatus, page, pageSize int) ([]*Dispute, error) {
-	disputes, err := s.Store.ListDisputes(ctx, tenantID, paymentID, status, page, pageSize)
-	if err != nil {
-		logger.LogError("ListDisputes: failed", logger.ErrorField(err))
+func (b *BraintreeProvider) RefundPayment(ctx context.Context, req *RefundPaymentRequest) (*PaymentResult, error) {
+	if req == nil {
+		err := errors.New("request must not be nil")
+		logger.LogError("braintree.refund_payment.invalid_request", logger.ErrorField(err))
 		return nil, err
 	}
-	return disputes, nil
-}
-
-// GetDispute fetches a dispute by ID
-func (s *DisputeService) GetDispute(ctx context.Context, disputeID string) (*Dispute, error) {
-	dispute, err := s.Store.GetDispute(ctx, disputeID)
-	if err != nil {
-		logger.LogError("GetDispute: failed", logger.ErrorField(err))
+	if req.Amount <= 0 {
+		err := errors.New("amount must be positive")
+		logger.LogError("braintree.refund_payment.invalid_amount", logger.ErrorField(err))
 		return nil, err
 	}
-	return dispute, nil
-}
-
-// UpdateDisputeStatus updates dispute status and notifies/audits
-func (s *DisputeService) UpdateDisputeStatus(ctx context.Context, disputeID string, status DisputeStatus, evidenceSubmitted *time.Time) error {
-	err := s.Store.UpdateDisputeStatus(ctx, disputeID, status, evidenceSubmitted)
-	if err != nil {
-		logger.LogError("UpdateDisputeStatus: failed", logger.ErrorField(err))
-		return err
-	}
-	if s.AuditLogger != nil {
-		go s.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-			ActorID:   getActorIDFromContext(ctx),
-			Action:    "dispute_status_update",
-			TargetID:  disputeID,
-			Details:   MarshalAuditDetails(map[string]interface{}{"status": status, "evidence_submitted": evidenceSubmitted}),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
-	if s.Notify != nil {
-		_ = s.Notify.SendNotification(ctx, "", security_management.NotificationEmail, []string{}, "dispute_status_changed", map[string]interface{}{"dispute_id": disputeID, "status": status}, 3)
-	}
-	return nil
-}
-
-// UploadEvidence handles file upload, DB insert, audit, and notification
-func (s *DisputeEvidenceService) UploadEvidence(ctx context.Context, e *DisputeEvidence) error {
-	if e == nil {
-		return errors.New("evidence must not be nil")
-	}
-	e.CreatedAt = time.Now().UTC()
-	e.UpdatedAt = e.CreatedAt
-	err := s.Store.CreateDisputeEvidence(ctx, e)
-	if err != nil {
-		logger.LogError("UploadEvidence: create failed", logger.ErrorField(err))
-		return err
-	}
-	if s.AuditLogger != nil {
-		go s.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-			ActorID:   getActorIDFromContext(ctx),
-			Action:    "dispute_evidence_upload",
-			TargetID:  e.ID,
-			Details:   MarshalAuditDetails(e),
-			CreatedAt: e.CreatedAt,
-		})
-	}
-	if s.Notify != nil {
-		_ = s.Notify.SendNotification(ctx, e.TenantID, security_management.NotificationEmail, []string{}, "dispute_evidence_uploaded", map[string]interface{}{"evidence_id": e.ID, "dispute_id": e.DisputeID, "file_name": e.FileName}, 3)
-	}
-	return nil
-}
-
-// ListEvidence returns evidence for a dispute/tenant
-func (s *DisputeEvidenceService) ListEvidence(ctx context.Context, disputeID, tenantID string, page, pageSize int) ([]*DisputeEvidence, error) {
-	list, err := s.Store.ListDisputeEvidence(ctx, disputeID, tenantID, page, pageSize)
-	if err != nil {
-		logger.LogError("ListEvidence: failed", logger.ErrorField(err))
+	if req.Currency == "" {
+		err := errors.New("currency must not be empty")
+		logger.LogError("braintree.refund_payment.missing_currency", logger.ErrorField(err))
 		return nil, err
 	}
-	if s.AuditLogger != nil {
-		go s.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-			ActorID:   getActorIDFromContext(ctx),
-			Action:    "dispute_evidence_list",
-			TargetID:  disputeID,
-			Details:   MarshalAuditDetails(map[string]interface{}{"page": page, "page_size": pageSize}),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
-	return list, nil
-}
-
-// GetEvidence fetches an evidence record by ID
-func (s *DisputeEvidenceService) GetEvidence(ctx context.Context, evidenceID string) (*DisputeEvidence, error) {
-	e, err := s.Store.GetDisputeEvidence(ctx, evidenceID)
-	if err != nil {
-		logger.LogError("GetEvidence: failed", logger.ErrorField(err))
+	if req.PaymentID == "" {
+		err := errors.New("payment_id must not be empty")
+		logger.LogError("braintree.refund_payment.missing_payment_id", logger.ErrorField(err))
 		return nil, err
 	}
-	if s.AuditLogger != nil {
-		go s.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-			ActorID:   getActorIDFromContext(ctx),
-			Action:    "dispute_evidence_get",
-			TargetID:  evidenceID,
-			Details:   MarshalAuditDetails(e),
-			CreatedAt: e.CreatedAt,
-		})
+	if b.Client == nil {
+		err := errors.New("braintree client not initialized")
+		logger.LogError("braintree.refund_payment.client_not_initialized", logger.ErrorField(err))
+		return nil, err
 	}
-	return e, nil
+	tr, err := b.Client.Transaction().Refund(ctx, req.PaymentID)
+	if err != nil {
+		logger.LogError("braintree.refund_payment.failed", logger.ErrorField(err), logger.String("payment_id", req.PaymentID))
+		return nil, errors.New("braintree: failed to refund transaction")
+	}
+	amount := req.Amount
+	if tr.Amount != nil {
+		amount = float64(tr.Amount.Unscaled) / 100
+	}
+	result := &PaymentResult{
+		PaymentID: tr.Id,
+		Status:    string(tr.Status),
+		Amount:    amount,
+		Currency:  req.Currency,
+		CreatedAt: time.Now().UTC(),
+		Provider:  "braintree",
+		Raw:       tr,
+	}
+	if err := b.Store.SavePayment(ctx, result); err != nil {
+		logger.LogError("braintree.refund_payment.save_payment_failed", logger.ErrorField(err))
+		return nil, err
+	}
+	return result, nil
 }
 
-// UpdateEvidenceStatus updates provider status/response, audits, and notifies
-func (s *DisputeEvidenceService) UpdateEvidenceStatus(ctx context.Context, evidenceID, providerStatus, providerResponse string) error {
-	err := s.Store.UpdateDisputeEvidenceStatus(ctx, evidenceID, providerStatus, providerResponse)
+func (b *BraintreeProvider) GetPaymentStatus(ctx context.Context, paymentID string) (*PaymentStatus, error) {
+	if paymentID == "" {
+		err := errors.New("payment_id must not be empty")
+		logger.LogError("braintree.get_payment_status.missing_payment_id", logger.ErrorField(err))
+		return nil, err
+	}
+	if b.Client == nil {
+		err := errors.New("braintree client not initialized")
+		logger.LogError("braintree.get_payment_status.client_not_initialized", logger.ErrorField(err))
+		return nil, err
+	}
+	tr, err := b.Client.Transaction().Find(ctx, paymentID)
 	if err != nil {
-		logger.LogError("UpdateEvidenceStatus: failed", logger.ErrorField(err))
-		return err
+		logger.LogError("braintree.get_payment_status.find_failed", logger.ErrorField(err))
+		return nil, errors.New("braintree: failed to find transaction")
 	}
-	if s.AuditLogger != nil {
-		go s.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-			ActorID:   getActorIDFromContext(ctx),
-			Action:    "dispute_evidence_status_update",
-			TargetID:  evidenceID,
-			Details:   MarshalAuditDetails(map[string]interface{}{"provider_status": providerStatus, "provider_response": providerResponse}),
-			CreatedAt: time.Now().UTC(),
-		})
+	amount := 0.0
+	if tr.Amount != nil {
+		amount = float64(tr.Amount.Unscaled) / 100
 	}
-	if s.Notify != nil {
-		_ = s.Notify.SendNotification(ctx, "", security_management.NotificationEmail, []string{}, "dispute_evidence_status_changed", map[string]interface{}{"evidence_id": evidenceID, "provider_status": providerStatus}, 3)
-	}
-	return nil
+	return &PaymentStatus{
+		PaymentID: tr.Id,
+		Status:    string(tr.Status),
+		Amount:    amount,
+		Currency:  tr.CurrencyISOCode,
+		UpdatedAt: time.Now().UTC(),
+		Provider:  "braintree",
+		Raw:       tr,
+	}, nil
 }

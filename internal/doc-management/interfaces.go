@@ -3,9 +3,7 @@ package docmanagement
 import (
 	"context"
 
-	billing_management "github.com/subinc/subinc-backend/internal/admin/billing-management"
 	tenant_management "github.com/subinc/subinc-backend/internal/admin/tenant-management"
-	user_management "github.com/subinc/subinc-backend/internal/admin/user-management"
 )
 
 type DocumentStore interface {
@@ -34,8 +32,8 @@ type Row interface {
 
 // UnifiedSchemaDeps defines all dependencies required to build the unified schema.
 type UnifiedSchemaDeps struct {
-	DocumentResolver      DocumentResolver
-	BillingResolver       BillingResolver
+	DocumentResolver DocumentResolver
+
 	UserResolver          UserResolver
 	TenantResolver        TenantResolver
 	OrganizationResolver  OrganizationResolver
@@ -77,15 +75,32 @@ type DocumentResolver interface {
 	DeleteDocument(ctx context.Context, id string) (bool, error)
 }
 
-type BillingResolver interface {
-	GetAccount(ctx interface{}, id string) (*billing_management.Account, error)
-	CreateAccount(ctx interface{}, input billing_management.Account) (*billing_management.Account, error)
+// type BillingResolver interface {
+// 	GetAccount(ctx interface{}, id string) (*billing_management.Account, error)
+// 	CreateAccount(ctx interface{}, input billing_management.Account) (*billing_management.Account, error)
+// }
+
+type User struct {
+	ID        string
+	Email     string
+	Status    string
+	CreatedAt string
+	UpdatedAt string
+}
+
+type UserProfile struct {
+	UserID    string
+	FullName  string
+	AvatarURL string
+	Bio       string
+	CreatedAt string
+	UpdatedAt string
 }
 
 type UserResolver interface {
-	GetUser(ctx interface{}, id string) (*user_management.User, error)
-	CreateUser(ctx interface{}, input user_management.User) (*user_management.User, error)
-	GetUserProfile(ctx interface{}, userId string) (*user_management.UserProfile, error)
+	GetUser(ctx interface{}, id string) (*User, error)
+	CreateUser(ctx interface{}, input User) (*User, error)
+	GetUserProfile(ctx interface{}, userId string) (*UserProfile, error)
 }
 
 type TenantResolver interface {

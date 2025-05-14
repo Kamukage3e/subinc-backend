@@ -5,28 +5,7 @@ import (
 	"time"
 
 	"github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
-	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 )
-
-type AccountService interface {
-	CreateAccount(input Account) (Account, error)
-	UpdateAccount(input Account) (Account, error)
-	GetAccount(id string) (Account, error)
-	ListAccounts(tenantID string, page, pageSize int) ([]Account, error)
-}
-
-type PlanService interface {
-	CreatePlan(input Plan) (Plan, error)
-	UpdatePlan(input Plan) (Plan, error)
-	GetPlan(id string) (Plan, error)
-	ListPlans(activeOnly bool, page, pageSize int) ([]Plan, error)
-	DeletePlan(id string) error
-}
-
-type UsageService interface {
-	CreateUsage(input Usage) (Usage, error)
-	ListUsage(accountID, metric, period string, page, pageSize int) ([]Usage, error)
-}
 
 type InvoiceService interface {
 	CreateInvoice(input Invoice) (Invoice, error)
@@ -39,118 +18,70 @@ type InvoiceService interface {
 }
 
 type PaymentService interface {
-	CreatePayment(input Payment) (Payment, error)
-	UpdatePayment(input Payment) (Payment, error)
-	GetPayment(id string) (Payment, error)
-	ListPayments(invoiceID string, page, pageSize int) ([]Payment, error)
-	GetPaymentByIdempotencyKey(idempotencyKey string) (Payment, error)
+	CreatePayment(input payment.Payment) (payment.Payment, error)
+	UpdatePayment(input payment.Payment) (payment.Payment, error)
+	GetPayment(id string) (payment.Payment, error)
+	ListPayments(invoiceID string, page, pageSize int) ([]payment.Payment, error)
+	GetPaymentByIdempotencyKey(idempotencyKey string) (payment.Payment, error)
 
 	RefundPayment(ctx context.Context, req *payment.RefundPaymentRequest) (*payment.PaymentResult, error)
 	GetPaymentStatus(ctx context.Context, paymentID string) (*payment.PaymentStatus, error)
 }
 
-type DiscountService interface {
-	CreateDiscount(input Discount) (Discount, error)
-	UpdateDiscount(input Discount) (Discount, error)
-	DeleteDiscount(id string) error
-	GetDiscount(id string) (Discount, error)
-	GetDiscountByCode(code string) (Discount, error)
-	ListDiscounts(activeOnly bool, page, pageSize int) ([]Discount, error)
-}
-
-type CouponService interface {
-	CreateCoupon(input Coupon) (Coupon, error)
-	UpdateCoupon(input Coupon) (Coupon, error)
-	DeleteCoupon(id string) error
-	GetCoupon(id string) (Coupon, error)
-	GetCouponByCode(code string) (Coupon, error)
-	ListCoupons(discountID string, isActive *bool, page, pageSize int) ([]Coupon, error)
-	RedeemCoupon(code, accountID string) (Coupon, error)
-}
-
-type CreditService interface {
-	CreateCredit(input Credit) (Credit, error)
-	UpdateCredit(input Credit) (Credit, error)
-	PatchCredit(id, action string, amount float64) error
-	DeleteCredit(id string) error
-	GetCredit(id string) (Credit, error)
-	ListCredits(accountID, invoiceID, status string, page, pageSize int) ([]Credit, error)
-	ApplyCreditsToInvoice(invoiceID string) error
-}
-
 type RefundService interface {
-	CreateRefund(input Refund) (Refund, error)
+	CreateRefund(input payment.Refund) (payment.Refund, error)
 	UpdateRefund(id string) error
 	DeleteRefund(id string) error
-	GetRefund(id string) (Refund, error)
-	ListRefunds(paymentID, invoiceID, status string, page, pageSize int) ([]Refund, error)
+	GetRefund(id string) (payment.Refund, error)
+	ListRefunds(paymentID, invoiceID, status string, page, pageSize int) ([]payment.Refund, error)
 }
 
 type PaymentMethodService interface {
-	CreatePaymentMethod(input PaymentMethod, data map[string]string) (PaymentMethod, error)
-	UpdatePaymentMethod(input PaymentMethod) (PaymentMethod, error)
+	CreatePaymentMethod(input payment.PaymentMethod, data map[string]string) (payment.PaymentMethod, error)
+	UpdatePaymentMethod(input payment.PaymentMethod) (payment.PaymentMethod, error)
 	PatchPaymentMethod(id string, setDefault *bool, status string) error
 	DeletePaymentMethod(id string) error
-	GetPaymentMethod(id string) (PaymentMethod, error)
-	ListPaymentMethods(accountID, status string, page, pageSize int) ([]PaymentMethod, error)
-}
-
-type SubscriptionService interface {
-	CreateSubscription(input Subscription) (Subscription, error)
-	UpdateSubscription(input Subscription) (Subscription, error)
-	PatchSubscription(id, action string) error
-	DeleteSubscription(id string) error
-	GetSubscription(id string) (Subscription, error)
-	ListSubscriptions(accountID, status string, page, pageSize int) ([]Subscription, error)
-	ChangePlanSubscription(id, planID string) error
-	CancelSubscriptionNow(id string) error
-	ResumeSubscription(id string) error
-	UpgradeNowSubscription(id string) error
+	GetPaymentMethod(id string) (payment.PaymentMethod, error)
+	ListPaymentMethods(accountID, status string, page, pageSize int) ([]payment.PaymentMethod, error)
 }
 
 type WebhookEventService interface {
 	CreateWebhookEvent(input WebhookEvent) (WebhookEvent, error)
-	UpdateWebhookEvent(id string) error
+	UpdateWebhookEvent(input WebhookEvent) (WebhookEvent, error)
 	DeleteWebhookEvent(id string) error
 	GetWebhookEvent(id string) (WebhookEvent, error)
-	ListWebhookEvents(provider, status, eventType string, page, pageSize int) ([]WebhookEvent, error)
+	ListWebhookEvents(accountID, status string, page, pageSize int) ([]WebhookEvent, error)
 }
 
 type InvoiceAdjustmentService interface {
 	CreateInvoiceAdjustment(input InvoiceAdjustment) (InvoiceAdjustment, error)
-	UpdateInvoiceAdjustment(id string) error
+	UpdateInvoiceAdjustment(input InvoiceAdjustment) (InvoiceAdjustment, error)
 	DeleteInvoiceAdjustment(id string) error
 	GetInvoiceAdjustment(id string) (InvoiceAdjustment, error)
-	ListInvoiceAdjustments(invoiceID, adjType string, page, pageSize int) ([]InvoiceAdjustment, error)
+	ListInvoiceAdjustments(invoiceID string, page, pageSize int) ([]InvoiceAdjustment, error)
+	ApplyCreditsToInvoice(accountID, invoiceID string) ([]InvoiceAdjustment, error)
 }
 
 // ManualAdjustmentService handles manual invoice adjustments
 // All methods must be robust, user-friendly, and never leak sensitive info
 type ManualAdjustmentService interface {
-	CreateManualAdjustment(input InvoiceAdjustment) (InvoiceAdjustment, error)
+	CreateManualAdjustment(accountID, reason string, amount float64, currency string) error
 }
 
 // ManualRefundService handles manual refunds
 // All methods must be robust, user-friendly, and never leak sensitive info
-type ManualRefundService interface {
-	CreateManualRefund(input Refund) (Refund, error)
-}
+
 
 // AccountActionService handles account-level actions (e.g., suspend, activate, custom ops)
 // All methods must be robust, user-friendly, and never leak sensitive info
 type AccountActionService interface {
-	PerformAccountAction(ctx context.Context, accountID, action string, params map[string]interface{}) (map[string]interface{}, error)
+	PerformAccountAction(accountID, action string) error
 }
 
 type WebhookSubscriptionService interface {
-	CreateWebhookSubscription(ctx context.Context, sub WebhookSubscription) (WebhookSubscription, error)
-	ListWebhookSubscriptions(ctx context.Context, tenantID string, page, pageSize int) ([]WebhookSubscription, error)
-	DeleteWebhookSubscription(ctx context.Context, subID string) error
-}
-
-type TaxInfoService interface {
-	SetTaxInfo(ctx context.Context, info TaxInfo) (TaxInfo, error)
-	GetTaxInfo(ctx context.Context, tenantID string) (TaxInfo, error)
+	CreateWebhookSubscription(url, secret, description string, events []string) error
+	DeleteWebhookSubscription(id string) error
+	ListWebhookSubscriptions(tenantID string, page, pageSize int) ([]WebhookSubscription, error)
 }
 
 type TenantCurrencyService interface {
@@ -159,19 +90,21 @@ type TenantCurrencyService interface {
 }
 
 // All audit logging must use AuditLogger for decoupling and optionality.
-type BillingAuditLogger = security_management.AuditLogger
+type BillingAuditLogger interface {
+	LogBillingEvent(event string, actor string, target string, details string)
+}
 
 // DisputeServiceInterface defines admin dispute management contract
 // (moved from types.go for consistency)
 type DisputeServiceInterface interface {
-	ListDisputes(ctx context.Context, tenantID, paymentID string, status payment.DisputeStatus, page, pageSize int) ([]payment.Dispute, error)
-	GetDispute(ctx context.Context, id string) (payment.Dispute, error)
-	UpdateDisputeStatus(ctx context.Context, id string, status payment.DisputeStatus, evidenceSubmitted *time.Time) error
+	ListDisputes(ctx context.Context, tenantID, paymentID string, status payment.DisputeStatus, page, pageSize int) ([]*payment.Dispute, error)
+	GetDispute(ctx context.Context, disputeID string) (*payment.Dispute, error)
+	UpdateDisputeStatus(ctx context.Context, disputeID string, status payment.DisputeStatus, evidenceSubmitted *time.Time) error
 }
 
 type DisputeEvidenceServiceInterface interface {
-	ListEvidence(ctx context.Context, disputeID, tenantID string, page, pageSize int) ([]payment.DisputeEvidence, error)
-	GetEvidence(ctx context.Context, id string) (payment.DisputeEvidence, error)
-	UploadEvidence(ctx context.Context, evidence *payment.DisputeEvidence) error
+	UploadEvidence(ctx context.Context, e *payment.DisputeEvidence) error
+	ListEvidence(ctx context.Context, disputeID, tenantID string, page, pageSize int) ([]*payment.DisputeEvidence, error)
+	GetEvidence(ctx context.Context, evidenceID string) (*payment.DisputeEvidence, error)
 	UpdateEvidenceStatus(ctx context.Context, evidenceID, providerStatus, providerResponse string) error
 }

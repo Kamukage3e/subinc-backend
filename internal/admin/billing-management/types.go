@@ -1,42 +1,39 @@
 package billing_management
 
 import (
-	"context"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	account "github.com/subinc/subinc-backend/internal/admin/billing-management/account"
+	discount "github.com/subinc/subinc-backend/internal/admin/billing-management/discount"
+	payment "github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
+	tax "github.com/subinc/subinc-backend/internal/admin/billing-management/tax"
 	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
+	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
 // BillingAdminHandler is a struct that contains all the services for the billing admin
 type BillingAdminHandler struct {
-	AccountService             AccountService
-	PlanService                PlanService
-	UsageService               UsageService
 	InvoiceService             InvoiceService
-	PaymentService             PaymentService
-	DiscountService            DiscountService
-	CouponService              CouponService
-	CreditService              CreditService
-	RefundService              RefundService
-	PaymentMethodService       PaymentMethodService
-	SubscriptionService        SubscriptionService
 	WebhookEventService        WebhookEventService
 	InvoiceAdjustmentService   InvoiceAdjustmentService
 	ManualAdjustmentService    ManualAdjustmentService
-	ManualRefundService        ManualRefundService
 	AccountActionService       AccountActionService
 	WebhookSubscriptionService WebhookSubscriptionService
-	TaxInfoService             TaxInfoService
+	AccountService             account.AccountService
+	PaymentMethodService       payment.PaymentMethodService
+	CreditService              discount.CreditService
+	TaxService                 tax.TaxInfoService
 	Store                      *PostgresStore
-	AuditLogger                BillingAuditLogger                   // use interface for audit logging
-	RBACService                rbac_management.RBACService          // optional, may be nil
-	RateLimitService           security_management.RateLimitService // for distributed rate limiting
-	DisputeService             DisputeServiceInterface
-	DisputeEvidenceService     DisputeEvidenceServiceInterface
-	ConfigService              *server_config.Service // for fetching secrets, keys, and static configs from server-config
+	AuditLogger                BillingAuditLogger                      // use interface for audit logging
+	RBACService                rbac_management.RBACService             // optional, may be nil
+	RateLimitService           security_management.RateLimitService    // for distributed rate limiting
+	ConfigService              *server_config.Service                  // for fetching secrets, keys, and static configs from server-config
+	Logger                     logger.Logger                           // add logger for webhook and handler logging
+	Notify                     security_management.NotificationService // add notification service for webhook and event notifications
 }
 
 // Account represents a billing account
@@ -47,87 +44,24 @@ type BillingAdminHandler struct {
 // Status is active, suspended, or closed
 // Currency is the ISO 4217 code for the currency
 // CreatedAt, UpdatedAt are RFC3339 timestamps
-type Account struct {
-	ID        string    `json:"id"`
-	TenantID  string    `json:"tenant_id"`
-	Email     string    `json:"email"`
-	Status    string    `json:"status"`
-	Currency  string    `json:"currency"` // ISO 4217, e.g. USD
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-func (a *Account) Validate() *Error {
-	if a.TenantID == "" {
-		return NewValidationError("tenant_id", "must not be empty")
-	}
-	if a.Email == "" {
-		return NewValidationError("email", "must not be empty")
-	}
-	if a.Status == "" {
-		return NewValidationError("status", "must not be empty")
-	}
-	return nil
-}
-
-type Plan struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Price       float64   `json:"price"`
-	Currency    string    `json:"currency"` // ISO 4217, e.g. USD
-	Active      bool      `json:"active"`
-	Pricing     string    `json:"pricing"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-}
-
-func (p *Plan) Validate() *Error {
-	if p.Name == "" {
-		return NewValidationError("name", "must not be empty")
-	}
-	if p.Price < 0 {
-		return NewValidationError("price", "must be non-negative")
-	}
-	return nil
-}
-
-type Usage struct {
-	ID        string    `json:"id"`
-	AccountID string    `json:"account_id"`
-	Metric    string    `json:"metric"`
-	Amount    float64   `json:"amount"`
-	Period    string    `json:"period"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-func (u *Usage) Validate() *Error {
-	if u.AccountID == "" {
-		return NewValidationError("account_id", "must not be empty")
-	}
-	if u.Metric == "" {
-		return NewValidationError("metric", "must not be empty")
-	}
-	if u.Amount < 0 {
-		return NewValidationError("amount", "must be non-negative")
-	}
-	return nil
-}
 
 type Invoice struct {
-	ID               string    `json:"id"`
-	AccountID        string    `json:"account_id"`
-	Amount           float64   `json:"amount"`
-	Currency         string    `json:"currency"` // ISO 4217, e.g. USD
-	OriginalAmount   float64   `json:"original_amount,omitempty"`
-	OriginalCurrency string    `json:"original_currency,omitempty"`
-	Status           string    `json:"status"`
-	DueDate          time.Time `json:"due_date"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
-	TaxAmount        float64   `json:"tax_amount"`
-	TaxRate          float64   `json:"tax_rate"`
-	Fees             string    `json:"fees"`
+	ID                   string    `json:"id"`
+	AccountID            string    `json:"account_id"`
+	Amount               float64   `json:"amount"`
+	Currency             string    `json:"currency"` // ISO 4217, e.g. USD
+	OriginalAmount       float64   `json:"original_amount,omitempty"`
+	OriginalCurrency     string    `json:"original_currency,omitempty"`
+	Status               string    `json:"status"`
+	DueDate              time.Time `json:"due_date"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
+	TaxAmount            float64   `json:"tax_amount"`
+	TaxRate              float64   `json:"tax_rate"`
+	Fees                 string    `json:"fees"`
+	DunningAttempts      int       `json:"dunning_attempts"`
+	DunningNextAttemptAt time.Time `json:"dunning_next_attempt_at"`
+	DunningStatus        string    `json:"dunning_status"`
 }
 
 func (i *Invoice) Validate() *Error {
@@ -143,190 +77,7 @@ func (i *Invoice) Validate() *Error {
 	return nil
 }
 
-// Payment represents a payment for an invoice
-// All fields are required for SaaS billing and auditability
-// Status: pending, completed, failed, refunded
-// Method: card, bank, etc.
-// Metadata: JSON-encoded for extensibility
-type Payment struct {
-	ID               string    `json:"id"`
-	InvoiceID        string    `json:"invoice_id"`
-	Amount           float64   `json:"amount"`
-	Currency         string    `json:"currency"` // ISO 4217, e.g. USD
-	OriginalAmount   float64   `json:"original_amount,omitempty"`
-	OriginalCurrency string    `json:"original_currency,omitempty"`
-	Status           string    `json:"status"`
-	Method           string    `json:"method"`
-	Last4            string    `json:"last4"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
-	Metadata         string    `json:"metadata"`
-}
-
-func (p *Payment) Validate() *Error {
-	if p.InvoiceID == "" {
-		return NewValidationError("invoice_id", "must not be empty")
-	}
-	if p.Amount < 0 {
-		return NewValidationError("amount", "must be non-negative")
-	}
-	if p.Status == "" {
-		return NewValidationError("status", "must not be empty")
-	}
-	if p.Method == "" {
-		return NewValidationError("method", "must not be empty")
-	}
-	if len(p.Last4) != 4 {
-		return NewValidationError("last4", "must be 4 characters")
-	}
-	return nil
-}
-
-// Credit represents a credit applied to an account or invoice
-// All fields are required for SaaS billing and auditability
-// Type: account, invoice
-// Status: active, consumed, expired
-// Metadata: JSON-encoded for extensibility
-type Credit struct {
-	ID               string    `json:"id"`
-	AccountID        string    `json:"account_id"`
-	InvoiceID        string    `json:"invoice_id,omitempty"`
-	Amount           float64   `json:"amount"`
-	Currency         string    `json:"currency"`
-	OriginalAmount   float64   `json:"original_amount,omitempty"`
-	OriginalCurrency string    `json:"original_currency,omitempty"`
-	Type             string    `json:"type"`
-	Status           string    `json:"status"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
-	Metadata         string    `json:"metadata"`
-}
-
-func (c *Credit) Validate() *Error {
-	if c.AccountID == "" {
-		return NewValidationError("account_id", "must not be empty")
-	}
-	if c.Amount <= 0 {
-		return NewValidationError("amount", "must be greater than zero")
-	}
-	if c.Currency == "" {
-		return NewValidationError("currency", "must not be empty")
-	}
-	if c.Type != "account" && c.Type != "invoice" {
-		return NewValidationError("type", "must be 'account' or 'invoice'")
-	}
-	if c.Status != "active" && c.Status != "consumed" && c.Status != "expired" {
-		return NewValidationError("status", "must be 'active', 'consumed', or 'expired'")
-	}
-	return nil
-}
-
-// Refund represents a refund for a payment/invoice
-// All fields are required for SaaS billing and auditability
-// Status: pending, processed, failed, reversed
-// Metadata: JSON-encoded for extensibility
-type Refund struct {
-	ID               string    `json:"id"`
-	PaymentID        string    `json:"payment_id"`
-	InvoiceID        string    `json:"invoice_id,omitempty"`
-	Amount           float64   `json:"amount"`
-	Currency         string    `json:"currency"`
-	OriginalAmount   float64   `json:"original_amount,omitempty"`
-	OriginalCurrency string    `json:"original_currency,omitempty"`
-	Reason           string    `json:"reason"`
-	Status           string    `json:"status"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
-	Metadata         string    `json:"metadata"`
-}
-
-func (r *Refund) Validate() *Error {
-	if r.PaymentID == "" {
-		return NewValidationError("payment_id", "must not be empty")
-	}
-	if r.Amount <= 0 {
-		return NewValidationError("amount", "must be greater than zero")
-	}
-	if r.Currency == "" {
-		return NewValidationError("currency", "must not be empty")
-	}
-	if r.Status == "" {
-		return NewValidationError("status", "must not be empty")
-	}
-	return nil
-}
-
-// Discount represents a discount or promo code for billing
-// All fields are required for SaaS billing and auditability
-// Type: percentage, fixed
-// Value: percent (0-100) or fixed amount
-// MaxRedemptions: 0 = unlimited
-// Redeemed: number of times redeemed
-// IsActive: whether the discount is currently active
-// Metadata: JSON-encoded for extensibility
-type Discount struct {
-	ID             string    `json:"id"`
-	Code           string    `json:"code"`
-	Type           string    `json:"type"`
-	Value          float64   `json:"value"`
-	MaxRedemptions int       `json:"max_redemptions"`
-	Redeemed       int       `json:"redeemed"`
-	StartAt        time.Time `json:"start_at"`
-	EndAt          time.Time `json:"end_at"`
-	IsActive       bool      `json:"is_active"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	Metadata       string    `json:"metadata"`
-}
-
-func (d *Discount) Validate() *Error {
-	if d.Code == "" {
-		return NewValidationError("code", "must not be empty")
-	}
-	if d.Type != "percentage" && d.Type != "fixed" {
-		return NewValidationError("type", "must be 'percentage' or 'fixed'")
-	}
-	if d.Value <= 0 {
-		return NewValidationError("value", "must be greater than zero")
-	}
-	if d.Type == "percentage" && (d.Value <= 0 || d.Value > 100) {
-		return NewValidationError("value", "must be between 0 and 100 for percentage type")
-	}
-	if d.StartAt.After(d.EndAt) {
-		return NewValidationError("start_at", "must be before end_at")
-	}
-	return nil
-}
-
-// Coupon represents a coupon for a discount
-// All fields are required for SaaS billing and auditability
-// Metadata: JSON-encoded for extensibility
-type Coupon struct {
-	ID             string    `json:"id"`
-	Code           string    `json:"code"`
-	DiscountID     string    `json:"discount_id"`
-	MaxRedemptions int       `json:"max_redemptions"`
-	Redeemed       int       `json:"redeemed"`
-	StartAt        time.Time `json:"start_at"`
-	EndAt          time.Time `json:"end_at"`
-	IsActive       bool      `json:"is_active"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	Metadata       string    `json:"metadata"`
-}
-
-func (c *Coupon) Validate() *Error {
-	if c.Code == "" {
-		return NewValidationError("code", "must not be empty")
-	}
-	if c.DiscountID == "" {
-		return NewValidationError("discount_id", "must not be empty")
-	}
-	if c.MaxRedemptions < 0 {
-		return NewValidationError("max_redemptions", "must be non-negative")
-	}
-	return nil
-}
+// Payment, PaymentMethod, Refund, and related types are now defined in internal/admin/billing-management/payment/types.go
 
 // AuditLog represents an audit log entry for billing actions
 // All fields are required for SaaS billing and auditability
@@ -422,99 +173,6 @@ func (a *InvoiceAdjustment) Validate() *Error {
 	return nil
 }
 
-// PaymentMethod represents a PCI-compliant payment method for an account
-// All fields are required for SaaS billing and auditability
-// Status: active, inactive, expired, failed
-// Token: PCI token reference, never raw PAN
-// TokenProvider: e.g., stripe, adyen, aws_kms
-// Metadata: JSON-encoded for extensibility
-// IsDefault: whether this is the default payment method for the account
-// ExpMonth/ExpYear: for cards, 1-12 and >=2000
-// Last4: last 4 digits of card/bank
-// Provider: payment provider name
-// CreatedAt/UpdatedAt: RFC3339 timestamps
-type PaymentMethod struct {
-	ID            string    `json:"id"`
-	AccountID     string    `json:"account_id"`
-	Type          string    `json:"type"`
-	Provider      string    `json:"provider"`
-	Last4         string    `json:"last4"`
-	ExpMonth      int       `json:"exp_month"`
-	ExpYear       int       `json:"exp_year"`
-	IsDefault     bool      `json:"is_default"`
-	Status        string    `json:"status"`
-	Token         string    `json:"token"`
-	TokenProvider string    `json:"token_provider"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	Metadata      string    `json:"metadata"`
-}
-
-func (p *PaymentMethod) Validate() *Error {
-	if p.AccountID == "" {
-		return NewValidationError("account_id", "must not be empty")
-	}
-	if p.Type != "card" && p.Type != "bank" && p.Type != "other" {
-		return NewValidationError("type", "must be 'card', 'bank', or 'other'")
-	}
-	if p.Provider == "" {
-		return NewValidationError("provider", "must not be empty")
-	}
-	if len(p.Last4) != 4 {
-		return NewValidationError("last4", "must be 4 characters")
-	}
-	if p.ExpMonth < 1 || p.ExpMonth > 12 {
-		return NewValidationError("exp_month", "must be between 1 and 12")
-	}
-	if p.ExpYear < 2000 {
-		return NewValidationError("exp_year", "must be >= 2000")
-	}
-	if p.Status != "active" && p.Status != "inactive" && p.Status != "expired" && p.Status != "failed" {
-		return NewValidationError("status", "must be 'active', 'inactive', 'expired', or 'failed'")
-	}
-	if p.Token == "" {
-		return NewValidationError("token", "must not be empty (PCI token required)")
-	}
-	if p.TokenProvider == "" {
-		return NewValidationError("token_provider", "must not be empty (PCI token provider required)")
-	}
-	return nil
-}
-
-type Subscription struct {
-	ID                 string     `json:"id"`
-	AccountID          string     `json:"account_id"`
-	PlanID             string     `json:"plan_id"`
-	Status             string     `json:"status"`
-	Currency           string     `json:"currency"` // ISO 4217, e.g. USD
-	TrialStart         *time.Time `json:"trial_start,omitempty"`
-	TrialEnd           *time.Time `json:"trial_end,omitempty"`
-	CurrentPeriodStart time.Time  `json:"current_period_start"`
-	CurrentPeriodEnd   time.Time  `json:"current_period_end"`
-	CancelAt           *time.Time `json:"cancel_at,omitempty"`
-	CanceledAt         *time.Time `json:"canceled_at,omitempty"`
-	GracePeriodEnd     *time.Time `json:"grace_period_end,omitempty"`
-	DunningUntil       *time.Time `json:"dunning_until,omitempty"`
-	ScheduledPlanID    *string    `json:"scheduled_plan_id,omitempty"`
-	ScheduledChangeAt  *time.Time `json:"scheduled_change_at,omitempty"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
-	Metadata           string     `json:"metadata"`
-}
-
-func (s *Subscription) Validate() *Error {
-	if s.AccountID == "" {
-		return NewValidationError("account_id", "must not be empty")
-	}
-	if s.PlanID == "" {
-		return NewValidationError("plan_id", "must not be empty")
-	}
-	if s.Status == "" {
-		return NewValidationError("status", "must not be empty")
-	}
-	return nil
-}
-
 // Add tenant-aware fields, API metering, audit, currency, region, localization, webhooks, SLA, rate limiting, plugin types
 
 // APIUsage tracks per-tenant API usage for metering and billing
@@ -605,19 +263,6 @@ type WebhookSubscription struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-// TaxInfo for multi-currency, multi-region, VAT/GST compliance
-type TaxInfo struct {
-	ID        string    `json:"id"`
-	TenantID  string    `json:"tenant_id"`
-	Country   string    `json:"country"`
-	Region    string    `json:"region"`
-	TaxID     string    `json:"tax_id"`
-	TaxRate   float64   `json:"tax_rate"`
-	Currency  string    `json:"currency"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
 // ExchangeRate represents a currency conversion rate (e.g. USD->EUR)
 // Used for multi-currency invoice/payment conversion
 // Source: e.g. ECB, fixer.io, manual
@@ -647,58 +292,3 @@ type TenantCurrency struct {
 	Currency  string    `json:"currency"` // ISO 4217, e.g. USD
 	UpdatedAt time.Time `json:"updated_at"`
 }
-
-// TaxPlugin defines a pluggable interface for tax/VAT calculation per region/country.
-type TaxPlugin interface {
-	CalculateTax(ctx context.Context, invoice Invoice, account Account, tenantID string) (taxAmount, taxRate float64, err error)
-}
-
-// TaxPluginRegistry holds registered plugins by name and region/country.
-type TaxPluginRegistry struct {
-	plugins map[string]TaxPlugin // key: plugin name
-}
-
-// Register adds a plugin to the registry.
-func (r *TaxPluginRegistry) Register(name string, plugin TaxPlugin) {
-	if r.plugins == nil {
-		r.plugins = make(map[string]TaxPlugin)
-	}
-	r.plugins[name] = plugin
-}
-
-// Lookup returns a plugin by name.
-func (r *TaxPluginRegistry) Lookup(name string) (TaxPlugin, bool) {
-	p, ok := r.plugins[name]
-	return p, ok
-}
-
-// TaxPluginConfig stores per-tenant plugin selection.
-type TaxPluginConfig struct {
-	TenantID   string    `json:"tenant_id"`
-	PluginName string    `json:"plugin_name"`
-	UpdatedAt  time.Time `json:"updated_at"`
-}
-
-// DefaultTaxPlugin applies no tax (0%).
-type DefaultTaxPlugin struct{}
-
-func (DefaultTaxPlugin) CalculateTax(ctx context.Context, invoice Invoice, account Account, tenantID string) (float64, float64, error) {
-	return 0, 0, nil
-}
-
-// EUTaxPlugin applies a flat 20% VAT for demonstration.
-type EUTaxPlugin struct{}
-
-func (EUTaxPlugin) CalculateTax(ctx context.Context, invoice Invoice, account Account, tenantID string) (float64, float64, error) {
-	amount := invoice.Amount
-	taxRate := 20.0
-	return amount * taxRate / 100, taxRate, nil
-}
-
-// TaxPlugins is the global registry for all tax plugins.
-var TaxPlugins = func() *TaxPluginRegistry {
-	r := &TaxPluginRegistry{}
-	r.Register("default", DefaultTaxPlugin{})
-	r.Register("eu_vat", EUTaxPlugin{})
-	return r
-}()

@@ -2,6 +2,7 @@ package commonutil
 
 import (
 	"github.com/google/uuid"
+
 )
 
 // GenerateUUID returns a new RFC4122 UUID string
@@ -15,3 +16,5 @@ func IsValidUUID(id string) bool {
 	_, err := uuid.Parse(id)
 	return err == nil
 }
+
+

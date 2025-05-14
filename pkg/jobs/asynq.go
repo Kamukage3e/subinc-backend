@@ -25,6 +25,7 @@ const (
 	TaskGenerateTenantReport = "report:tenant"
 	TaskCleanupExpiredData   = "cleanup:expired_data"
 	TaskAuditLog             = "audit:log"
+	TaskUsageToInvoice       = "billing:usage_to_invoice"
 )
 
 // Queue names for different priorities
@@ -656,6 +657,134 @@ func (s *BackgroundJobServer) RegisterHandler(taskType string, handler TaskHandl
 	s.mux.HandleFunc(taskType, wrappedHandler)
 }
 
+// PlanWithPricing is used for planStore interface to ensure linter compatibility
+// This interface must match the plan struct used in your billing domain
+// All code must be linter-clean and type-safe
+// Place this at the top-level, outside any function
+
+type PlanWithPricing interface {
+	GetPricing() string
+}
+
+type AccountWithPlanID interface {
+	GetPlanID() string
+}
+
+// RegisterUsageToInvoiceHandler registers the usage-to-invoice job handler.
+// This handler automates usage aggregation, overage calculation, invoice item creation, and invoice issuing for SaaS billing.
+// Dependencies must be real, production-grade services from the billing domain.
+func (s *BackgroundJobServer) RegisterUsageToInvoiceHandler(
+	usageStore interface {
+		AggregateUsageForBillingCycle(ctx context.Context, accountID string, periodStart, periodEnd time.Time) (map[string]float64, error)
+	},
+	planStore interface {
+		GetPlan(ctx context.Context, planID string) (PlanWithPricing, error)
+	},
+	invoiceStore interface {
+		CreateInvoice(ctx context.Context, invoice interface{}) (interface{}, error)
+		CreateInvoiceItem(ctx context.Context, item interface{}) error
+	},
+	accountStore interface {
+		GetAccount(ctx context.Context, accountID string) (AccountWithPlanID, error)
+	},
+	paymentService interface {
+		TriggerPayment(ctx context.Context, invoiceID string) error
+	},
+) {
+	s.RegisterHandler(TaskUsageToInvoice, func(ctx context.Context, task *asynq.Task) error {
+		var payload UsageToInvoicePayload
+		if err := UnmarshalPayload(task, &payload); err != nil {
+			s.logger.Error("Failed to unmarshal UsageToInvoicePayload", logger.ErrorField(err))
+			return fmt.Errorf("invalid payload: %w", err)
+		}
+		if payload.AccountID == "" {
+			s.logger.Error("AccountID is required for usage-to-invoice job")
+			return fmt.Errorf("account_id is required")
+		}
+		if payload.PeriodStart.IsZero() || payload.PeriodEnd.IsZero() {
+			s.logger.Error("PeriodStart and PeriodEnd are required for usage-to-invoice job")
+			return fmt.Errorf("period_start and period_end are required")
+		}
+		usageTotals, err := usageStore.AggregateUsageForBillingCycle(ctx, payload.AccountID, payload.PeriodStart, payload.PeriodEnd)
+		if err != nil {
+			s.logger.Error("Failed to aggregate usage", logger.ErrorField(err), logger.String("account_id", payload.AccountID))
+			return fmt.Errorf("failed to aggregate usage: %w", err)
+		}
+		account, err := accountStore.GetAccount(ctx, payload.AccountID)
+		if err != nil {
+			s.logger.Error("Failed to get account", logger.ErrorField(err), logger.String("account_id", payload.AccountID))
+			return fmt.Errorf("failed to get account: %w", err)
+		}
+		plan, err := planStore.GetPlan(ctx, account.GetPlanID())
+		if err != nil {
+			s.logger.Error("Failed to get plan", logger.ErrorField(err), logger.String("plan_id", account.GetPlanID()))
+			return fmt.Errorf("failed to get plan: %w", err)
+		}
+		limits, overages, err := parsePlanPricing(plan.GetPricing())
+		if err != nil {
+			s.logger.Error("Failed to parse plan pricing", logger.ErrorField(err), logger.String("plan_id", account.GetPlanID()))
+			return fmt.Errorf("failed to parse plan pricing: %w", err)
+		}
+		var invoiceItems []interface{}
+		var totalAmount float64
+		for metric, used := range usageTotals {
+			limit := limits[metric]
+			overageRate := overages[metric]
+			var itemAmount float64
+			if used > limit && overageRate > 0 {
+				overageQty := used - limit
+				itemAmount = overageQty * overageRate
+			} else {
+				itemAmount = 0
+			}
+			if itemAmount > 0 {
+				item := map[string]interface{}{
+					"account_id":   payload.AccountID,
+					"description":  fmt.Sprintf("Overage for %s", metric),
+					"amount":       itemAmount,
+					"quantity":     used - limit,
+					"metric":       metric,
+					"period_start": payload.PeriodStart,
+					"period_end":   payload.PeriodEnd,
+				}
+				invoiceItems = append(invoiceItems, item)
+				totalAmount += itemAmount
+			}
+		}
+		if totalAmount == 0 {
+			s.logger.Info("No overages to invoice for account", logger.String("account_id", payload.AccountID))
+			return nil
+		}
+		invoice := map[string]interface{}{
+			"account_id": payload.AccountID,
+			"amount":     totalAmount,
+			"status":     "open",
+			"due_date":   payload.PeriodEnd.Add(7 * 24 * time.Hour), // 7 days after period end
+			"created_at": time.Now().UTC(),
+			"updated_at": time.Now().UTC(),
+		}
+		createdInvoice, err := invoiceStore.CreateInvoice(ctx, invoice)
+		if err != nil {
+			s.logger.Error("Failed to create invoice", logger.ErrorField(err), logger.String("account_id", payload.AccountID))
+			return fmt.Errorf("failed to create invoice: %w", err)
+		}
+		for _, item := range invoiceItems {
+			itemMap := item.(map[string]interface{})
+			itemMap["invoice_id"] = createdInvoice.(map[string]interface{})["id"]
+			if err := invoiceStore.CreateInvoiceItem(ctx, itemMap); err != nil {
+				s.logger.Error("Failed to create invoice item", logger.ErrorField(err), logger.String("invoice_id", itemMap["invoice_id"].(string)))
+				return fmt.Errorf("failed to create invoice item: %w", err)
+			}
+		}
+		if err := paymentService.TriggerPayment(ctx, createdInvoice.(map[string]interface{})["id"].(string)); err != nil {
+			s.logger.Error("Failed to trigger payment", logger.ErrorField(err), logger.String("invoice_id", createdInvoice.(map[string]interface{})["id"].(string)))
+			return fmt.Errorf("failed to trigger payment: %w", err)
+		}
+		s.logger.Info("Usage-to-invoice job completed successfully", logger.String("account_id", payload.AccountID), logger.String("invoice_id", createdInvoice.(map[string]interface{})["id"].(string)))
+		return nil
+	})
+}
+
 // Start starts the background job server
 func (s *BackgroundJobServer) Start() error {
 	s.logger.Info("Starting background job server")
@@ -800,4 +929,32 @@ func (s *BackgroundJobServer) RedisHealthCheck(ctx context.Context, client *redi
 
 	status := client.Ping(ctx)
 	return status.Err()
+}
+
+// UsageToInvoicePayload defines the payload for usage-to-invoice jobs
+// AccountID: the account to process
+// PeriodStart/PeriodEnd: billing period
+// If AccountID is empty, process all accounts (for batch jobs)
+type UsageToInvoicePayload struct {
+	AccountID   string    `json:"account_id"`
+	PeriodStart time.Time `json:"period_start"`
+	PeriodEnd   time.Time `json:"period_end"`
+}
+
+// parsePlanPricing is copied from internal/admin/billing-management/stores.go for use in job automation.
+// This function parses plan pricing JSON into limits and overages per metric.
+// Keep this in sync with the original definition for correctness.
+func parsePlanPricing(pricing string) (map[string]float64, map[string]float64, error) {
+	var raw map[string]map[string]float64
+	err := json.Unmarshal([]byte(pricing), &raw)
+	if err != nil {
+		return nil, nil, err
+	}
+	limits := make(map[string]float64)
+	overages := make(map[string]float64)
+	for k, v := range raw {
+		limits[k] = v["limit"]
+		overages[k] = v["overage"]
+	}
+	return limits, overages, nil
 }

@@ -1,6 +1,7 @@
 package security_management
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -1039,6 +1040,36 @@ func (h *SecurityHandler) RequestPasswordResetToken(c *fiber.Ctx) error {
 			CreatedAt: time.Now().UTC(),
 		})
 	}
+
+	// --- Send password reset notification (non-blocking) ---
+	if h.NotificationService != nil {
+		go func(token PasswordResetToken) {
+			user, uerr := h.UserService.GetUser(c.Context(), token.UserID)
+			if uerr != nil || user.Email == "" {
+				logger.LogError("RequestPasswordResetToken: user not found for notification", logger.ErrorField(uerr), logger.String("user_id", token.UserID))
+				return
+			}
+			details := map[string]interface{}{
+				"user_id":    user.ID,
+				"user_email": user.Email,
+				"token_id":   token.ID,
+				"token":      token.Token,
+				"expires_at": token.ExpiresAt,
+			}
+			err := h.NotificationService.SendNotification(
+				context.Background(),
+				"", // tenantID not available on user
+				NotificationEmail,
+				[]string{user.Email},
+				"password.reset_requested",
+				details,
+				3,
+			)
+			if err != nil {
+				logger.LogError("RequestPasswordResetToken: notification failed", logger.ErrorField(err), logger.String("user_id", user.ID))
+			}
+		}(token)
+	}
 	return c.Status(fiber.StatusCreated).JSON(token)
 }
 
@@ -1221,10 +1252,10 @@ func (h *SecurityHandler) Login(c *fiber.Ctx) error {
 	}
 	if h.SecurityAuditLogService != nil {
 		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:       sess.ID,
-			ActorID:  user.ID,
-			Action:   "login",
-			TargetID: user.ID,
+			ID:        sess.ID,
+			ActorID:   user.ID,
+			Action:    "login",
+			TargetID:  user.ID,
 			Details:   marshalAuditDetails(input),
 			CreatedAt: time.Now().UTC(),
 		})
@@ -2177,7 +2208,7 @@ func (h *SecurityHandler) RevokeUserSession(c *fiber.Ctx) error {
 		}
 	}
 	var input struct {
-		UserID    string `json:"user_id"`
+		UserID       string `json:"user_id"`
 		RefreshToken string `json:"refresh_token"`
 	}
 	if err := c.BodyParser(&input); err != nil || input.UserID == "" || input.RefreshToken == "" {

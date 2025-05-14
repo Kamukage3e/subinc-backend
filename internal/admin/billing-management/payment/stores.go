@@ -2,24 +2,165 @@ package payment
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strconv"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-type Store struct {
-	pool *pgxpool.Pool
+// --- Refund CRUD ---
+func (s *PostgresStore) CreateRefund(ctx context.Context, r Refund) (Refund, error) {
+	const q = `INSERT INTO refunds (id, payment_id, invoice_id, amount, currency, original_amount, original_currency, reason, status, created_at, updated_at, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		RETURNING id, payment_id, invoice_id, amount, currency, original_amount, original_currency, reason, status, created_at, updated_at, metadata`
+	row := s.DB.QueryRow(ctx, q, r.ID, r.PaymentID, r.InvoiceID, r.Amount, r.Currency, r.OriginalAmount, r.OriginalCurrency, r.Reason, r.Status, r.CreatedAt, r.UpdatedAt, r.Metadata)
+	var out Refund
+	if err := row.Scan(&out.ID, &out.PaymentID, &out.InvoiceID, &out.Amount, &out.Currency, &out.OriginalAmount, &out.OriginalCurrency, &out.Reason, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
+		logger.LogError("CreateRefund failed", logger.ErrorField(err), logger.Any("refund", r))
+		return Refund{}, err
+	}
+	return out, nil
 }
 
-func NewStore(pool *pgxpool.Pool) *Store {
-	return &Store{pool: pool}
+func (s *PostgresStore) GetRefund(ctx context.Context, id string) (Refund, error) {
+	const q = `SELECT id, payment_id, invoice_id, amount, currency, original_amount, original_currency, reason, status, created_at, updated_at, metadata FROM refunds WHERE id = $1`
+	row := s.DB.QueryRow(ctx, q, id)
+	var out Refund
+	if err := row.Scan(&out.ID, &out.PaymentID, &out.InvoiceID, &out.Amount, &out.Currency, &out.OriginalAmount, &out.OriginalCurrency, &out.Reason, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			logger.LogWarn("GetRefund: not found", logger.String("id", id))
+			return Refund{}, sql.ErrNoRows
+		}
+		logger.LogError("GetRefund failed", logger.ErrorField(err), logger.String("id", id))
+		return Refund{}, err
+	}
+	return out, nil
 }
 
-func (s *Store) SetTenantPaymentProviderConfig(ctx context.Context, tenantID, provider string) (*TenantPaymentProviderConfig, error) {
+func (s *PostgresStore) UpdateRefund(ctx context.Context, r Refund) (Refund, error) {
+	const q = `UPDATE refunds SET payment_id = $2, invoice_id = $3, amount = $4, currency = $5, original_amount = $6, original_currency = $7, reason = $8, status = $9, updated_at = $10, metadata = $11 WHERE id = $1
+		RETURNING id, payment_id, invoice_id, amount, currency, original_amount, original_currency, reason, status, created_at, updated_at, metadata`
+	row := s.DB.QueryRow(ctx, q, r.ID, r.PaymentID, r.InvoiceID, r.Amount, r.Currency, r.OriginalAmount, r.OriginalCurrency, r.Reason, r.Status, r.UpdatedAt, r.Metadata)
+	var out Refund
+	if err := row.Scan(&out.ID, &out.PaymentID, &out.InvoiceID, &out.Amount, &out.Currency, &out.OriginalAmount, &out.OriginalCurrency, &out.Reason, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
+		logger.LogError("UpdateRefund failed", logger.ErrorField(err), logger.Any("refund", r))
+		return Refund{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) ListRefunds(ctx context.Context, paymentID, invoiceID, status string, page, pageSize int) ([]Refund, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 100
+	}
+	q := `SELECT id, payment_id, invoice_id, amount, currency, original_amount, original_currency, reason, status, created_at, updated_at, metadata FROM refunds WHERE 1=1`
+	args := []interface{}{}
+	if paymentID != "" {
+		q += " AND payment_id = $1"
+		args = append(args, paymentID)
+	}
+	if invoiceID != "" {
+		q += " AND invoice_id = $2"
+		args = append(args, invoiceID)
+	}
+	if status != "" {
+		q += " AND status = $3"
+		args = append(args, status)
+	}
+	q += " ORDER BY created_at DESC LIMIT $4 OFFSET $5"
+	args = append(args, pageSize, (page-1)*pageSize)
+	rows, err := s.DB.Query(ctx, q, args...)
+	if err != nil {
+		logger.LogError("ListRefunds query failed", logger.ErrorField(err))
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Refund
+	for rows.Next() {
+		var r Refund
+		if err := rows.Scan(&r.ID, &r.PaymentID, &r.InvoiceID, &r.Amount, &r.Currency, &r.OriginalAmount, &r.OriginalCurrency, &r.Reason, &r.Status, &r.CreatedAt, &r.UpdatedAt, &r.Metadata); err != nil {
+			logger.LogError("ListRefunds scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// --- Payment CRUD ---
+func (s *PostgresStore) CreatePayment(ctx context.Context, p Payment) (Payment, error) {
+	const q = `INSERT INTO payments (id, invoice_id, amount, currency, original_amount, original_currency, status, method, last4, created_at, updated_at, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		RETURNING id, invoice_id, amount, currency, original_amount, original_currency, status, method, last4, created_at, updated_at, metadata`
+	row := s.DB.QueryRow(ctx, q, p.ID, p.InvoiceID, p.Amount, p.Currency, p.OriginalAmount, p.OriginalCurrency, p.Status, p.Method, p.Last4, p.CreatedAt, p.UpdatedAt, p.Metadata)
+	var out Payment
+	if err := row.Scan(&out.ID, &out.InvoiceID, &out.Amount, &out.Currency, &out.OriginalAmount, &out.OriginalCurrency, &out.Status, &out.Method, &out.Last4, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
+		logger.LogError("CreatePayment failed", logger.ErrorField(err), logger.Any("payment", p))
+		return Payment{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) GetPayment(ctx context.Context, id string) (Payment, error) {
+	const q = `SELECT id, invoice_id, amount, currency, original_amount, original_currency, status, method, last4, created_at, updated_at, metadata FROM payments WHERE id = $1`
+	row := s.DB.QueryRow(ctx, q, id)
+	var out Payment
+	if err := row.Scan(&out.ID, &out.InvoiceID, &out.Amount, &out.Currency, &out.OriginalAmount, &out.OriginalCurrency, &out.Status, &out.Method, &out.Last4, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
+		if errors.Is(err, errors.New("no rows")) {
+			logger.LogWarn("GetPayment: not found", logger.String("id", id))
+			return Payment{}, errors.New("no rows")
+		}
+		logger.LogError("GetPayment failed", logger.ErrorField(err), logger.String("id", id))
+		return Payment{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) UpdatePayment(ctx context.Context, p Payment) (Payment, error) {
+	const q = `UPDATE payments SET invoice_id = $2, amount = $3, currency = $4, original_amount = $5, original_currency = $6, status = $7, method = $8, last4 = $9, updated_at = $10, metadata = $11 WHERE id = $1
+		RETURNING id, invoice_id, amount, currency, original_amount, original_currency, status, method, last4, created_at, updated_at, metadata`
+	row := s.DB.QueryRow(ctx, q, p.ID, p.InvoiceID, p.Amount, p.Currency, p.OriginalAmount, p.OriginalCurrency, p.Status, p.Method, p.Last4, p.UpdatedAt, p.Metadata)
+	var out Payment
+	if err := row.Scan(&out.ID, &out.InvoiceID, &out.Amount, &out.Currency, &out.OriginalAmount, &out.OriginalCurrency, &out.Status, &out.Method, &out.Last4, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
+		logger.LogError("UpdatePayment failed", logger.ErrorField(err), logger.Any("payment", p))
+		return Payment{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) ListPayments(ctx context.Context, invoiceID string, page, pageSize int) ([]Payment, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 100
+	}
+	const q = `SELECT id, invoice_id, amount, currency, original_amount, original_currency, status, method, last4, created_at, updated_at, metadata FROM payments WHERE invoice_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+	offset := (page - 1) * pageSize
+	rows, err := s.DB.Query(ctx, q, invoiceID, pageSize, offset)
+	if err != nil {
+		logger.LogError("ListPayments query failed", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Payment
+	for rows.Next() {
+		var p Payment
+		if err := rows.Scan(&p.ID, &p.InvoiceID, &p.Amount, &p.Currency, &p.OriginalAmount, &p.OriginalCurrency, &p.Status, &p.Method, &p.Last4, &p.CreatedAt, &p.UpdatedAt, &p.Metadata); err != nil {
+			logger.LogError("ListPayments scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+func (s *PostgresStore) SetTenantPaymentProviderConfig(ctx context.Context, tenantID, provider string) (*TenantPaymentProviderConfig, error) {
 	if tenantID == "" {
 		logger.LogError("SetTenantPaymentProviderConfig: tenant_id must not be empty", logger.ErrorField(errors.New("tenant_id must not be empty")))
 		return nil, errors.New("tenant_id must not be empty")
@@ -37,7 +178,7 @@ func (s *Store) SetTenantPaymentProviderConfig(ctx context.Context, tenantID, pr
 	RETURNING tenant_id, provider, updated_at
 	`
 	var cfg TenantPaymentProviderConfig
-	err := s.pool.QueryRow(ctx, q, tenantID, provider).Scan(&cfg.TenantID, &cfg.Provider, &cfg.UpdatedAt)
+	err := s.DB.QueryRow(ctx, q, tenantID, provider).Scan(&cfg.TenantID, &cfg.Provider, &cfg.UpdatedAt)
 	if err != nil {
 		logger.LogError("SetTenantPaymentProviderConfig: failed to upsert tenant payment provider config", logger.ErrorField(err))
 		return nil, errors.New("failed to upsert tenant payment provider config")
@@ -45,7 +186,7 @@ func (s *Store) SetTenantPaymentProviderConfig(ctx context.Context, tenantID, pr
 	return &cfg, nil
 }
 
-func (s *Store) GetTenantPaymentProviderConfig(ctx context.Context, tenantID string) (*TenantPaymentProviderConfig, error) {
+func (s *PostgresStore) GetTenantPaymentProviderConfig(ctx context.Context, tenantID string) (*TenantPaymentProviderConfig, error) {
 	if tenantID == "" {
 		logger.LogError("GetTenantPaymentProviderConfig: tenant_id must not be empty", logger.ErrorField(errors.New("tenant_id must not be empty")))
 		return nil, errors.New("tenant_id must not be empty")
@@ -57,7 +198,7 @@ func (s *Store) GetTenantPaymentProviderConfig(ctx context.Context, tenantID str
 	WHERE tenant_id = $1
 	`
 	var cfg TenantPaymentProviderConfig
-	err := s.pool.QueryRow(ctx, q, tenantID).Scan(&cfg.TenantID, &cfg.Provider, &cfg.UpdatedAt)
+	err := s.DB.QueryRow(ctx, q, tenantID).Scan(&cfg.TenantID, &cfg.Provider, &cfg.UpdatedAt)
 	if err != nil {
 		logger.LogError("GetTenantPaymentProviderConfig: failed to get tenant payment provider config", logger.ErrorField(err))
 		return nil, errors.New("failed to get tenant payment provider config")
@@ -65,7 +206,7 @@ func (s *Store) GetTenantPaymentProviderConfig(ctx context.Context, tenantID str
 	return &cfg, nil
 }
 
-func (s *Store) SavePayment(ctx context.Context, p *PaymentResult) error {
+func (s *PostgresStore) SavePayment(ctx context.Context, p *PaymentResult) error {
 	if p == nil {
 		logger.LogError("SavePayment: payment must not be nil", logger.ErrorField(errors.New("payment must not be nil")))
 		return errors.New("payment must not be nil")
@@ -76,7 +217,7 @@ func (s *Store) SavePayment(ctx context.Context, p *PaymentResult) error {
 	ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, updated_at = NOW(), metadata = EXCLUDED.metadata
 	`
 	meta, _ := json.Marshal(p.Raw)
-	_, err := s.pool.Exec(ctx, q, p.PaymentID, p.Amount, p.Currency, p.Status, p.Provider, p.CreatedAt, string(meta))
+	_, err := s.DB.Exec(ctx, q, p.PaymentID, p.Amount, p.Currency, p.Status, p.Provider, p.CreatedAt, string(meta))
 	if err != nil {
 		logger.LogError("SavePayment: failed to save payment", logger.ErrorField(err))
 		return errors.New("failed to save payment")
@@ -84,27 +225,7 @@ func (s *Store) SavePayment(ctx context.Context, p *PaymentResult) error {
 	return nil
 }
 
-func (s *Store) GetPayment(ctx context.Context, paymentID string) (*PaymentResult, error) {
-	if paymentID == "" {
-		logger.LogError("GetPayment: payment_id must not be empty", logger.ErrorField(errors.New("payment_id must not be empty")))
-		return nil, errors.New("payment_id must not be empty")
-	}
-	const q = `
-	SELECT id, amount, currency, status, provider, created_at, metadata
-	FROM payments WHERE id = $1
-	`
-	var p PaymentResult
-	var meta string
-	err := s.pool.QueryRow(ctx, q, paymentID).Scan(&p.PaymentID, &p.Amount, &p.Currency, &p.Status, &p.Provider, &p.CreatedAt, &meta)
-	if err != nil {
-		logger.LogError("GetPayment: failed to get payment", logger.ErrorField(err))
-		return nil, errors.New("failed to get payment")
-	}
-	_ = json.Unmarshal([]byte(meta), &p.Raw)
-	return &p, nil
-}
-
-func (s *Store) SetTenantProviderSecret(ctx context.Context, tenantID, provider string, config map[string]string) error {
+func (s *PostgresStore) SetTenantProviderSecret(ctx context.Context, tenantID, provider string, config map[string]string) error {
 	if tenantID == "" || provider == "" {
 		logger.LogError("SetTenantProviderSecret: tenant_id and provider required", logger.ErrorField(errors.New("tenant_id and provider required")))
 		return errors.New("tenant_id and provider required")
@@ -122,7 +243,7 @@ func (s *Store) SetTenantProviderSecret(ctx context.Context, tenantID, provider 
 	ON CONFLICT (tenant_id, provider)
 	DO UPDATE SET config_json = EXCLUDED.config_json, updated_at = NOW()
 	`
-	_, err = s.pool.Exec(ctx, q, tenantID, provider, string(cfgJSON))
+	_, err = s.DB.Exec(ctx, q, tenantID, provider, string(cfgJSON))
 	if err != nil {
 		logger.LogError("SetTenantProviderSecret: failed to upsert secret", logger.ErrorField(err))
 		return errors.New("failed to upsert tenant provider secret")
@@ -130,7 +251,7 @@ func (s *Store) SetTenantProviderSecret(ctx context.Context, tenantID, provider 
 	return nil
 }
 
-func (s *Store) GetTenantProviderSecret(ctx context.Context, tenantID, provider string) (map[string]string, error) {
+func (s *PostgresStore) GetTenantProviderSecret(ctx context.Context, tenantID, provider string) (map[string]string, error) {
 	if tenantID == "" || provider == "" {
 		logger.LogError("GetTenantProviderSecret: tenant_id and provider required", logger.ErrorField(errors.New("tenant_id and provider required")))
 		return nil, errors.New("tenant_id and provider required")
@@ -140,7 +261,7 @@ func (s *Store) GetTenantProviderSecret(ctx context.Context, tenantID, provider 
 	SELECT config_json FROM tenant_provider_secret WHERE tenant_id = $1 AND provider = $2
 	`
 	var cfgJSON string
-	err := s.pool.QueryRow(ctx, q, tenantID, provider).Scan(&cfgJSON)
+	err := s.DB.QueryRow(ctx, q, tenantID, provider).Scan(&cfgJSON)
 	if err != nil {
 		logger.LogError("GetTenantProviderSecret: failed to get secret", logger.ErrorField(err))
 		return nil, errors.New("failed to get tenant provider secret")
@@ -155,7 +276,7 @@ func (s *Store) GetTenantProviderSecret(ctx context.Context, tenantID, provider 
 }
 
 // ListFailedPayments returns all failed payments for a tenant that are not recovered
-func (s *Store) ListFailedPayments(ctx context.Context, tenantID string) ([]*FailedPayment, error) {
+func (s *PostgresStore) ListFailedPayments(ctx context.Context, tenantID string) ([]*FailedPayment, error) {
 	if tenantID == "" {
 		logger.LogError("ListFailedPayments: tenant_id must not be empty", logger.ErrorField(errors.New("tenant_id must not be empty")))
 		return nil, errors.New("tenant_id must not be empty")
@@ -165,7 +286,7 @@ func (s *Store) ListFailedPayments(ctx context.Context, tenantID string) ([]*Fai
 	FROM payments
 	WHERE tenant_id = $1 AND status = 'failed' AND dunning_state != 'recovered'
 	`
-	rows, err := s.pool.Query(ctx, q, tenantID)
+	rows, err := s.DB.Query(ctx, q, tenantID)
 	if err != nil {
 		logger.LogError("ListFailedPayments: query failed", logger.ErrorField(err))
 		return nil, errors.New("failed to list failed payments")
@@ -185,7 +306,7 @@ func (s *Store) ListFailedPayments(ctx context.Context, tenantID string) ([]*Fai
 }
 
 // GetDunningConfig loads dunning config for a tenant
-func (s *Store) GetDunningConfig(ctx context.Context, tenantID string) (*DunningConfig, error) {
+func (s *PostgresStore) GetDunningConfig(ctx context.Context, tenantID string) (*DunningConfig, error) {
 	if tenantID == "" {
 		logger.LogError("GetDunningConfig: tenant_id must not be empty", logger.ErrorField(errors.New("tenant_id must not be empty")))
 		return nil, errors.New("tenant_id must not be empty")
@@ -195,7 +316,7 @@ func (s *Store) GetDunningConfig(ctx context.Context, tenantID string) (*Dunning
 	`
 	var maxAttempts int
 	var retryIntervalsJSON string
-	err := s.pool.QueryRow(ctx, q, tenantID).Scan(&maxAttempts, &retryIntervalsJSON)
+	err := s.DB.QueryRow(ctx, q, tenantID).Scan(&maxAttempts, &retryIntervalsJSON)
 	if err != nil {
 		logger.LogError("GetDunningConfig: query failed", logger.ErrorField(err))
 		return nil, errors.New("failed to get dunning config")
@@ -219,7 +340,7 @@ func (s *Store) GetDunningConfig(ctx context.Context, tenantID string) (*Dunning
 }
 
 // UpdateDunningState sets dunning_state and dunning_attempts for a payment
-func (s *Store) UpdateDunningState(ctx context.Context, paymentID, state string, attempts int) error {
+func (s *PostgresStore) UpdateDunningState(ctx context.Context, paymentID, state string, attempts int) error {
 	if paymentID == "" {
 		logger.LogError("UpdateDunningState: payment_id must not be empty", logger.ErrorField(errors.New("payment_id must not be empty")))
 		return errors.New("payment_id must not be empty")
@@ -227,7 +348,7 @@ func (s *Store) UpdateDunningState(ctx context.Context, paymentID, state string,
 	const q = `
 	UPDATE payments SET dunning_state = $1, dunning_attempts = $2, updated_at = NOW() WHERE id = $3
 	`
-	_, err := s.pool.Exec(ctx, q, state, attempts, paymentID)
+	_, err := s.DB.Exec(ctx, q, state, attempts, paymentID)
 	if err != nil {
 		logger.LogError("UpdateDunningState: update failed", logger.ErrorField(err))
 		return errors.New("failed to update dunning state")
@@ -236,7 +357,7 @@ func (s *Store) UpdateDunningState(ctx context.Context, paymentID, state string,
 }
 
 // UpdateDunningAttempt sets last_dunning_attempt and dunning_attempts for a payment
-func (s *Store) UpdateDunningAttempt(ctx context.Context, paymentID string, lastAttempt time.Time, attempts int) error {
+func (s *PostgresStore) UpdateDunningAttempt(ctx context.Context, paymentID string, lastAttempt time.Time, attempts int) error {
 	if paymentID == "" {
 		logger.LogError("UpdateDunningAttempt: payment_id must not be empty", logger.ErrorField(errors.New("payment_id must not be empty")))
 		return errors.New("payment_id must not be empty")
@@ -244,7 +365,7 @@ func (s *Store) UpdateDunningAttempt(ctx context.Context, paymentID string, last
 	const q = `
 	UPDATE payments SET last_dunning_attempt = $1, dunning_attempts = $2, updated_at = NOW() WHERE id = $3
 	`
-	_, err := s.pool.Exec(ctx, q, lastAttempt, attempts, paymentID)
+	_, err := s.DB.Exec(ctx, q, lastAttempt, attempts, paymentID)
 	if err != nil {
 		logger.LogError("UpdateDunningAttempt: update failed", logger.ErrorField(err))
 		return errors.New("failed to update dunning attempt")
@@ -253,7 +374,7 @@ func (s *Store) UpdateDunningAttempt(ctx context.Context, paymentID string, last
 }
 
 // CreateDispute inserts a new dispute record
-func (s *Store) CreateDispute(ctx context.Context, d *Dispute) error {
+func (s *PostgresStore) CreateDispute(ctx context.Context, d *Dispute) error {
 	if d == nil {
 		logger.LogError("CreateDispute: dispute must not be nil", logger.ErrorField(errors.New("dispute must not be nil")))
 		return errors.New("dispute must not be nil")
@@ -263,7 +384,7 @@ func (s *Store) CreateDispute(ctx context.Context, d *Dispute) error {
 	INSERT INTO disputes (id, payment_id, tenant_id, provider, status, reason, amount, currency, evidence_due, evidence_submitted, created_at, updated_at, raw_json)
 	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 	`
-	_, err := s.pool.Exec(ctx, q, d.ID, d.PaymentID, d.TenantID, d.Provider, d.Status, d.Reason, d.Amount, d.Currency, d.EvidenceDue, d.EvidenceSubmitted, d.CreatedAt, d.UpdatedAt, string(raw))
+	_, err := s.DB.Exec(ctx, q, d.ID, d.PaymentID, d.TenantID, d.Provider, d.Status, d.Reason, d.Amount, d.Currency, d.EvidenceDue, d.EvidenceSubmitted, d.CreatedAt, d.UpdatedAt, string(raw))
 	if err != nil {
 		logger.LogError("CreateDispute: insert failed", logger.ErrorField(err))
 		return errors.New("failed to create dispute")
@@ -272,7 +393,7 @@ func (s *Store) CreateDispute(ctx context.Context, d *Dispute) error {
 }
 
 // GetDispute fetches a dispute by ID
-func (s *Store) GetDispute(ctx context.Context, disputeID string) (*Dispute, error) {
+func (s *PostgresStore) GetDispute(ctx context.Context, disputeID string) (*Dispute, error) {
 	if disputeID == "" {
 		logger.LogError("GetDispute: dispute_id must not be empty", logger.ErrorField(errors.New("dispute_id must not be empty")))
 		return nil, errors.New("dispute_id must not be empty")
@@ -285,7 +406,7 @@ func (s *Store) GetDispute(ctx context.Context, disputeID string) (*Dispute, err
 	var raw string
 	var status string
 	var evidenceDue, evidenceSubmitted *time.Time
-	err := s.pool.QueryRow(ctx, q, disputeID).Scan(&d.ID, &d.PaymentID, &d.TenantID, &d.Provider, &status, &d.Reason, &d.Amount, &d.Currency, &evidenceDue, &evidenceSubmitted, &d.CreatedAt, &d.UpdatedAt, &raw)
+	err := s.DB.QueryRow(ctx, q, disputeID).Scan(&d.ID, &d.PaymentID, &d.TenantID, &d.Provider, &status, &d.Reason, &d.Amount, &d.Currency, &evidenceDue, &evidenceSubmitted, &d.CreatedAt, &d.UpdatedAt, &raw)
 	if err != nil {
 		logger.LogError("GetDispute: query failed", logger.ErrorField(err))
 		return nil, errors.New("failed to get dispute")
@@ -298,7 +419,7 @@ func (s *Store) GetDispute(ctx context.Context, disputeID string) (*Dispute, err
 }
 
 // ListDisputes returns disputes for a tenant/payment, optionally filtered by status
-func (s *Store) ListDisputes(ctx context.Context, tenantID, paymentID string, status DisputeStatus, page, pageSize int) ([]*Dispute, error) {
+func (s *PostgresStore) ListDisputes(ctx context.Context, tenantID, paymentID string, status DisputeStatus, page, pageSize int) ([]*Dispute, error) {
 	if tenantID == "" {
 		logger.LogError("ListDisputes: tenant_id must not be empty", logger.ErrorField(errors.New("tenant_id must not be empty")))
 		return nil, errors.New("tenant_id must not be empty")
@@ -324,7 +445,7 @@ func (s *Store) ListDisputes(ctx context.Context, tenantID, paymentID string, st
 	}
 	q += ` ORDER BY created_at DESC LIMIT $` + strconv.Itoa(argIdx) + ` OFFSET $` + strconv.Itoa(argIdx+1)
 	args = append(args, pageSize, (page-1)*pageSize)
-	rows, err := s.pool.Query(ctx, q, args...)
+	rows, err := s.DB.Query(ctx, q, args...)
 	if err != nil {
 		logger.LogError("ListDisputes: query failed", logger.ErrorField(err))
 		return nil, errors.New("failed to list disputes")
@@ -351,13 +472,13 @@ func (s *Store) ListDisputes(ctx context.Context, tenantID, paymentID string, st
 }
 
 // UpdateDisputeStatus sets status and evidence_submitted for a dispute
-func (s *Store) UpdateDisputeStatus(ctx context.Context, disputeID string, status DisputeStatus, evidenceSubmitted *time.Time) error {
+func (s *PostgresStore) UpdateDisputeStatus(ctx context.Context, disputeID string, status DisputeStatus, evidenceSubmitted *time.Time) error {
 	if disputeID == "" {
 		logger.LogError("UpdateDisputeStatus: dispute_id must not be empty", logger.ErrorField(errors.New("dispute_id must not be empty")))
 		return errors.New("dispute_id must not be empty")
 	}
 	const q = `UPDATE disputes SET status = $1, evidence_submitted = $2, updated_at = NOW() WHERE id = $3`
-	_, err := s.pool.Exec(ctx, q, string(status), evidenceSubmitted, disputeID)
+	_, err := s.DB.Exec(ctx, q, string(status), evidenceSubmitted, disputeID)
 	if err != nil {
 		logger.LogError("UpdateDisputeStatus: update failed", logger.ErrorField(err))
 		return errors.New("failed to update dispute status")
@@ -366,7 +487,7 @@ func (s *Store) UpdateDisputeStatus(ctx context.Context, disputeID string, statu
 }
 
 // CreateDisputeEvidence inserts a new evidence record
-func (s *Store) CreateDisputeEvidence(ctx context.Context, e *DisputeEvidence) error {
+func (s *PostgresStore) CreateDisputeEvidence(ctx context.Context, e *DisputeEvidence) error {
 	if e == nil {
 		logger.LogError("CreateDisputeEvidence: evidence must not be nil", logger.ErrorField(errors.New("evidence must not be nil")))
 		return errors.New("evidence must not be nil")
@@ -376,7 +497,7 @@ func (s *Store) CreateDisputeEvidence(ctx context.Context, e *DisputeEvidence) e
 	INSERT INTO dispute_evidence (id, dispute_id, tenant_id, file_url, file_name, file_type, uploaded_by, uploaded_at, provider_status, provider_response, created_at, updated_at, raw_json)
 	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 	`
-	_, err := s.pool.Exec(ctx, q, e.ID, e.DisputeID, e.TenantID, e.FileURL, e.FileName, e.FileType, e.UploadedBy, e.UploadedAt, e.ProviderStatus, e.ProviderResponse, e.CreatedAt, e.UpdatedAt, string(raw))
+	_, err := s.DB.Exec(ctx, q, e.ID, e.DisputeID, e.TenantID, e.FileURL, e.FileName, e.FileType, e.UploadedBy, e.UploadedAt, e.ProviderStatus, e.ProviderResponse, e.CreatedAt, e.UpdatedAt, string(raw))
 	if err != nil {
 		logger.LogError("CreateDisputeEvidence: insert failed", logger.ErrorField(err))
 		return errors.New("failed to create dispute evidence")
@@ -385,7 +506,7 @@ func (s *Store) CreateDisputeEvidence(ctx context.Context, e *DisputeEvidence) e
 }
 
 // GetDisputeEvidence fetches an evidence record by ID
-func (s *Store) GetDisputeEvidence(ctx context.Context, evidenceID string) (*DisputeEvidence, error) {
+func (s *PostgresStore) GetDisputeEvidence(ctx context.Context, evidenceID string) (*DisputeEvidence, error) {
 	if evidenceID == "" {
 		logger.LogError("GetDisputeEvidence: evidence_id must not be empty", logger.ErrorField(errors.New("evidence_id must not be empty")))
 		return nil, errors.New("evidence_id must not be empty")
@@ -396,7 +517,7 @@ func (s *Store) GetDisputeEvidence(ctx context.Context, evidenceID string) (*Dis
 	`
 	var e DisputeEvidence
 	var raw string
-	err := s.pool.QueryRow(ctx, q, evidenceID).Scan(&e.ID, &e.DisputeID, &e.TenantID, &e.FileURL, &e.FileName, &e.FileType, &e.UploadedBy, &e.UploadedAt, &e.ProviderStatus, &e.ProviderResponse, &e.CreatedAt, &e.UpdatedAt, &raw)
+	err := s.DB.QueryRow(ctx, q, evidenceID).Scan(&e.ID, &e.DisputeID, &e.TenantID, &e.FileURL, &e.FileName, &e.FileType, &e.UploadedBy, &e.UploadedAt, &e.ProviderStatus, &e.ProviderResponse, &e.CreatedAt, &e.UpdatedAt, &raw)
 	if err != nil {
 		logger.LogError("GetDisputeEvidence: query failed", logger.ErrorField(err))
 		return nil, errors.New("failed to get dispute evidence")
@@ -406,7 +527,7 @@ func (s *Store) GetDisputeEvidence(ctx context.Context, evidenceID string) (*Dis
 }
 
 // ListDisputeEvidence returns evidence for a dispute/tenant
-func (s *Store) ListDisputeEvidence(ctx context.Context, disputeID, tenantID string, page, pageSize int) ([]*DisputeEvidence, error) {
+func (s *PostgresStore) ListDisputeEvidence(ctx context.Context, disputeID, tenantID string, page, pageSize int) ([]*DisputeEvidence, error) {
 	if disputeID == "" || tenantID == "" {
 		logger.LogError("ListDisputeEvidence: dispute_id and tenant_id must not be empty", logger.ErrorField(errors.New("dispute_id and tenant_id must not be empty")))
 		return nil, errors.New("dispute_id and tenant_id must not be empty")
@@ -418,7 +539,7 @@ func (s *Store) ListDisputeEvidence(ctx context.Context, disputeID, tenantID str
 		pageSize = 100
 	}
 	const q = `SELECT id, dispute_id, tenant_id, file_url, file_name, file_type, uploaded_by, uploaded_at, provider_status, provider_response, created_at, updated_at, raw_json FROM dispute_evidence WHERE dispute_id = $1 AND tenant_id = $2 ORDER BY uploaded_at DESC LIMIT $3 OFFSET $4`
-	rows, err := s.pool.Query(ctx, q, disputeID, tenantID, pageSize, (page-1)*pageSize)
+	rows, err := s.DB.Query(ctx, q, disputeID, tenantID, pageSize, (page-1)*pageSize)
 	if err != nil {
 		logger.LogError("ListDisputeEvidence: query failed", logger.ErrorField(err))
 		return nil, errors.New("failed to list dispute evidence")
@@ -440,16 +561,104 @@ func (s *Store) ListDisputeEvidence(ctx context.Context, disputeID, tenantID str
 }
 
 // UpdateDisputeEvidenceStatus sets provider_status and provider_response for an evidence record
-func (s *Store) UpdateDisputeEvidenceStatus(ctx context.Context, evidenceID, providerStatus, providerResponse string) error {
+func (s *PostgresStore) UpdateDisputeEvidenceStatus(ctx context.Context, evidenceID, providerStatus, providerResponse string) error {
 	if evidenceID == "" {
 		logger.LogError("UpdateDisputeEvidenceStatus: evidence_id must not be empty", logger.ErrorField(errors.New("evidence_id must not be empty")))
 		return errors.New("evidence_id must not be empty")
 	}
 	const q = `UPDATE dispute_evidence SET provider_status = $1, provider_response = $2, updated_at = NOW() WHERE id = $3`
-	_, err := s.pool.Exec(ctx, q, providerStatus, providerResponse, evidenceID)
+	_, err := s.DB.Exec(ctx, q, providerStatus, providerResponse, evidenceID)
 	if err != nil {
 		logger.LogError("UpdateDisputeEvidenceStatus: update failed", logger.ErrorField(err))
 		return errors.New("failed to update dispute evidence status")
+	}
+	return nil
+}
+
+func (s *PostgresStore) CreateManualRefund(ctx context.Context, refund Refund) (Refund, error) {
+	const q = `INSERT INTO refunds (id, payment_id, invoice_id, amount, currency, status, reason, created_at, updated_at, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, payment_id, invoice_id, amount, currency, status, reason, created_at, updated_at, metadata`
+	row := s.DB.QueryRow(ctx, q, refund.ID, refund.PaymentID, refund.InvoiceID, refund.Amount, refund.Currency, refund.Status, refund.Reason, refund.CreatedAt, refund.UpdatedAt, refund.Metadata)
+	var out Refund
+	if err := row.Scan(&out.ID, &out.PaymentID, &out.InvoiceID, &out.Amount, &out.Currency, &out.Status, &out.Reason, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
+		logger.LogError("CreateManualRefund failed", logger.ErrorField(err), logger.Any("refund", refund))
+		return Refund{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) GetPaymentByIdempotencyKey(ctx context.Context, idempotencyKey string) (Payment, error) {
+	const q = `SELECT id, invoice_id, amount, status, method, created_at, updated_at, metadata FROM payments WHERE metadata::jsonb ->> 'idempotency_key' = $1 LIMIT 1`
+	row := s.DB.QueryRow(ctx, q, idempotencyKey)
+	var out Payment
+	if err := row.Scan(&out.ID, &out.InvoiceID, &out.Amount, &out.Status, &out.Method, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
+		if err.Error() == "no rows in result set" {
+			return Payment{}, nil
+		}
+		logger.LogError("GetPaymentByIdempotencyKey failed", logger.ErrorField(err), logger.String("idempotency_key", idempotencyKey))
+		return Payment{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) GetPaymentResult(ctx context.Context, id string) (*PaymentResult, error) {
+	p, err := s.GetPayment(ctx, id) // existing method
+	if err != nil {
+		return nil, err
+	}
+	return &PaymentResult{
+		PaymentID: p.ID,
+		Status:    p.Status,
+		Amount:    p.Amount,
+		Currency:  p.Currency,
+		CreatedAt: p.CreatedAt,
+		Provider:  p.Method, // or map to correct provider field if needed
+		Raw:       p,
+	}, nil
+}
+
+func (s *PostgresStore) MarkPaymentsPaidForInvoice(ctx context.Context, invoiceID string) error {
+	if invoiceID == "" {
+		logger.LogError("MarkPaymentsPaidForInvoice: invoice_id required", logger.ErrorField(errors.New("invoice_id required")))
+		return errors.New("invoice_id required")
+	}
+	const q = `UPDATE payments SET status = 'paid', updated_at = NOW() WHERE invoice_id = $1`
+	_, err := s.DB.Exec(ctx, q, invoiceID)
+	if err != nil {
+		logger.LogError("MarkPaymentsPaidForInvoice: update failed", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
+		return err
+	}
+	return nil
+}
+
+func (s *PostgresStore) UpdateInvoiceStatus(ctx context.Context, invoiceID, status string) error {
+	if invoiceID == "" || status == "" {
+		return errors.New("invoiceID and status required")
+	}
+	const q = `UPDATE invoices SET status = $2, updated_at = NOW() WHERE id = $1`
+	res, err := s.DB.Exec(ctx, q, invoiceID, status)
+	if err != nil {
+		logger.LogError("UpdateInvoiceStatus failed", logger.ErrorField(err), logger.String("invoice_id", invoiceID), logger.String("status", status))
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return errors.New("invoice not found")
+	}
+	return nil
+}
+
+func (s *PostgresStore) UpdatePaymentStatus(ctx context.Context, paymentID, status string) error {
+	if paymentID == "" || status == "" {
+		return errors.New("paymentID and status required")
+	}
+	const q = `UPDATE payments SET status = $2, updated_at = NOW() WHERE id = $1`
+	res, err := s.DB.Exec(ctx, q, paymentID, status)
+	if err != nil {
+		logger.LogError("UpdatePaymentStatus failed", logger.ErrorField(err), logger.String("payment_id", paymentID), logger.String("status", status))
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return errors.New("payment not found")
 	}
 	return nil
 }

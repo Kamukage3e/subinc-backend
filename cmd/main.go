@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	billing_management "github.com/subinc/subinc-backend/internal/admin/billing-management"
+	payment "github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
 	organization_management "github.com/subinc/subinc-backend/internal/admin/organization-management"
 	project_management "github.com/subinc/subinc-backend/internal/admin/project-management"
 	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
@@ -182,7 +183,21 @@ func main() {
 	organization_management.RegisterAdminOrganizationRoutes(ownerAPI, orgHandler, jwtCfg.SecretName)
 	billingStore := billing_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 	billingHandler := billing_management.NewBillingHandler(billingStore)
+	billingHandler.Notify = securityStore
 	billing_management.RegisterAdminBillingRoutes(ownerAPI, billingHandler, jwtCfg.SecretName)
+
+	// Dunning worker setup
+	paymentStore := &payment.PostgresStore{DB: ownerDBPool}
+	if os.Getenv("DUNNING_ENABLED") == "true" {
+		go func() {
+			ticker := time.NewTicker(1 * time.Hour)
+			defer ticker.Stop()
+			for {
+				billing_management.DunningWorker(billingStore, paymentStore, billingHandler.AccountService, billingHandler.Notify)
+				<-ticker.C
+			}
+		}()
+	}
 
 	if gqlCfg.Enabled {
 		// schemaBytes, err := os.ReadFile("internal/doc-management/schema.graphqls") // Not used, schema is built programmatically
@@ -251,6 +266,7 @@ func main() {
 		// Billing Management
 		billingStore := billing_management.NewPostgresStore(dbpool, serverConfigService, securityStore)
 		billingHandler := billing_management.NewBillingHandler(billingStore)
+		billingHandler.Notify = securityStore
 		billing_management.RegisterAdminBillingRoutes(clientAPI, billingHandler, jwtSecret)
 		return c.Next()
 	})
@@ -273,4 +289,3 @@ func getAuditLogger() security_management.AuditLogger {
 	defer dbStateMu.RUnlock()
 	return dbState.auditLogger
 }
-

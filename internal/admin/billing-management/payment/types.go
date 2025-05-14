@@ -1,9 +1,11 @@
 package payment
 
 import (
+	"reflect"
 	"time"
 
 	braintree "github.com/braintree-go/braintree-go"
+	"github.com/jackc/pgx/v5/pgxpool"
 	paypal "github.com/plutov/paypal/v4"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 )
@@ -13,6 +15,10 @@ const (
 	PaymentMethodApplePay  = "apple_pay"
 	PaymentMethodGooglePay = "google_pay"
 )
+
+type PostgresStore struct {
+	DB *pgxpool.Pool
+}
 
 // CreatePaymentRequest represents a payment creation request (card, Apple Pay, Google Pay, etc).
 type CreatePaymentRequest struct {
@@ -53,6 +59,199 @@ type PaymentStatus struct {
 	Raw       interface{} `json:"raw,omitempty"`
 }
 
+// Payment represents a payment for an invoice
+// All fields are required for SaaS billing and auditability
+// Status: pending, completed, failed, refunded
+// Method: card, bank, etc.
+// Metadata: JSON-encoded for extensibility
+type Payment struct {
+	ID               string    `json:"id"`
+	InvoiceID        string    `json:"invoice_id"`
+	Amount           float64   `json:"amount"`
+	Currency         string    `json:"currency"` // ISO 4217, e.g. USD
+	OriginalAmount   float64   `json:"original_amount,omitempty"`
+	OriginalCurrency string    `json:"original_currency,omitempty"`
+	Status           string    `json:"status"`
+	Method           string    `json:"method"`
+	Last4            string    `json:"last4"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	Metadata         string    `json:"metadata"`
+}
+
+func (p *Payment) Validate() *Error {
+	if p.InvoiceID == "" {
+		return NewValidationError("invoice_id", "must not be empty")
+	}
+	if p.Amount < 0 {
+		return NewValidationError("amount", "must be non-negative")
+	}
+	if p.Status == "" {
+		return NewValidationError("status", "must not be empty")
+	}
+	if p.Method == "" {
+		return NewValidationError("method", "must not be empty")
+	}
+	if len(p.Last4) != 4 {
+		return NewValidationError("last4", "must be 4 characters")
+	}
+	return nil
+}
+
+// Refund represents a refund for a payment/invoice
+// All fields are required for SaaS billing and auditability
+// Status: pending, processed, failed, reversed
+// Metadata: JSON-encoded for extensibility
+type Refund struct {
+	ID               string    `json:"id"`
+	PaymentID        string    `json:"payment_id"`
+	InvoiceID        string    `json:"invoice_id,omitempty"`
+	Amount           float64   `json:"amount"`
+	Currency         string    `json:"currency"`
+	OriginalAmount   float64   `json:"original_amount,omitempty"`
+	OriginalCurrency string    `json:"original_currency,omitempty"`
+	Reason           string    `json:"reason"`
+	Status           string    `json:"status"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	Metadata         string    `json:"metadata"`
+}
+
+func (r *Refund) Validate() *Error {
+	if r.PaymentID == "" {
+		return NewValidationError("payment_id", "must not be empty")
+	}
+	if r.Amount <= 0 {
+		return NewValidationError("amount", "must be greater than zero")
+	}
+	if r.Currency == "" {
+		return NewValidationError("currency", "must not be empty")
+	}
+	if r.Status == "" {
+		return NewValidationError("status", "must not be empty")
+	}
+	return nil
+}
+
+// PaymentMethod represents a PCI-compliant payment method for an account
+// All fields are required for SaaS billing and auditability
+// Status: active, inactive, expired, failed
+// Token: PCI token reference, never raw PAN
+// TokenProvider: e.g., stripe, adyen, aws_kms
+// Metadata: JSON-encoded for extensibility
+// IsDefault: whether this is the default payment method for the account
+type PaymentMethod struct {
+	ID            string    `json:"id"`
+	AccountID     string    `json:"account_id"`
+	Type          string    `json:"type"`
+	Provider      string    `json:"provider"`
+	Last4         string    `json:"last4"`
+	ExpMonth      int       `json:"exp_month"`
+	ExpYear       int       `json:"exp_year"`
+	IsDefault     bool      `json:"is_default"`
+	Status        string    `json:"status"`
+	Token         string    `json:"token"`
+	TokenProvider string    `json:"token_provider"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	Metadata      string    `json:"metadata"`
+}
+
+func (p *PaymentMethod) Validate() *Error {
+	if p.AccountID == "" {
+		return NewValidationError("account_id", "must not be empty")
+	}
+	if p.Type == "" {
+		return NewValidationError("type", "must not be empty")
+	}
+	if p.Provider == "" {
+		return NewValidationError("provider", "must not be empty")
+	}
+	if p.Last4 == "" || len(p.Last4) != 4 {
+		return NewValidationError("last4", "must be 4 characters")
+	}
+	if p.ExpMonth < 1 || p.ExpMonth > 12 {
+		return NewValidationError("exp_month", "must be between 1 and 12")
+	}
+	if p.ExpYear < time.Now().Year() {
+		return NewValidationError("exp_year", "must not be in the past")
+	}
+	if p.Token == "" {
+		return NewValidationError("token", "must not be empty")
+	}
+	if p.TokenProvider == "" {
+		return NewValidationError("token_provider", "must not be empty")
+	}
+	return nil
+}
+
+// Error type for validation and domain errors
+type Error struct {
+	Code    string
+	Message string
+	Field   string
+	Err     error
+}
+
+func NewValidationError(field, msg string) *Error {
+	return &Error{
+		Code:    "VALIDATION_ERROR",
+		Message: msg,
+		Field:   field,
+	}
+}
+
+func (e *Error) Error() string {
+	if e.Field != "" {
+		return e.Code + ": " + e.Message + " (" + e.Field + ")"
+	}
+	return e.Code + ": " + e.Message
+}
+
+// ErrorFromBilling converts a billing_management.Error to a payment.Error
+func ErrorFromBilling(err error) *Error {
+	if err == nil {
+		return nil
+	}
+
+	// Check if it's already a payment.Error
+	if pErr, ok := err.(*Error); ok {
+		return pErr
+	}
+
+	// Try to convert from billing_management.Error
+	// This avoids importing billing_management to prevent circular deps
+	// We use type assertion on the interface{} to check fields
+
+	// Use reflection to extract fields
+	errValue := reflect.ValueOf(err)
+	if errValue.Kind() == reflect.Ptr && !errValue.IsNil() {
+		errValue = errValue.Elem()
+		if errValue.Kind() == reflect.Struct {
+			// Try to extract Code, Message, Field
+			codeField := errValue.FieldByName("Code")
+			messageField := errValue.FieldByName("Message")
+			fieldField := errValue.FieldByName("Field")
+
+			if codeField.IsValid() && messageField.IsValid() && fieldField.IsValid() {
+				return &Error{
+					Code:    codeField.String(),
+					Message: messageField.String(),
+					Field:   fieldField.String(),
+					Err:     err,
+				}
+			}
+		}
+	}
+
+	// Fallback - wrap the generic error
+	return &Error{
+		Code:    "INTERNAL_ERROR",
+		Message: err.Error(),
+		Err:     err,
+	}
+}
+
 type TenantPaymentProviderConfig struct {
 	TenantID  string    `json:"tenant_id"`
 	Provider  string    `json:"provider"`
@@ -69,6 +268,7 @@ type StripeProvider struct {
 	APIKey      string
 	AuditLogger security_management.AuditLogger
 	Store       StoreInterface
+	Notify      security_management.NotificationService
 }
 
 type BraintreeProvider struct {
@@ -141,17 +341,6 @@ type Dispute struct {
 	Raw               interface{}   `json:"raw,omitempty"`
 }
 
-type DisputeService struct {
-	Store       DisputeStoreInterface
-	Notify      security_management.NotificationService
-	AuditLogger security_management.AuditLogger
-}
-
-// DisputeEvidence represents an evidence file or submission for a dispute
-// All fields required for audit, provider sync, and admin UI
-// ProviderStatus: pending, submitted, accepted, rejected, error
-// ProviderResponse: provider-specific response or error
-
 type DisputeEvidence struct {
 	ID               string      `json:"id"`
 	DisputeID        string      `json:"dispute_id"`
@@ -167,3 +356,4 @@ type DisputeEvidence struct {
 	UpdatedAt        time.Time   `json:"updated_at"`
 	Raw              interface{} `json:"raw,omitempty"`
 }
+
