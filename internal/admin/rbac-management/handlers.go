@@ -5,8 +5,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-	"github.com/subinc/subinc-backend/internal/pkg/auditutil"
 	"github.com/subinc/subinc-backend/internal/pkg/contextutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
@@ -86,16 +84,6 @@ func (h *RBACHandler) CreateRole(c *fiber.Ctx) error {
 		logger.LogError("CreateRole: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "create_role",
-			TargetID:  role.ID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.Status(fiber.StatusCreated).JSON(role)
 }
 
@@ -119,16 +107,6 @@ func (h *RBACHandler) UpdateRole(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("UpdateRole: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "update_role",
-			TargetID:  role.ID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(role)
 }
@@ -154,16 +132,6 @@ func (h *RBACHandler) DeleteRole(c *fiber.Ctx) error {
 		logger.LogError("DeleteRole: failed", logger.ErrorField(err), logger.String("id", req.ID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "delete_role",
-			TargetID:  req.ID,
-			Details:   auditutil.MarshalAuditDetails(req),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -181,16 +149,6 @@ func (h *RBACHandler) GetRole(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("GetRole: not found", logger.ErrorField(err), logger.String("id", req.ID))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "read_role",
-			TargetID:  req.ID,
-			Details:   auditutil.MarshalAuditDetails(req),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(role)
 }
@@ -211,16 +169,6 @@ func (h *RBACHandler) ListRoles(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("ListRoles: failed", logger.ErrorField(err), logger.String("tenant_id", req.TenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "list_roles",
-			TargetID:  "",
-			Details:   auditutil.MarshalAuditDetails(req),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(fiber.Map{"roles": roles, "page": req.Page, "page_size": req.PageSize})
 }
@@ -247,16 +195,6 @@ func (h *RBACHandler) CreatePermission(c *fiber.Ctx) error {
 		logger.LogError("CreatePermission: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "create_permission",
-			TargetID:  perm.ID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.Status(fiber.StatusCreated).JSON(perm)
 }
 
@@ -280,16 +218,6 @@ func (h *RBACHandler) UpdatePermission(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("UpdatePermission: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "update_permission",
-			TargetID:  perm.ID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(perm)
 }
@@ -315,16 +243,6 @@ func (h *RBACHandler) DeletePermission(c *fiber.Ctx) error {
 		logger.LogError("DeletePermission: failed", logger.ErrorField(err), logger.String("id", req.ID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "delete_permission",
-			TargetID:  req.ID,
-			Details:   auditutil.MarshalAuditDetails(req),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -342,16 +260,6 @@ func (h *RBACHandler) GetPermission(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("GetPermission: not found", logger.ErrorField(err), logger.String("id", req.ID))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "read_permission",
-			TargetID:  req.ID,
-			Details:   auditutil.MarshalAuditDetails(req),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(perm)
 }
@@ -372,16 +280,6 @@ func (h *RBACHandler) ListPermissions(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("ListPermissions: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "list_permissions",
-			TargetID:  "",
-			Details:   auditutil.MarshalAuditDetails(req),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(fiber.Map{"permissions": perms, "page": req.Page, "page_size": req.PageSize})
 }
@@ -408,16 +306,6 @@ func (h *RBACHandler) CreateRoleBinding(c *fiber.Ctx) error {
 		logger.LogError("CreateRoleBinding: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "create_role_binding",
-			TargetID:  binding.ID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.Status(fiber.StatusCreated).JSON(binding)
 }
 
@@ -442,16 +330,6 @@ func (h *RBACHandler) DeleteRoleBinding(c *fiber.Ctx) error {
 		logger.LogError("DeleteRoleBinding: failed", logger.ErrorField(err), logger.String("id", req.ID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "delete_role_binding",
-			TargetID:  req.ID,
-			Details:   auditutil.MarshalAuditDetails(req),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -471,16 +349,6 @@ func (h *RBACHandler) ListRoleBindings(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("ListRoleBindings: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "list_role_bindings",
-			TargetID:  "",
-			Details:   auditutil.MarshalAuditDetails(req),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(fiber.Map{"role_bindings": bindings, "page": req.Page, "page_size": req.PageSize})
 }
@@ -507,16 +375,6 @@ func (h *RBACHandler) CreatePolicy(c *fiber.Ctx) error {
 		logger.LogError("CreatePolicy: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "create_policy",
-			TargetID:  policy.ID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.Status(fiber.StatusCreated).JSON(policy)
 }
 
@@ -540,16 +398,6 @@ func (h *RBACHandler) UpdatePolicy(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("UpdatePolicy: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "update_policy",
-			TargetID:  policy.ID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(policy)
 }
@@ -575,16 +423,6 @@ func (h *RBACHandler) DeletePolicy(c *fiber.Ctx) error {
 		logger.LogError("DeletePolicy: failed", logger.ErrorField(err), logger.String("id", req.ID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "delete_policy",
-			TargetID:  req.ID,
-			Details:   auditutil.MarshalAuditDetails(req),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -602,16 +440,6 @@ func (h *RBACHandler) GetPolicy(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("GetPolicy: not found", logger.ErrorField(err), logger.String("id", req.ID))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "read_policy",
-			TargetID:  req.ID,
-			Details:   auditutil.MarshalAuditDetails(req),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(policy)
 }
@@ -632,16 +460,6 @@ func (h *RBACHandler) ListPolicies(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("ListPolicies: failed", logger.ErrorField(err), logger.String("tenant_id", req.TenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "list_policies",
-			TargetID:  "",
-			Details:   auditutil.MarshalAuditDetails(req),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(fiber.Map{"policies": policies, "page": req.Page, "page_size": req.PageSize})
 }
@@ -694,16 +512,6 @@ func (h *RBACHandler) ListAPIPermissions(c *fiber.Ctx) error {
 		logger.LogError("ListAPIPermissions: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "list_api_permissions",
-			TargetID:  "",
-			Details:   auditutil.MarshalAuditDetails(req),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(fiber.Map{"api_permissions": perms, "page": req.Page, "page_size": req.PageSize})
 }
 
@@ -734,16 +542,6 @@ func (h *RBACHandler) UpdateResource(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("UpdateResource: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "update_resource",
-			TargetID:  res.ID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(res)
 }
@@ -780,16 +578,6 @@ func (h *RBACHandler) GetResource(c *fiber.Ctx) error {
 		logger.LogError("GetResource: not found", logger.ErrorField(err), logger.String("id", req.ID))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "read_resource",
-			TargetID:  req.ID,
-			Details:   auditutil.MarshalAuditDetails(req),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(res)
 }
 
@@ -809,16 +597,6 @@ func (h *RBACHandler) ListResources(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("ListResources: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "list_resources",
-			TargetID:  "",
-			Details:   auditutil.MarshalAuditDetails(req),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(fiber.Map{"resources": resources, "page": req.Page, "page_size": req.PageSize})
 }
@@ -846,16 +624,6 @@ func (h *RBACHandler) CreateABACPolicy(c *fiber.Ctx) error {
 		logger.LogError("CreateABACPolicy: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "create_abac_policy",
-			TargetID:  policy.ID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.Status(fiber.StatusCreated).JSON(policy)
 }
 
@@ -876,16 +644,6 @@ func (h *RBACHandler) UpdateABACPolicy(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("UpdateABACPolicy: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "update_abac_policy",
-			TargetID:  policy.ID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(policy)
 }
@@ -909,16 +667,6 @@ func (h *RBACHandler) DeleteABACPolicy(c *fiber.Ctx) error {
 		logger.LogError("DeleteABACPolicy: failed", logger.ErrorField(err), logger.String("id", input.ID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "delete_abac_policy",
-			TargetID:  input.ID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -934,16 +682,6 @@ func (h *RBACHandler) GetABACPolicy(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("GetABACPolicy: not found", logger.ErrorField(err), logger.String("id", input.ID))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "read_abac_policy",
-			TargetID:  input.ID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(policy)
 }
@@ -969,16 +707,6 @@ func (h *RBACHandler) ListABACPolicies(c *fiber.Ctx) error {
 		logger.LogError("ListABACPolicies: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "list_abac_policies",
-			TargetID:  "",
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(policies)
 }
 
@@ -992,16 +720,6 @@ func (h *RBACHandler) EvaluateABAC(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("EvaluateABAC: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "evaluate_abac",
-			TargetID:  input.Resource,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(result)
 }
@@ -1018,16 +736,6 @@ func (h *RBACHandler) SimulatePolicy(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("SimulatePolicy: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "simulate_policy",
-			TargetID:  input.Resource,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(result)
 }
@@ -1047,16 +755,6 @@ func (h *RBACHandler) SimulatePolicyWhatIf(c *fiber.Ctx) error {
 		logger.LogError("SimulatePolicyWhatIf: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "simulate_policy_what_if",
-			TargetID:  input.UserID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(result)
 }
 
@@ -1072,16 +770,6 @@ func (h *RBACHandler) ExplainPermission(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("ExplainPermission: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "explain_permission",
-			TargetID:  input.Resource,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(result)
 }
@@ -1108,16 +796,6 @@ func (h *RBACHandler) DelegateRole(c *fiber.Ctx) error {
 		logger.LogError("DelegateRole: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "delegate_role",
-			TargetID:  input.ToUserID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -1140,16 +818,6 @@ func (h *RBACHandler) RevokeDelegatedRole(c *fiber.Ctx) error {
 	if err := h.Store.RevokeDelegatedRole(c.Context(), input); err != nil {
 		logger.LogError("RevokeDelegatedRole: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "revoke_delegated_role",
-			TargetID:  input.ToUserID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -1175,16 +843,6 @@ func (h *RBACHandler) ListDelegatedRoles(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("ListDelegatedRoles: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID), logger.String("user_id", input.UserID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "list_delegated_roles",
-			TargetID:  input.UserID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(roles)
 }
@@ -1215,16 +873,6 @@ func (h *RBACHandler) BulkAssignRoleBindings(c *fiber.Ctx) error {
 		logger.LogError("BulkAssignRoleBindings: failed", logger.ErrorField(err), logger.Any("req", req))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "bulk_assign_role_bindings",
-			TargetID:  req.RoleID,
-			Details:   auditutil.MarshalAuditDetails(req),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"role_bindings": bindings})
 }
 
@@ -1254,16 +902,6 @@ func (h *RBACHandler) BulkRemoveRoleBindings(c *fiber.Ctx) error {
 		logger.LogError("BulkRemoveRoleBindings: failed", logger.ErrorField(err), logger.Any("req", req))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "bulk_remove_role_bindings",
-			TargetID:  req.RoleID,
-			Details:   auditutil.MarshalAuditDetails(req),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -1291,16 +929,6 @@ func (h *RBACHandler) DelegateRoleWithExpiry(c *fiber.Ctx) error {
 		logger.LogError("DelegateRoleWithExpiry: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "delegate_role_with_expiry",
-			TargetID:  input.ToUserID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -1324,16 +952,6 @@ func (h *RBACHandler) RevokeDelegatedRoleWithAudit(c *fiber.Ctx) error {
 	if err := h.Store.RevokeDelegatedRole(c.Context(), input); err != nil {
 		logger.LogError("RevokeDelegatedRoleWithAudit: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "revoke_delegated_role_with_audit",
-			TargetID:  input.ToUserID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -1366,16 +984,6 @@ func (h *RBACHandler) ImportPolicies(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 		}
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "import_policies",
-			TargetID:  input.TenantID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -1396,16 +1004,6 @@ func (h *RBACHandler) ExportPolicies(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	result := fiber.Map{"policies": policies, "abac_policies": abac}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "export_policies",
-			TargetID:  tenantID,
-			Details:   auditutil.MarshalAuditDetails(result),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(result)
 }
 
@@ -1432,16 +1030,6 @@ func (h *RBACHandler) CreatePermissionTemplate(c *fiber.Ctx) error {
 		CreatedAt:   time.Now().UTC(),
 	}
 	permissionTemplates[id] = tpl
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "create_permission_template",
-			TargetID:  id,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.Status(fiber.StatusCreated).JSON(tpl)
 }
 
@@ -1472,16 +1060,6 @@ func (h *RBACHandler) ApplyPermissionTemplate(c *fiber.Ctx) error {
 		// This assumes a method to bind permission to role exists (pseudo-code):
 		// _ = h.Store.BindPermissionToRole(c.Context(), input.RoleID, permID)
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "apply_permission_template",
-			TargetID:  input.RoleID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -1498,16 +1076,6 @@ func (h *RBACHandler) DiscoverPermissions(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	result := fiber.Map{"resources": resources, "actions": actions}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "discover_permissions",
-			TargetID:  "",
-			Details:   auditutil.MarshalAuditDetails(result),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(result)
 }
 
@@ -1525,16 +1093,6 @@ func (h *RBACHandler) RestoreRole(c *fiber.Ctx) error {
 		logger.LogError("RestoreRole: failed", logger.ErrorField(err), logger.String("id", req.ID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "restore_role",
-			TargetID:  req.ID,
-			Details:   auditutil.MarshalAuditDetails(req),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -1551,16 +1109,6 @@ func (h *RBACHandler) RestorePolicy(c *fiber.Ctx) error {
 	if err := h.Store.RestorePolicy(c.Context(), req.ID); err != nil {
 		logger.LogError("RestorePolicy: failed", logger.ErrorField(err), logger.String("id", req.ID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "restore_policy",
-			TargetID:  req.ID,
-			Details:   auditutil.MarshalAuditDetails(req),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }

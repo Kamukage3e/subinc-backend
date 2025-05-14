@@ -3,7 +3,7 @@ package server_config
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
+
 	"fmt"
 	"net/smtp"
 	"time"
@@ -14,7 +14,7 @@ import (
 	awsCreds "github.com/aws/aws-sdk-go-v2/credentials"
 	sts "github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	redis "github.com/redis/go-redis/v9"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
@@ -80,17 +80,7 @@ func (h *Handler) SetConfig(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	// Audit log
-	if h.Service.AuditLogger != nil {
-		details, _ := json.Marshal(input)
-		go h.Service.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   updatedBy.(string),
-			Action:    "set_server_config",
-			TargetID:  input.Key,
-			Details:   string(details),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
+
 	return c.JSON(cfg)
 }
 
@@ -176,21 +166,7 @@ func (h *Handler) SetMigrationStatus(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	// Audit log
-	if h.Service.AuditLogger != nil {
-		details, _ := json.Marshal(input)
-		actor := c.Locals("actor_id")
-		if actor == nil {
-			actor = "system"
-		}
-		go h.Service.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   actor.(string),
-			Action:    "set_migration_status",
-			TargetID:  input.Name,
-			Details:   string(details),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
+
 	return c.JSON(status)
 }
 
@@ -1748,17 +1724,6 @@ func (h *Handler) SetOwnerGraphQLConfig(c *fiber.Ctx) error {
 		h.log.Error("server_config set GraphQL failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	// Audit log
-	if h.Service.AuditLogger != nil {
-		details, _ := json.Marshal(input)
-		go h.Service.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   updatedBy.(string),
-			Action:    "set_server_config_graphql",
-			TargetID:  "owner_admin_graphql_config",
-			Details:   string(details),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
+
 	return c.JSON(cfg)
 }

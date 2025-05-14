@@ -4,18 +4,19 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+
 )
 
 // Architectural decision: All security-management endpoints use in-memory rate limiting and strict security headers.
 // Sensitive endpoints have stricter limits.
-func RegisterAdminSecurityRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretName string) {
+func RegisterAdminSecurityRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretName string, auditLogger AuditLogger) {
 	// General rate limiter: 30 req/min/IP
 	generalLimiter := newInMemoryRateLimiter(30, time.Minute)
 	// Sensitive: 10 req/min/IP
 	strictLimiter := newInMemoryRateLimiter(10, time.Minute)
 
 	// --- Auth ---
-	auth := router.Group("/auth", securityHeadersMiddleware())
+	auth := router.Group("/auth", securityHeadersMiddleware(), )
 	auth.Post("/login", strictLimiter.middleware(), handler.Login)
 	auth.Post("/logout", strictLimiter.middleware(), handler.Logout)
 	auth.Post("/register", generalLimiter.middleware(), handler.Register)

@@ -3,17 +3,19 @@ package user_management
 import (
 	"github.com/gofiber/fiber/v2"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
 )
 
 func userScopeExtractor(c *fiber.Ctx) (string, string) {
 	return "user", c.Get("X-User-ID")
 }
 
-func RegisterAdminUserRoutes(router fiber.Router, handler *UserHandler, jwtSecret string) {
+func RegisterAdminUserRoutes(router fiber.Router, handler *UserHandler, jwtSecret string, auditLogger security_management.AuditLogger) {
 	user := router.Group(
 		"/user-management",
 		security_management.OIDCMiddleware(jwtSecret),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, userScopeExtractor),
+		auditmiddleware.AuditLoggerMiddleware(auditLogger),
 	)
 	user.Post("/users/create", handler.CreateUser)
 	user.Post("/users/update", handler.UpdateUser)

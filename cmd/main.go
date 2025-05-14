@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/graphql-go/graphql"
+	// "github.com/graphql-go/graphql"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	billing_management "github.com/subinc/subinc-backend/internal/admin/billing-management"
@@ -21,7 +21,7 @@ import (
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	tenant_management "github.com/subinc/subinc-backend/internal/admin/tenant-management"
 	user_management "github.com/subinc/subinc-backend/internal/admin/user-management"
-	docmanagement "github.com/subinc/subinc-backend/internal/doc-management"
+
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 	"github.com/subinc/subinc-backend/pkg/session"
 )
@@ -115,7 +115,7 @@ func main() {
 		log.Fatalf("Failed to load JWT secret config: %v", err)
 	}
 
-	gqlCfg, err := serverConfigService.GetOwnerGraphQLConfig(ctx)
+	_, err = serverConfigService.GetOwnerGraphQLConfig(ctx)
 	if err != nil {
 		log.Fatalf("Failed to load GraphQL config: %v", err)
 	}
@@ -127,15 +127,14 @@ func main() {
 
 	app := fiber.New()
 
-	// --- Owner admin routes ---
-	ownerAPI := app.Group("/api/v1/owner-admin")
-	store := &rbac_management.PostgresStore{DB: ownerDBPool, AuditLogger: &security_management.PostgresStore{DB: ownerDBPool}}
-	rbacHandler := rbac_management.NewRBACHandler(store)
-	rbac_management.RegisterAdminRBACRoutes(ownerAPI, rbacHandler, jwtCfg.SecretName)
-	serverConfigHandler := server_config.NewHandler(serverConfigService, logr)
-	server_config.RegisterAdminServerConfigRoutes(ownerAPI, serverConfigHandler, jwtCfg.SecretName)
+	// --- Unified admin routes (owner + client) ---
+	adminAPI := app.Group("/api/v1/")
 	securityStore := security_management.NewPostgresStore(ownerDBPool, serverConfigService, nil)
-
+	store := &rbac_management.PostgresStore{DB: ownerDBPool, AuditLogger: securityStore}
+	rbacHandler := rbac_management.NewRBACHandler(store)
+	rbac_management.RegisterAdminRBACRoutes(adminAPI, rbacHandler, jwtCfg.SecretName, securityStore)
+	serverConfigHandler := server_config.NewHandler(serverConfigService, logr)
+	server_config.RegisterAdminServerConfigRoutes(adminAPI, serverConfigHandler, jwtCfg.SecretName, securityStore)
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "localhost:6379"
@@ -168,23 +167,23 @@ func main() {
 		NotificationService:         securityStore,
 		SecurityModuleConfigService: securityStore,
 	}
-	security_management.RegisterAdminSecurityRoutes(ownerAPI, securityHandler, jwtCfg.SecretName)
+	security_management.RegisterAdminSecurityRoutes(adminAPI, securityHandler, jwtCfg.SecretName, securityStore)
 	userStore := user_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 	userHandler := user_management.NewUserHandler(userStore)
-	user_management.RegisterAdminUserRoutes(ownerAPI, userHandler, jwtCfg.SecretName)
+	user_management.RegisterAdminUserRoutes(adminAPI, userHandler, jwtCfg.SecretName, securityStore)
 	tenantStore := tenant_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 	tenantHandler := tenant_management.NewTenantHandler(tenantStore)
-	tenant_management.RegisterAdminTenantRoutes(ownerAPI, tenantHandler, jwtCfg.SecretName)
+	tenant_management.RegisterAdminTenantRoutes(adminAPI, tenantHandler, jwtCfg.SecretName, securityStore)
 	projectStore := project_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 	projectHandler := project_management.NewProjectHandler(projectStore)
-	project_management.RegisterAdminProjectRoutes(ownerAPI, projectHandler, jwtCfg.SecretName)
+	project_management.RegisterAdminProjectRoutes(adminAPI, projectHandler, jwtCfg.SecretName, securityStore)
 	orgStore := organization_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 	orgHandler := organization_management.NewOrganizationHandler(orgStore)
-	organization_management.RegisterAdminOrganizationRoutes(ownerAPI, orgHandler, jwtCfg.SecretName)
+	organization_management.RegisterAdminOrganizationRoutes(adminAPI, orgHandler, jwtCfg.SecretName, securityStore)
 	billingStore := billing_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 	billingHandler := billing_management.NewBillingHandler(billingStore)
 	billingHandler.Notify = securityStore
-	billing_management.RegisterAdminBillingRoutes(ownerAPI, billingHandler, jwtCfg.SecretName)
+	billing_management.RegisterAdminBillingRoutes(adminAPI, billingHandler, jwtCfg.SecretName, securityStore)
 
 	// Dunning worker setup
 	paymentStore := &payment.PostgresStore{DB: ownerDBPool}
@@ -199,19 +198,17 @@ func main() {
 		}()
 	}
 
-	if gqlCfg.Enabled {
-		// schemaBytes, err := os.ReadFile("internal/doc-management/schema.graphqls") // Not used, schema is built programmatically
-		schema, err := graphql.NewSchema(graphql.SchemaConfig{
-			Query:    nil, // TODO: Replace with unified root query object covering all domains
-			Mutation: nil, // TODO: Replace with unified root mutation object covering all domains
-		})
-		if err != nil {
-			log.Fatalf("Failed to create GraphQL schema: %v", err)
-		}
-		docmanagement.UnifiedGraphQLHandler(app, schema)
-	}
+	// if gqlCfg.Enabled {
+	// 	schema, err := graphql.NewSchema(graphql.SchemaConfig{
+	// 		Query:    nil,
+	// 		Mutation: nil,
+	// 	})
+	// 	if err != nil {
+	// 		log.Fatalf("Failed to create GraphQL schema: %v", err)
+	// 	}
+	// 	docmanagement.UnifiedGraphQLHandler(app, schema)
+	// }
 
-	// --- Owner admin bootstrap (automatic, no endpoint) ---
 	userCount, err := securityStore.CountUsers(ctx)
 	if err != nil {
 		log.Fatalf("Failed to count users: %v", err)
@@ -229,50 +226,21 @@ func main() {
 		log.Printf("Owner admin bootstrapped: %s", ownerEmail)
 	}
 
-	// --- Client admin routes ---
-	// app.Use("/api/v1/client-admin", withDB)
-	clientAPI := app.Group("/api/v1/client-admin")
-	clientAPI.All("/*", func(c *fiber.Ctx) error {
-		dbURL, err := extractDBConfig(c)
+	// --- Serve Swagger/OpenAPI spec ---
+	// To generate: swagger generate spec -o ./swagger.json --scan-models
+	app.Get("/swagger.json", func(c *fiber.Ctx) error {
+		data, err := os.ReadFile("swagger.json")
 		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid DB credentials"})
+			return c.Status(404).SendString("swagger.json not found")
 		}
-		dbpool, err := pgxpool.New(context.Background(), dbURL)
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "DB connect failed"})
-		}
-		defer dbpool.Close()
-
-		jwtSecret := c.Get("X-JWT-Secret")
-		if jwtSecret == "" {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing JWT secret"})
-		}
-		// User Management
-		userStore := user_management.NewPostgresStore(dbpool, serverConfigService, securityStore)
-		userHandler := user_management.NewUserHandler(userStore)
-		user_management.RegisterAdminUserRoutes(clientAPI, userHandler, jwtSecret)
-		// Tenant Management
-		tenantStore := tenant_management.NewPostgresStore(dbpool, serverConfigService, securityStore)
-		tenantHandler := tenant_management.NewTenantHandler(tenantStore)
-		tenant_management.RegisterAdminTenantRoutes(clientAPI, tenantHandler, jwtSecret)
-		// Project Management
-		projectStore := project_management.NewPostgresStore(dbpool, serverConfigService, securityStore)
-		projectHandler := project_management.NewProjectHandler(projectStore)
-		project_management.RegisterAdminProjectRoutes(clientAPI, projectHandler, jwtSecret)
-		// Organization Management
-		orgStore := organization_management.NewPostgresStore(dbpool, serverConfigService, securityStore)
-		orgHandler := organization_management.NewOrganizationHandler(orgStore)
-		organization_management.RegisterAdminOrganizationRoutes(clientAPI, orgHandler, jwtSecret)
-		// Billing Management
-		billingStore := billing_management.NewPostgresStore(dbpool, serverConfigService, securityStore)
-		billingHandler := billing_management.NewBillingHandler(billingStore)
-		billingHandler.Notify = securityStore
-		billing_management.RegisterAdminBillingRoutes(clientAPI, billingHandler, jwtSecret)
-		return c.Next()
+		c.Set("Content-Type", "application/json")
+		return c.Send(data)
 	})
+	// Optionally serve Swagger UI if you have the static assets in ./swagger-ui
+	app.Static("/docs", "./swagger-ui")
 
 	if err := app.Listen(fmt.Sprintf(":%s", serverPort)); err != nil {
-		log.Fatalf("Fiber failed: %v", err)
+		log.Fatalf("Failed to start server: %v", err)
 	}
 }
 

@@ -13,7 +13,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -51,14 +50,6 @@ func getTenantID(c *fiber.Ctx) string {
 	return ""
 }
 
-func marshalAuditDetails(v interface{}) string {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return "{}"
-	}
-	return string(b)
-}
-
 func (h *SecurityHandler) ListUserSecurityEvents(c *fiber.Ctx) error {
 	var input struct {
 		UserID string `json:"user_id"`
@@ -72,16 +63,6 @@ func (h *SecurityHandler) ListUserSecurityEvents(c *fiber.Ctx) error {
 		logger.LogError("ListUserSecurityEvents: failed", logger.ErrorField(err), logger.String("user_id", input.UserID), logger.String("tenant_id", getTenantID(c)))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error(), "tenant_id": getTenantID(c)})
 	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	details := events
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   getActorID(c),
-		Action:    "list_user_security_events",
-		TargetID:  input.UserID,
-		Details:   marshalAuditDetails(map[string]interface{}{"events": details, "tenant_id": getTenantID(c)}),
-		CreatedAt: time.Now().UTC(),
-	})
 	return c.JSON(events)
 }
 
@@ -98,21 +79,24 @@ func (h *SecurityHandler) ListUserLoginHistory(c *fiber.Ctx) error {
 		logger.LogError("ListUserLoginHistory: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	details := history
-	detailsBytes, _ := json.Marshal(details)
-	detailsStr := string(detailsBytes)
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   getActorID(c),
-		Action:    "list_user_login_history",
-		TargetID:  input.UserID,
-		Details:   detailsStr,
-		CreatedAt: time.Now().UTC(),
-	})
 	return c.JSON(history)
 }
 
+// --- MFA ---
+// swagger:route POST /users/mfa/enable mfa enableMFA
+// summary: Enable MFA for user
+// tags:
+//   - mfa
+//
+// security:
+//   - bearerAuth: []
+//
+// responses:
+//
+//	204: SuccessResponse
+//	400: ErrorResponse
+//	403: ErrorResponse
+//	422: ErrorResponse
 func (h *SecurityHandler) EnableMFA(c *fiber.Ctx) error {
 	tenantID := getTenantID(c)
 	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
@@ -137,21 +121,34 @@ func (h *SecurityHandler) EnableMFA(c *fiber.Ctx) error {
 		logger.LogError("EnableMFA: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	details := fiber.Map{"user_id": input.UserID}
-	detailsBytes, _ := json.Marshal(details)
-	detailsStr := string(detailsBytes)
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   getActorID(c),
-		Action:    "enable_mfa",
-		TargetID:  input.UserID,
-		Details:   detailsStr,
-		CreatedAt: time.Now().UTC(),
-	})
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// swagger:parameters enableMFA
+// in: body
+// name: body
+// schema:
+//   type: object
+//   properties:
+//     user_id:
+//       type: string
+//   required:
+//     - user_id
+
+// swagger:route POST /users/mfa/disable mfa disableMFA
+// summary: Disable MFA for user
+// tags:
+//   - mfa
+//
+// security:
+//   - bearerAuth: []
+//
+// responses:
+//
+//	204: SuccessResponse
+//	400: ErrorResponse
+//	403: ErrorResponse
+//	422: ErrorResponse
 func (h *SecurityHandler) DisableMFA(c *fiber.Ctx) error {
 	tenantID := getTenantID(c)
 	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
@@ -176,60 +173,119 @@ func (h *SecurityHandler) DisableMFA(c *fiber.Ctx) error {
 		logger.LogError("DisableMFA: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	details := fiber.Map{"user_id": input.UserID}
-	detailsBytes, _ := json.Marshal(details)
-	detailsStr := string(detailsBytes)
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   getActorID(c),
-		Action:    "disable_mfa",
-		TargetID:  input.UserID,
-		Details:   detailsStr,
-		CreatedAt: time.Now().UTC(),
-	})
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *SecurityHandler) ResetUserPassword(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "user_password", "reset")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
+// swagger:parameters disableMFA
+// in: body
+// name: body
+// schema:
+//   type: object
+//   properties:
+//     user_id:
+//       type: string
+//   required:
+//     - user_id
+
+// swagger:route POST /users/mfa/challenge mfa mfaChallenge
+// summary: Generate MFA challenge
+// tags:
+//   - mfa
+//
+// security:
+//   - bearerAuth: []
+//
+// responses:
+//
+//	200: MFAChallengeResponse
+//	401: ErrorResponse
+//	422: ErrorResponse
+func (h *SecurityHandler) MFAChallenge(c *fiber.Ctx) error {
+	userID := getActorID(c)
+	if userID == "" {
+		logger.LogError("MFAChallenge: unauthorized", logger.String("user_id", userID))
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
-	var input struct {
-		UserID      string `json:"user_id"`
-		NewPassword string `json:"new_password"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" || input.NewPassword == "" {
-		logger.LogError("ResetUserPassword: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id and new_password required"})
-	}
-	if err := h.PasswordService.ResetUserPassword(c.Context(), input.UserID, input.NewPassword); err != nil {
-		logger.LogError("ResetUserPassword: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
+	challenge, err := h.MFAService.GenerateChallenge(c.Context(), userID)
+	if err != nil {
+		logger.LogError("MFAChallenge: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	details := fiber.Map{"user_id": input.UserID, "new_password": input.NewPassword}
-	detailsBytes, _ := json.Marshal(details)
-	detailsStr := string(detailsBytes)
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   getActorID(c),
-		Action:    "reset_user_password",
-		TargetID:  input.UserID,
-		Details:   detailsStr,
-		CreatedAt: time.Now().UTC(),
-	})
+	return c.JSON(challenge)
+}
+
+// swagger:parameters mfaChallenge
+// in: body
+// name: body
+// schema:
+//   type: object
+//   properties:
+//     user_id:
+//       type: string
+//   required:
+//     - user_id
+
+// swagger:route POST /users/mfa/verify mfa mfaVerify
+// summary: Verify MFA challenge
+// tags:
+//   - mfa
+//
+// security:
+//   - bearerAuth: []
+//
+// responses:
+//
+//	204: SuccessResponse
+//	400: ErrorResponse
+//	401: ErrorResponse
+//	422: ErrorResponse
+func (h *SecurityHandler) MFAVerify(c *fiber.Ctx) error {
+	userID := getActorID(c)
+	if userID == "" {
+		logger.LogError("MFAVerify: unauthorized", logger.String("user_id", userID))
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+	var input struct {
+		Code string `json:"code"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.Code == "" {
+		logger.LogError("MFAVerify: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "code required"})
+	}
+	if err := h.MFAService.VerifyChallenge(c.Context(), userID, input.Code); err != nil {
+		logger.LogError("MFAVerify: failed", logger.ErrorField(err), logger.String("user_id", userID))
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid code"})
+	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *SecurityHandler) ListSecurityAuditLogs(c *fiber.Ctx) error {
+// swagger:parameters mfaVerify
+// in: body
+// name: body
+// schema:
+//   type: object
+//   properties:
+//     code:
+//       type: string
+//   required:
+//     - code
+
+// --- Sessions ---
+// swagger:route POST /users/sessions sessions createUserSession
+// summary: Create user session
+// tags:
+//   - sessions
+//
+// responses:
+//
+//	201: SessionResponse
+//	400: ErrorResponse
+//	500: ErrorResponse
+func (h *SecurityHandler) CreateUserSession(c *fiber.Ctx) error {
 	var input struct {
-		Page     int `json:"page"`
-		PageSize int `json:"page_size"`
+		UserID   string `json:"user_id"`
+		Page     int    `json:"page"`
+		PageSize int    `json:"page_size"`
 	}
 	if err := c.BodyParser(&input); err != nil || input.Page <= 0 || input.PageSize <= 0 {
 		logger.LogError("ListSecurityAuditLogs: invalid input", logger.ErrorField(err))
@@ -240,18 +296,6 @@ func (h *SecurityHandler) ListSecurityAuditLogs(c *fiber.Ctx) error {
 		logger.LogError("ListSecurityAuditLogs: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	details := fiber.Map{"page": input.Page, "page_size": input.PageSize}
-	detailsBytes, _ := json.Marshal(details)
-	detailsStr := string(detailsBytes)
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   "",
-		Action:    "list_security_audit_logs",
-		TargetID:  "",
-		Details:   detailsStr,
-		CreatedAt: time.Now().UTC(),
-	})
 	return c.JSON(fiber.Map{"audit_logs": logs, "page": input.Page, "page_size": input.PageSize})
 }
 
@@ -268,18 +312,6 @@ func (h *SecurityHandler) ListUserAPIKeys(c *fiber.Ctx) error {
 		logger.LogError("ListUserAPIKeys: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	details := keys
-	detailsBytes, _ := json.Marshal(details)
-	detailsStr := string(detailsBytes)
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   getActorID(c),
-		Action:    "list_user_api_keys",
-		TargetID:  input.UserID,
-		Details:   detailsStr,
-		CreatedAt: time.Now().UTC(),
-	})
 	return c.JSON(keys)
 }
 
@@ -305,18 +337,6 @@ func (h *SecurityHandler) CreateUserAPIKey(c *fiber.Ctx) error {
 		logger.LogError("CreateUserAPIKey: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	details := fiber.Map{"user_id": input.UserID, "name": input.Name}
-	detailsBytes, _ := json.Marshal(details)
-	detailsStr := string(detailsBytes)
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   getActorID(c),
-		Action:    "create_user_api_key",
-		TargetID:  input.UserID,
-		Details:   detailsStr,
-		CreatedAt: time.Now().UTC(),
-	})
 	return c.Status(fiber.StatusCreated).JSON(key)
 }
 
@@ -341,18 +361,6 @@ func (h *SecurityHandler) RevokeUserAPIKey(c *fiber.Ctx) error {
 		logger.LogError("RevokeUserAPIKey: failed", logger.ErrorField(err), logger.String("user_id", input.UserID), logger.String("key_id", input.KeyID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	details := fiber.Map{"user_id": input.UserID, "key_id": input.KeyID}
-	detailsBytes, _ := json.Marshal(details)
-	detailsStr := string(detailsBytes)
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   getActorID(c),
-		Action:    "revoke_user_api_key",
-		TargetID:  input.KeyID,
-		Details:   detailsStr,
-		CreatedAt: time.Now().UTC(),
-	})
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -369,15 +377,6 @@ func (h *SecurityHandler) ListUserDevices(c *fiber.Ctx) error {
 		logger.LogError("ListUserDevices: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   getActorID(c),
-		Action:    "list_user_devices",
-		TargetID:  input.UserID,
-		Details:   marshalAuditDetails(input),
-		CreatedAt: time.Now().UTC(),
-	})
 	return c.JSON(devices)
 }
 
@@ -401,18 +400,6 @@ func (h *SecurityHandler) RevokeUserDevice(c *fiber.Ctx) error {
 		logger.LogError("RevokeUserDevice: failed", logger.ErrorField(err), logger.String("user_id", input.UserID), logger.String("device_id", input.DeviceID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	details := fiber.Map{"user_id": input.UserID, "device_id": input.DeviceID}
-	detailsBytes, _ := json.Marshal(details)
-	detailsStr := string(detailsBytes)
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   getActorID(c),
-		Action:    "revoke_user_device",
-		TargetID:  input.DeviceID,
-		Details:   detailsStr,
-		CreatedAt: time.Now().UTC(),
-	})
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -430,18 +417,6 @@ func (h *SecurityHandler) ListBreaches(c *fiber.Ctx) error {
 		logger.LogError("ListBreaches: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	details := fiber.Map{"page": input.Page, "page_size": input.PageSize}
-	detailsBytes, _ := json.Marshal(details)
-	detailsStr := string(detailsBytes)
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   "",
-		Action:    "list_breaches",
-		TargetID:  "",
-		Details:   detailsStr,
-		CreatedAt: time.Now().UTC(),
-	})
 	return c.JSON(fiber.Map{"breaches": breaches, "page": input.Page, "page_size": input.PageSize})
 }
 
@@ -451,18 +426,6 @@ func (h *SecurityHandler) ListSecurityPolicies(c *fiber.Ctx) error {
 		logger.LogError("ListSecurityPolicies: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	details := policies
-	detailsBytes, _ := json.Marshal(details)
-	detailsStr := string(detailsBytes)
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   "",
-		Action:    "list_security_policies",
-		TargetID:  "",
-		Details:   detailsStr,
-		CreatedAt: time.Now().UTC(),
-	})
 	return c.JSON(policies)
 }
 
@@ -484,18 +447,6 @@ func (h *SecurityHandler) CreateSecurityPolicy(c *fiber.Ctx) error {
 		logger.LogError("CreateSecurityPolicy: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	details := input
-	detailsBytes, _ := json.Marshal(details)
-	detailsStr := string(detailsBytes)
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   "",
-		Action:    "create_security_policy",
-		TargetID:  "",
-		Details:   detailsStr,
-		CreatedAt: time.Now().UTC(),
-	})
 	return c.Status(fiber.StatusCreated).JSON(policy)
 }
 
@@ -517,18 +468,6 @@ func (h *SecurityHandler) UpdateSecurityPolicy(c *fiber.Ctx) error {
 		logger.LogError("UpdateSecurityPolicy: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	details := input
-	detailsBytes, _ := json.Marshal(details)
-	detailsStr := string(detailsBytes)
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   "",
-		Action:    "update_security_policy",
-		TargetID:  input.ID,
-		Details:   detailsStr,
-		CreatedAt: time.Now().UTC(),
-	})
 	return c.JSON(policy)
 }
 
@@ -551,18 +490,6 @@ func (h *SecurityHandler) DeleteSecurityPolicy(c *fiber.Ctx) error {
 		logger.LogError("DeleteSecurityPolicy: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	details := fiber.Map{"id": input.ID}
-	detailsBytes, _ := json.Marshal(details)
-	detailsStr := string(detailsBytes)
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   "",
-		Action:    "delete_security_policy",
-		TargetID:  input.ID,
-		Details:   detailsStr,
-		CreatedAt: time.Now().UTC(),
-	})
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -580,16 +507,6 @@ func (h *SecurityHandler) GetSecurityAnalytics(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("GetSecurityAnalytics: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
-			Action:    "get_security_analytics",
-			TargetID:  input.TenantID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(analytics)
 }
@@ -615,16 +532,6 @@ func (h *SecurityHandler) ListAnomalies(c *fiber.Ctx) error {
 		logger.LogError("ListAnomalies: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
-			Action:    "list_anomalies",
-			TargetID:  input.TenantID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(anomalies)
 }
 
@@ -645,16 +552,6 @@ func (h *SecurityHandler) GetSelfServiceSecurity(c *fiber.Ctx) error {
 		if err := h.MFAService.EnableMFA(c.Context(), userID); err == nil {
 			mfaEnabled = true
 		}
-	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   userID,
-			Action:    "get_self_service_security",
-			TargetID:  userID,
-			Details:   marshalAuditDetails(userID),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(fiber.Map{
 		"sessions":    sessions,
@@ -680,16 +577,6 @@ func (h *SecurityHandler) GetNotificationConfig(c *fiber.Ctx) error {
 		logger.LogError("GetNotificationConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
-			Action:    "get_notification_config",
-			TargetID:  input.TenantID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(cfg)
 }
 
@@ -702,16 +589,6 @@ func (h *SecurityHandler) UpdateNotificationConfig(c *fiber.Ctx) error {
 	if err := h.NotificationService.UpdateNotificationConfig(c.Context(), input.TenantID, input); err != nil {
 		logger.LogError("UpdateNotificationConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
-			Action:    "update_notification_config",
-			TargetID:  input.TenantID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -764,16 +641,6 @@ func (h *SecurityHandler) GetSecurityModuleConfig(c *fiber.Ctx) error {
 		logger.LogError("GetSecurityModuleConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
-			Action:    "get_security_module_config",
-			TargetID:  input.TenantID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(cfg)
 }
 
@@ -790,16 +657,6 @@ func (h *SecurityHandler) SetSecurityModuleConfig(c *fiber.Ctx) error {
 		logger.LogError("SetSecurityModuleConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
-			Action:    "set_security_module_config",
-			TargetID:  input.TenantID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -813,16 +670,6 @@ func (h *SecurityHandler) SetNotificationChannelEnabled(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("SetNotificationChannelEnabled: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        input.Provider,
-			ActorID:   getActorID(c),
-			Action:    "set_notification_channel_enabled",
-			TargetID:  input.Provider,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(fiber.Map{"success": true})
 }
@@ -842,16 +689,6 @@ func (h *SecurityHandler) GetNotificationChannelEnabled(c *fiber.Ctx) error {
 		logger.LogError("GetNotificationChannelEnabled: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        input.Provider,
-			ActorID:   getActorID(c),
-			Action:    "get_notification_channel_enabled",
-			TargetID:  input.Provider,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(fiber.Map{"enabled": cfg.Enabled})
 }
 
@@ -865,16 +702,6 @@ func (h *SecurityHandler) SetProviderConfig(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("SetProviderConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        input.Provider,
-			ActorID:   getActorID(c),
-			Action:    "set_provider_config",
-			TargetID:  input.Provider,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(fiber.Map{"success": true})
 }
@@ -893,16 +720,6 @@ func (h *SecurityHandler) GetProviderConfig(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("GetProviderConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        input.Provider,
-			ActorID:   getActorID(c),
-			Action:    "get_provider_config",
-			TargetID:  input.Provider,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(cfg)
 }
@@ -924,16 +741,6 @@ func (h *SecurityHandler) CreateWebhook(c *fiber.Ctx) error {
 		logger.LogError("CreateWebhook: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        w.ID,
-			ActorID:   getActorID(c),
-			Action:    "create_security_webhook",
-			TargetID:  w.ID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.Status(fiber.StatusCreated).JSON(w)
 }
 
@@ -947,16 +754,6 @@ func (h *SecurityHandler) ListWebhooks(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("ListWebhooks: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        tenantID,
-			ActorID:   getActorID(c),
-			Action:    "list_security_webhooks",
-			TargetID:  tenantID,
-			Details:   marshalAuditDetails(tenantID),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(list)
 }
@@ -972,16 +769,6 @@ func (h *SecurityHandler) DeleteWebhook(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("DeleteWebhook: failed", logger.ErrorField(err), logger.String("id", id), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        id,
-			ActorID:   getActorID(c),
-			Action:    "delete_security_webhook",
-			TargetID:  id,
-			Details:   marshalAuditDetails(map[string]string{"tenant_id": tenantID}),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -1001,16 +788,6 @@ func (h *SecurityHandler) TriggerWebhook(c *fiber.Ctx) error {
 		logger.LogError("TriggerWebhook: failed", logger.ErrorField(err), logger.String("id", id), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        id,
-			ActorID:   getActorID(c),
-			Action:    "trigger_security_webhook",
-			TargetID:  id,
-			Details:   marshalAuditDetails(map[string]interface{}{"event_type": eventType, "payload": payload}),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusOK)
 }
 
@@ -1029,16 +806,6 @@ func (h *SecurityHandler) RequestPasswordResetToken(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("RequestPasswordResetToken: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        token.ID,
-			ActorID:   getActorID(c),
-			Action:    "request_password_reset_token",
-			TargetID:  token.UserID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 
 	// --- Send password reset notification (non-blocking) ---
@@ -1086,16 +853,6 @@ func (h *SecurityHandler) VerifyPasswordResetToken(c *fiber.Ctx) error {
 		logger.LogError("VerifyPasswordResetToken: failed", logger.ErrorField(err), logger.String("token", input.Token))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        token.ID,
-			ActorID:   getActorID(c),
-			Action:    "verify_password_reset_token",
-			TargetID:  token.UserID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(token)
 }
 
@@ -1117,16 +874,6 @@ func (h *SecurityHandler) UsePasswordResetToken(c *fiber.Ctx) error {
 		logger.LogError("UsePasswordResetToken: failed to reset password", logger.ErrorField(err), logger.String("user_id", input.UserID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        input.Token,
-			ActorID:   getActorID(c),
-			Action:    "use_password_reset_token",
-			TargetID:  input.UserID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -1141,16 +888,6 @@ func (h *SecurityHandler) SetRateLimit(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        cfg.ID,
-			ActorID:   getActorID(c),
-			Action:    "set_rate_limit",
-			TargetID:  cfg.ScopeID,
-			Details:   marshalAuditDetails(cfg),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.Status(fiber.StatusOK).JSON(cfg)
 }
 
@@ -1163,16 +900,6 @@ func (h *SecurityHandler) GetRateLimit(c *fiber.Ctx) error {
 	cfg, err := h.RateLimitService.GetRateLimit(c.Context(), scope, scopeID)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        cfg.ID,
-			ActorID:   getActorID(c),
-			Action:    "get_rate_limit",
-			TargetID:  cfg.ScopeID,
-			Details:   marshalAuditDetails(cfg),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.Status(fiber.StatusOK).JSON(cfg)
 }
@@ -1187,21 +914,23 @@ func (h *SecurityHandler) DeleteRateLimit(c *fiber.Ctx) error {
 	if err := h.RateLimitService.DeleteRateLimit(c.Context(), input.ID); err != nil {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        input.ID,
-			ActorID:   getActorID(c),
-			Action:    "delete_rate_limit",
-			TargetID:  input.ID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
 // --- Auth Endpoints ---
 
+// swagger:route POST /auth/login auth login
+// ---
+// summary: Login with email and password
+// description: Authenticate user and return JWT token.
+// tags:
+//   - auth
+//
+// responses:
+//
+//	200: LoginResponse
+//	400: ErrorResponse
+//	401: ErrorResponse
 func (h *SecurityHandler) Login(c *fiber.Ctx) error {
 	tenantID := getTenantID(c)
 	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
@@ -1250,45 +979,26 @@ func (h *SecurityHandler) Login(c *fiber.Ctx) error {
 		logger.LogError("Login: failed to sign JWT", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to sign JWT"})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        sess.ID,
-			ActorID:   user.ID,
-			Action:    "login",
-			TargetID:  user.ID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(fiber.Map{"refresh_token": sess.ID, "expires_at": sess.ExpiresAt, "session_token": tokenString})
 }
 
-func (h *SecurityHandler) RefreshSession(c *fiber.Ctx) error {
-	var input struct {
-		RefreshToken string `json:"refresh_token"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.RefreshToken == "" {
-		logger.LogError("RefreshSession: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "refresh_token required"})
-	}
-	sess, err := h.SessionService.RefreshSession(c.Context(), input.RefreshToken, 24*time.Hour)
-	if err != nil {
-		logger.LogError("RefreshSession: failed", logger.ErrorField(err), logger.String("refresh_token", input.RefreshToken))
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid refresh token"})
-	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        sess.ID,
-			ActorID:   getActorID(c),
-			Action:    "refresh_session",
-			TargetID:  sess.UserID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
-	return c.JSON(fiber.Map{"refresh_token": sess.ID, "expires_at": sess.ExpiresAt})
-}
+// swagger:parameters login
+// in: body
+// name: body
+// schema:
+//   $ref: '#/components/schemas/LoginRequest'
 
+// swagger:route POST /auth/logout auth logout
+// ---
+// summary: Logout and invalidate session
+// description: Invalidate the current session token.
+// tags:
+//   - auth
+//
+// responses:
+//
+//	200: SuccessResponse
+//	400: ErrorResponse
 func (h *SecurityHandler) Logout(c *fiber.Ctx) error {
 	var input struct {
 		RefreshToken string `json:"refresh_token"`
@@ -1301,19 +1011,27 @@ func (h *SecurityHandler) Logout(c *fiber.Ctx) error {
 		logger.LogError("Logout: failed", logger.ErrorField(err), logger.String("refresh_token", input.RefreshToken))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to logout"})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        input.RefreshToken,
-			ActorID:   getActorID(c),
-			Action:    "logout",
-			TargetID:  input.RefreshToken,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(fiber.Map{"success": true})
 }
 
+// swagger:parameters logout
+// in: body
+// name: body
+// schema:
+//   $ref: '#/components/schemas/LogoutRequest'
+
+// swagger:route POST /auth/register auth register
+// ---
+// summary: Register a new user
+// description: Register a new user with email and password.
+// tags:
+//   - auth
+//
+// responses:
+//
+//	201: RegisterResponse
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *SecurityHandler) Register(c *fiber.Ctx) error {
 	tenantID := getTenantID(c)
 	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
@@ -1333,19 +1051,27 @@ func (h *SecurityHandler) Register(c *fiber.Ctx) error {
 		logger.LogError("Register: failed", logger.ErrorField(err), logger.String("email", input.Email))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        user.ID,
-			ActorID:   user.ID,
-			Action:    "register",
-			TargetID:  user.ID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.Status(fiber.StatusCreated).JSON(user)
 }
 
+// swagger:parameters register
+// in: body
+// name: body
+// schema:
+//   $ref: '#/components/schemas/RegisterRequest'
+
+// swagger:route POST /auth/verify-email auth verifyEmail
+// ---
+// summary: Verify user email
+// description: Verify a user's email address with a token.
+// tags:
+//   - auth
+//
+// responses:
+//
+//	204: SuccessResponse
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *SecurityHandler) VerifyEmail(c *fiber.Ctx) error {
 	var input struct {
 		UserID string `json:"user_id"`
@@ -1357,19 +1083,27 @@ func (h *SecurityHandler) VerifyEmail(c *fiber.Ctx) error {
 	if err := h.PasswordService.VerifyEmail(c.Context(), input.UserID, input.Token); err != nil {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        input.UserID,
-			ActorID:   input.UserID,
-			Action:    "verify_email",
-			TargetID:  input.UserID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// swagger:parameters verifyEmail
+// in: body
+// name: body
+// schema:
+//   $ref: '#/components/schemas/VerifyEmailRequest'
+
+// swagger:route POST /auth/resend-verification auth resendVerification
+// ---
+// summary: Resend email verification
+// description: Resend the email verification code.
+// tags:
+//   - auth
+//
+// responses:
+//
+//	204: SuccessResponse
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *SecurityHandler) ResendVerification(c *fiber.Ctx) error {
 	var input struct {
 		Email string `json:"email"`
@@ -1382,19 +1116,31 @@ func (h *SecurityHandler) ResendVerification(c *fiber.Ctx) error {
 		logger.LogError("ResendVerification: failed", logger.ErrorField(err), logger.String("email", input.Email))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        input.Email,
-			ActorID:   getActorID(c),
-			Action:    "resend_verification",
-			TargetID:  input.Email,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// swagger:parameters resendVerification
+// in: body
+// name: body
+// schema:
+//   $ref: '#/components/schemas/ResendVerificationRequest'
+
+// swagger:route POST /auth/change-password auth changePassword
+// ---
+// summary: Change user password
+// description: Change the password for the authenticated user.
+// tags:
+//   - auth
+//
+// security:
+//   - bearerAuth: []
+//
+// responses:
+//
+//	204: SuccessResponse
+//	400: ErrorResponse
+//	401: ErrorResponse
+//	422: ErrorResponse
 func (h *SecurityHandler) ChangePassword(c *fiber.Ctx) error {
 	userID := getActorID(c)
 	if userID == "" {
@@ -1413,19 +1159,64 @@ func (h *SecurityHandler) ChangePassword(c *fiber.Ctx) error {
 		logger.LogError("ChangePassword: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        userID,
-			ActorID:   userID,
-			Action:    "change_password",
-			TargetID:  userID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// swagger:parameters changePassword
+// in: body
+// name: body
+// schema:
+//   $ref: '#/components/schemas/ChangePasswordRequest'
+
+// swagger:route POST /auth/token/refresh auth refreshSession
+// ---
+// summary: Refresh session token
+// description: Refresh the session token using a refresh token.
+// tags:
+//   - auth
+//
+// responses:
+//
+//	200: RefreshSessionResponse
+//	400: ErrorResponse
+//	401: ErrorResponse
+func (h *SecurityHandler) RefreshSession(c *fiber.Ctx) error {
+	var input struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.RefreshToken == "" {
+		logger.LogError("RefreshSession: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "refresh_token required"})
+	}
+	sess, err := h.SessionService.RefreshSession(c.Context(), input.RefreshToken, 24*time.Hour)
+	if err != nil {
+		logger.LogError("RefreshSession: failed", logger.ErrorField(err), logger.String("refresh_token", input.RefreshToken))
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid refresh token"})
+	}
+	return c.JSON(fiber.Map{"refresh_token": sess.ID, "expires_at": sess.ExpiresAt})
+}
+
+// swagger:parameters refreshSession
+// in: body
+// name: body
+// schema:
+//   $ref: '#/components/schemas/RefreshSessionRequest'
+
+// swagger:route GET /users/profile users getProfile
+// ---
+// summary: Get user profile
+// description: Get the profile of the authenticated user.
+// tags:
+//   - users
+//
+// security:
+//   - bearerAuth: []
+//
+// responses:
+//
+//	200: UserProfileResponse
+//	401: ErrorResponse
+//	404: ErrorResponse
 func (h *SecurityHandler) GetProfile(c *fiber.Ctx) error {
 	userID := getActorID(c)
 	if userID == "" {
@@ -1437,19 +1228,25 @@ func (h *SecurityHandler) GetProfile(c *fiber.Ctx) error {
 		logger.LogError("GetProfile: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        userID,
-			ActorID:   userID,
-			Action:    "get_profile",
-			TargetID:  userID,
-			Details:   marshalAuditDetails(userID),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(profile)
 }
 
+// swagger:route PUT /users/profile users updateProfile
+// ---
+// summary: Update user profile
+// description: Update the profile of the authenticated user.
+// tags:
+//   - users
+//
+// security:
+//   - bearerAuth: []
+//
+// responses:
+//
+//	200: UserProfileResponse
+//	400: ErrorResponse
+//	401: ErrorResponse
+//	422: ErrorResponse
 func (h *SecurityHandler) UpdateProfile(c *fiber.Ctx) error {
 	userID := getActorID(c)
 	if userID == "" {
@@ -1466,19 +1263,31 @@ func (h *SecurityHandler) UpdateProfile(c *fiber.Ctx) error {
 		logger.LogError("UpdateProfile: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        userID,
-			ActorID:   userID,
-			Action:    "update_profile",
-			TargetID:  userID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(profile)
 }
 
+// swagger:parameters updateProfile
+// in: body
+// name: body
+// schema:
+//   type: object
+//   additionalProperties: true
+
+// swagger:route DELETE /users/profile users deleteAccount
+// ---
+// summary: Delete user account
+// description: Delete the authenticated user's account.
+// tags:
+//   - users
+//
+// security:
+//   - bearerAuth: []
+//
+// responses:
+//
+//	204: SuccessResponse
+//	401: ErrorResponse
+//	422: ErrorResponse
 func (h *SecurityHandler) DeleteAccount(c *fiber.Ctx) error {
 	userID := getActorID(c)
 	if userID == "" {
@@ -1489,19 +1298,31 @@ func (h *SecurityHandler) DeleteAccount(c *fiber.Ctx) error {
 		logger.LogError("DeleteAccount: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        userID,
-			ActorID:   userID,
-			Action:    "delete_account",
-			TargetID:  userID,
-			Details:   marshalAuditDetails(userID),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// swagger:parameters deleteAccount
+// in: body
+// name: body
+// schema:
+//   $ref: '#/components/schemas/DeleteAccountRequest'
+
+// swagger:route POST /users/consent users consent
+// ---
+// summary: Record user consent
+// description: Record consent for the authenticated user.
+// tags:
+//   - users
+//
+// security:
+//   - bearerAuth: []
+//
+// responses:
+//
+//	204: SuccessResponse
+//	400: ErrorResponse
+//	401: ErrorResponse
+//	422: ErrorResponse
 func (h *SecurityHandler) Consent(c *fiber.Ctx) error {
 	userID := getActorID(c)
 	if userID == "" {
@@ -1519,16 +1340,6 @@ func (h *SecurityHandler) Consent(c *fiber.Ctx) error {
 		logger.LogError("Consent: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        userID,
-			ActorID:   userID,
-			Action:    "consent",
-			TargetID:  userID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -1543,16 +1354,6 @@ func (h *SecurityHandler) MFAChallenge(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("MFAChallenge: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        userID,
-			ActorID:   userID,
-			Action:    "mfa_challenge",
-			TargetID:  userID,
-			Details:   marshalAuditDetails(userID),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(challenge)
 }
@@ -1574,16 +1375,6 @@ func (h *SecurityHandler) MFAVerify(c *fiber.Ctx) error {
 		logger.LogError("MFAVerify: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid code"})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        userID,
-			ActorID:   userID,
-			Action:    "mfa_verify",
-			TargetID:  userID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -1600,16 +1391,6 @@ func (h *SecurityHandler) SendInvite(c *fiber.Ctx) error {
 	if err := h.PasswordService.SendInvite(c.Context(), input.Email, input.Role); err != nil {
 		logger.LogError("SendInvite: failed", logger.ErrorField(err), logger.String("email", input.Email))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        input.Email,
-			ActorID:   getActorID(c),
-			Action:    "send_invite",
-			TargetID:  input.Email,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -1628,16 +1409,6 @@ func (h *SecurityHandler) AcceptInvite(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("AcceptInvite: failed", logger.ErrorField(err), logger.String("email", input.Email))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        user.ID,
-			ActorID:   user.ID,
-			Action:    "accept_invite",
-			TargetID:  user.ID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.JSON(user)
 }
@@ -1660,16 +1431,6 @@ func (h *SecurityHandler) TrustDevice(c *fiber.Ctx) error {
 		logger.LogError("TrustDevice: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        input.DeviceID,
-			ActorID:   userID,
-			Action:    "trust_device",
-			TargetID:  input.DeviceID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -1685,16 +1446,6 @@ func (h *SecurityHandler) AccountRecover(c *fiber.Ctx) error {
 	if err := h.PasswordService.AccountRecover(c.Context(), input.Email); err != nil {
 		logger.LogError("AccountRecover: failed", logger.ErrorField(err), logger.String("email", input.Email))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        input.Email,
-			ActorID:   getActorID(c),
-			Action:    "account_recover",
-			TargetID:  input.Email,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -1731,16 +1482,6 @@ func (h *SecurityHandler) AuthGoogle(c *fiber.Ctx) error {
 	params.Set("scope", strings.Join(oauthCfg.Scopes, " "))
 	params.Set("state", state)
 	oauthURL := "https://accounts.google.com/o/oauth2/v2/auth?" + params.Encode()
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        generateStateToken(),
-			ActorID:   getActorID(c),
-			Action:    "auth_google_redirect",
-			TargetID:  "",
-			Details:   marshalAuditDetails(params),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.Redirect(oauthURL, http.StatusFound)
 }
 
@@ -1815,16 +1556,6 @@ func (h *SecurityHandler) AuthGoogleCallback(c *fiber.Ctx) error {
 		logger.LogError("AuthGoogleCallback: session create failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "session create failed"})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        sess.ID,
-			ActorID:   user.ID,
-			Action:    "auth_google_callback",
-			TargetID:  user.ID,
-			Details:   marshalAuditDetails(userInfo),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(fiber.Map{"token": sess.ID, "expires_at": sess.ExpiresAt})
 }
 
@@ -1853,16 +1584,6 @@ func (h *SecurityHandler) AuthSAML(c *fiber.Ctx) error {
 	params.Set("SAMLRequest", samlRequest)
 	params.Set("RelayState", relayState)
 	samlURL := samlCfg.MetadataURL + "?" + params.Encode()
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        generateStateToken(),
-			ActorID:   getActorID(c),
-			Action:    "auth_saml_redirect",
-			TargetID:  "",
-			Details:   marshalAuditDetails(params),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.Redirect(samlURL, http.StatusFound)
 }
 
@@ -1908,16 +1629,6 @@ func (h *SecurityHandler) AuthSAMLCallback(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "session create failed"})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        sess.ID,
-			ActorID:   user.ID,
-			Action:    "auth_saml_callback",
-			TargetID:  user.ID,
-			Details:   marshalAuditDetails(email),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(fiber.Map{"token": sess.ID, "expires_at": sess.ExpiresAt})
 }
 
@@ -1931,16 +1642,6 @@ func (h *SecurityHandler) GetNotificationProvidersStatus(c *fiber.Ctx) error {
 			statuses[name] = status
 		}
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        generateStateToken(),
-			ActorID:   getActorID(c),
-			Action:    "get_notification_providers_status",
-			TargetID:  "",
-			Details:   marshalAuditDetails(statuses),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(statuses)
 }
 
@@ -1949,16 +1650,6 @@ func (h *SecurityHandler) RetryNotificationQueue(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "store not configured"})
 	}
 	go h.Store.ProcessNotificationQueue(c.Context())
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        generateStateToken(),
-			ActorID:   getActorID(c),
-			Action:    "retry_notification_queue",
-			TargetID:  "",
-			Details:   marshalAuditDetails("manual retry"),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(fiber.Map{"status": "retry triggered"})
 }
 
@@ -2109,16 +1800,6 @@ func (h *SecurityHandler) CreateUserSession(c *fiber.Ctx) error {
 		logger.LogError("CreateUserSession: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create session"})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        sess.ID,
-			ActorID:   input.UserID,
-			Action:    "create_user_session",
-			TargetID:  sess.ID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.Status(fiber.StatusCreated).JSON(sess)
 }
 
@@ -2133,16 +1814,6 @@ func (h *SecurityHandler) DeleteUserSession(c *fiber.Ctx) error {
 	if err := h.SessionService.LogoutSession(c.Context(), input.RefreshToken); err != nil {
 		logger.LogError("DeleteUserSession: failed", logger.ErrorField(err), logger.String("refresh_token", input.RefreshToken))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete session"})
-	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        input.RefreshToken,
-			ActorID:   getActorID(c),
-			Action:    "delete_user_session",
-			TargetID:  input.RefreshToken,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -2160,16 +1831,6 @@ func (h *SecurityHandler) GetUserSession(c *fiber.Ctx) error {
 		logger.LogError("GetUserSession: failed", logger.ErrorField(err), logger.String("refresh_token", input.RefreshToken))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "session not found"})
 	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        sess.ID,
-			ActorID:   getActorID(c),
-			Action:    "get_user_session",
-			TargetID:  sess.ID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
 	return c.JSON(sess)
 }
 
@@ -2186,15 +1847,6 @@ func (h *SecurityHandler) ListUserSessions(c *fiber.Ctx) error {
 		logger.LogError("ListUserSessions: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   getActorID(c),
-		Action:    "list_user_sessions",
-		TargetID:  input.UserID,
-		Details:   marshalAuditDetails(input),
-		CreatedAt: time.Now().UTC(),
-	})
 	return c.JSON(sessions)
 }
 
@@ -2219,18 +1871,6 @@ func (h *SecurityHandler) RevokeUserSession(c *fiber.Ctx) error {
 		logger.LogError("RevokeUserSession: failed", logger.ErrorField(err), logger.String("user_id", input.UserID), logger.String("refresh_token", input.RefreshToken))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	// After every successful operation, add audit logging as described above using h.SecurityAuditLogService.CreateSecurityAuditLog.
-	details := fiber.Map{"user_id": input.UserID, "refresh_token": input.RefreshToken}
-	detailsBytes, _ := json.Marshal(details)
-	detailsStr := string(detailsBytes)
-	go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-		ID:        uuid.NewString(),
-		ActorID:   getActorID(c),
-		Action:    "revoke_user_session",
-		TargetID:  input.RefreshToken,
-		Details:   detailsStr,
-		CreatedAt: time.Now().UTC(),
-	})
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -2256,16 +1896,6 @@ func (h *SecurityHandler) BootstrapOwnerAdmin(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("BootstrapOwnerAdmin: failed to register", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	if h.SecurityAuditLogService != nil {
-		go h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:        user.ID,
-			ActorID:   user.ID,
-			Action:    "bootstrap_owner_admin",
-			TargetID:  user.ID,
-			Details:   marshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
 	}
 	return c.Status(fiber.StatusCreated).JSON(user)
 }

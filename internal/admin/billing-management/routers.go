@@ -4,18 +4,21 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
 )
 
 func billingScopeExtractor(c *fiber.Ctx) (string, string) {
 	return "billing", c.Get("X-Billing-ID")
 }
 
-func RegisterAdminBillingRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret string) {
+func RegisterAdminBillingRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret string, auditLogger security_management.AuditLogger) {
 	billing := router.Group(
 		"/billing-management",
 		security_management.OIDCMiddleware(jwtSecret),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, billingScopeExtractor),
+		auditmiddleware.AuditLoggerMiddleware(auditLogger),
 	)
+	// audit := auditmiddleware.AuditLoggerMiddleware(auditLogger)
 
 	// Other non-payment routes
 	billing.Get("/accounts/invoice-preview", handler.GetInvoicePreview)

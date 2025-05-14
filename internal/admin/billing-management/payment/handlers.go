@@ -519,57 +519,25 @@ func (p *PaypalProvider) CreatePayment(ctx context.Context, req *CreatePaymentRe
 	if req.Source == PaymentMethodCard || req.Source == "visa" || req.Source == "mastercard" {
 		err := errors.New("Direct card payments (visa/mastercard) not supported by PayPal Go SDK, use PayPal JS SDK on client")
 		logger.LogError("paypal.create_payment.unsupported_card", logger.ErrorField(err), logger.String("source", req.Source))
-		if p.AuditLogger != nil {
-			go p.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-				ActorID:   getActorIDFromContext(ctx),
-				Action:    "paypal_create_payment_unsupported_card",
-				TargetID:  "",
-				Details:   MarshalAuditDetails(map[string]interface{}{"source": req.Source, "error": err.Error()}),
-				CreatedAt: time.Now().UTC(),
-			})
-		}
+
 		return nil, err
 	}
 	if req.Source == PaymentMethodApplePay {
 		err := errors.New("Direct Apple Pay not supported by PayPal Go SDK, use PayPal JS SDK on client")
 		logger.LogError("paypal.create_payment.unsupported_apple_pay", logger.ErrorField(err), logger.String("source", req.Source))
-		if p.AuditLogger != nil {
-			go p.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-				ActorID:   getActorIDFromContext(ctx),
-				Action:    "paypal_create_payment_unsupported_apple_pay",
-				TargetID:  "",
-				Details:   MarshalAuditDetails(map[string]interface{}{"source": req.Source, "error": err.Error()}),
-				CreatedAt: time.Now().UTC(),
-			})
-		}
+
 		return nil, err
 	}
 	if req.Source == PaymentMethodGooglePay {
 		err := errors.New("Direct Google Pay not supported by PayPal Go SDK, use PayPal JS SDK on client")
 		logger.LogError("paypal.create_payment.unsupported_google_pay", logger.ErrorField(err), logger.String("source", req.Source))
-		if p.AuditLogger != nil {
-			go p.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-				ActorID:   getActorIDFromContext(ctx),
-				Action:    "paypal_create_payment_unsupported_google_pay",
-				TargetID:  "",
-				Details:   MarshalAuditDetails(map[string]interface{}{"source": req.Source, "error": err.Error()}),
-				CreatedAt: time.Now().UTC(),
-			})
-		}
+
 		return nil, err
 	}
 	if req.Source != "paypal" {
 		err := errors.New("Unknown or unsupported payment source for PayPal")
 		logger.LogError("paypal.create_payment.unsupported_source", logger.ErrorField(err), logger.String("source", req.Source))
-		if p.AuditLogger != nil {
-			go p.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-				ActorID:   getActorIDFromContext(ctx),
-				Action:    "paypal_create_payment_unsupported_source",
-				TargetID:  "",
-				Details:   MarshalAuditDetails(map[string]interface{}{"source": req.Source, "error": err.Error()}),
-				CreatedAt: time.Now().UTC(),
-			})
-		}
+
 		return nil, err
 	}
 	if p.Client == nil {
@@ -661,15 +629,7 @@ func (p *PaypalProvider) RefundPayment(ctx context.Context, req *RefundPaymentRe
 	}
 	amount, _ := strconv.ParseFloat(refund.Amount.Value, 64)
 	logger.LogInfo("paypal.refund_payment.success", logger.String("refund_id", refund.ID), logger.Float64("amount", amount), logger.String("currency", refund.Amount.Currency))
-	if p.AuditLogger != nil {
-		go p.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-			ActorID:   getActorIDFromContext(ctx),
-			Action:    "paypal_refund_payment",
-			TargetID:  req.PaymentID,
-			Details:   MarshalAuditDetails(map[string]interface{}{"amount": amount, "currency": refund.Amount.Currency, "status": refund.Status, "raw": refund}),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
+
 	result := &PaymentResult{
 		PaymentID: req.PaymentID,
 		Status:    refund.Status,
@@ -695,26 +655,10 @@ func (p *PaypalProvider) GetPaymentStatus(ctx context.Context, paymentID string)
 	result, err := p.Store.GetPaymentResult(ctx, paymentID)
 	if err != nil {
 		logger.LogError("paypal.get_payment_status.get_payment_failed", logger.ErrorField(err))
-		if p.AuditLogger != nil {
-			go p.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-				ActorID:   getActorIDFromContext(ctx),
-				Action:    "paypal_get_payment_status_failed",
-				TargetID:  paymentID,
-				Details:   MarshalAuditDetails(map[string]interface{}{"error": err.Error()}),
-				CreatedAt: time.Now().UTC(),
-			})
-		}
+
 		return nil, err
 	}
-	if p.AuditLogger != nil {
-		go p.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-			ActorID:   getActorIDFromContext(ctx),
-			Action:    "paypal_get_payment_status",
-			TargetID:  paymentID,
-			Details:   MarshalAuditDetails(result),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
+
 	return &PaymentStatus{
 		PaymentID: result.PaymentID,
 		Status:    result.Status,
@@ -774,15 +718,7 @@ func (s *StripeProvider) CreatePayment(ctx context.Context, req *CreatePaymentRe
 	default:
 		err := errors.New("unsupported payment method for Stripe")
 		logger.LogError("stripe.create_payment.unsupported_method", logger.ErrorField(err), logger.String("source", req.Source))
-		if s.AuditLogger != nil {
-			go s.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-				ActorID:   getActorIDFromContext(ctx),
-				Action:    "stripe_create_payment_unsupported_method",
-				TargetID:  "",
-				Details:   MarshalAuditDetails(map[string]interface{}{"source": req.Source, "error": err.Error()}),
-				CreatedAt: time.Now().UTC(),
-			})
-		}
+
 		return nil, err
 	}
 	if req.Metadata != nil && params.Metadata == nil {
@@ -794,15 +730,7 @@ func (s *StripeProvider) CreatePayment(ctx context.Context, req *CreatePaymentRe
 		return nil, errors.New("stripe: failed to create payment intent")
 	}
 	logger.LogInfo("stripe.create_payment.success", logger.String("intent_id", intent.ID), logger.Float64("amount", float64(intent.Amount)/100.0), logger.String("currency", string(intent.Currency)))
-	if s.AuditLogger != nil {
-		go s.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-			ActorID:   getActorIDFromContext(ctx),
-			Action:    "stripe_create_payment",
-			TargetID:  intent.ID,
-			Details:   MarshalAuditDetails(map[string]interface{}{"amount": float64(intent.Amount) / 100.0, "currency": string(intent.Currency), "status": intent.Status, "raw": intent}),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
+
 	result := &PaymentResult{
 		PaymentID: intent.ID,
 		Status:    string(intent.Status),
@@ -856,15 +784,7 @@ func (s *StripeProvider) RefundPayment(ctx context.Context, req *RefundPaymentRe
 		return nil, errors.New("stripe: failed to refund payment")
 	}
 	logger.LogInfo("stripe.refund_payment.success", logger.String("refund_id", refund.ID), logger.Float64("amount", float64(refund.Amount)/100.0), logger.String("currency", string(refund.Currency)))
-	if s.AuditLogger != nil {
-		go s.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-			ActorID:   getActorIDFromContext(ctx),
-			Action:    "stripe_refund_payment",
-			TargetID:  req.PaymentID,
-			Details:   MarshalAuditDetails(map[string]interface{}{"amount": float64(refund.Amount) / 100.0, "currency": string(refund.Currency), "status": refund.Status, "raw": refund}),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
+
 	result := &PaymentResult{
 		PaymentID: req.PaymentID,
 		Status:    string(refund.Status),
@@ -890,26 +810,10 @@ func (s *StripeProvider) GetPaymentStatus(ctx context.Context, paymentID string)
 	result, err := s.Store.GetPaymentResult(ctx, paymentID)
 	if err != nil {
 		logger.LogError("stripe.get_payment_status.get_payment_failed", logger.ErrorField(err))
-		if s.AuditLogger != nil {
-			go s.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-				ActorID:   getActorIDFromContext(ctx),
-				Action:    "stripe_get_payment_status_failed",
-				TargetID:  paymentID,
-				Details:   MarshalAuditDetails(map[string]interface{}{"error": err.Error()}),
-				CreatedAt: time.Now().UTC(),
-			})
-		}
+
 		return nil, err
 	}
-	if s.AuditLogger != nil {
-		go s.AuditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-			ActorID:   getActorIDFromContext(ctx),
-			Action:    "stripe_get_payment_status",
-			TargetID:  paymentID,
-			Details:   MarshalAuditDetails(result),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
+
 	return &PaymentStatus{
 		PaymentID: result.PaymentID,
 		Status:    result.Status,
@@ -1040,22 +944,11 @@ func GetProviderForTenant(ctx context.Context, store StoreInterface, tenantID st
 	}
 }
 
-func getActorIDFromContext(ctx context.Context) string {
-	if ctx == nil {
-		return "system"
-	}
-	if v := ctx.Value("user_id"); v != nil {
-		if s, ok := v.(string); ok && s != "" {
-			return s
-		}
-	}
-	return "system"
-}
+
 
 func CheckProviderConnection(ctx context.Context, store StoreInterface, tenantID, providerName string, configService *server_config.Service) error {
 	err := error(nil)
-	action := "check_provider_connection"
-	details := map[string]interface{}{"tenant_id": tenantID, "provider": providerName}
+
 	var ownerCfg server_config.PaymentProviderConfig
 	if configService != nil {
 		ownerCfg, _ = configService.GetOwnerPaymentProviderConfig(ctx)
@@ -1147,17 +1040,7 @@ func CheckProviderConnection(ctx context.Context, store StoreInterface, tenantID
 	default:
 		err = errors.New("unsupported provider: " + providerName)
 	}
-	// Audit log
-	auditLogger, _ := ctx.Value("audit_logger").(security_management.AuditLogger)
-	if auditLogger != nil {
-		go auditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-			ActorID:   getActorIDFromContext(ctx),
-			Action:    action,
-			TargetID:  providerName,
-			Details:   MarshalAuditDetails(details),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
+
 	return err
 }
 
@@ -1212,16 +1095,7 @@ func RetryPayment(ctx context.Context, store StoreInterface, p interface{}) (*Pa
 	if err != nil {
 		logger.LogError("RetryPayment: payment retry failed", logger.ErrorField(err))
 		// Audit log failure
-		auditLogger, _ := ctx.Value("audit_logger").(security_management.AuditLogger)
-		if auditLogger != nil {
-			go auditLogger.CreateSecurityAuditLog(ctx, security_management.SecurityAuditLog{
-				ActorID:   getActorIDFromContext(ctx),
-				Action:    "retry_payment_failed",
-				TargetID:  pay.PaymentID,
-				Details:   MarshalAuditDetails(map[string]interface{}{"error": err.Error(), "payment_id": pay.PaymentID}),
-				CreatedAt: time.Now().UTC(),
-			})
-		}
+
 		return &PaymentResult{PaymentID: pay.PaymentID, Status: "failed", Amount: pay.Amount, Currency: pay.Currency, CreatedAt: time.Now().UTC(), Provider: pay.Provider}, err
 	}
 	// Audit log success

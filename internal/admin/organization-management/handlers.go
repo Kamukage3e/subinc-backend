@@ -2,11 +2,8 @@ package organization_management
 
 import (
 	"errors"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
-	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-	"github.com/subinc/subinc-backend/internal/pkg/auditutil"
 	"github.com/subinc/subinc-backend/internal/pkg/contextutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
@@ -53,16 +50,7 @@ func (h *OrganizationHandler) CreateOrganization(c *fiber.Ctx) error {
 		logger.LogError("CreateOrganization: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.OrgAuditLogger != nil {
-		go h.OrgAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        org.ID,
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "create_organization",
-			TargetID:  org.ID,
-			Details:   auditutil.AuditDetails(input),
-			CreatedAt: time.Now(),
-		})
-	}
+
 	return c.Status(fiber.StatusCreated).JSON(org)
 }
 
@@ -95,16 +83,7 @@ func (h *OrganizationHandler) UpdateOrganization(c *fiber.Ctx) error {
 		logger.LogError("UpdateOrganization: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.OrgAuditLogger != nil {
-		go h.OrgAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        org.ID,
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "update_organization",
-			TargetID:  org.ID,
-			Details:   auditutil.AuditDetails(input),
-			CreatedAt: time.Now(),
-		})
-	}
+
 	return c.JSON(org)
 }
 
@@ -130,16 +109,7 @@ func (h *OrganizationHandler) DeleteOrganization(c *fiber.Ctx) error {
 		logger.LogError("DeleteOrganization: failed", logger.ErrorField(err), logger.String("id", input.ID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.OrgAuditLogger != nil {
-		go h.OrgAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        input.ID,
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "delete_organization",
-			TargetID:  input.ID,
-			Details:   auditutil.AuditDetails(map[string]interface{}{"id": input.ID}),
-			CreatedAt: time.Now(),
-		})
-	}
+
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -166,16 +136,7 @@ func (h *OrganizationHandler) GetOrganization(c *fiber.Ctx) error {
 		logger.LogError("GetOrganization: not found", logger.ErrorField(err), logger.String("id", input.ID))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.OrgAuditLogger != nil {
-		go h.OrgAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        org.ID,
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "get_organization",
-			TargetID:  org.ID,
-			Details:   auditutil.AuditDetails(map[string]interface{}{"id": input.ID}),
-			CreatedAt: time.Now(),
-		})
-	}
+
 	return c.JSON(org)
 }
 
@@ -210,16 +171,7 @@ func (h *OrganizationHandler) ListOrganizations(c *fiber.Ctx) error {
 		logger.LogError("ListOrganizations: failed", logger.ErrorField(err), logger.String("owner_id", input.OwnerID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.OrgAuditLogger != nil {
-		go h.OrgAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        "",
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "list_organizations",
-			TargetID:  input.OwnerID,
-			Details:   auditutil.AuditDetails(map[string]interface{}{"owner_id": input.OwnerID, "page": input.Page, "page_size": input.PageSize}),
-			CreatedAt: time.Now(),
-		})
-	}
+
 	return c.JSON(fiber.Map{"organizations": orgs, "page": input.Page, "page_size": input.PageSize})
 }
 
@@ -246,16 +198,7 @@ func (h *OrganizationHandler) GetSettings(c *fiber.Ctx) error {
 		logger.LogError("GetSettings: failed", logger.ErrorField(err), logger.String("org_id", input.OrgID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.OrgAuditLogger != nil {
-		go h.OrgAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        "",
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "get_settings",
-			TargetID:  input.OrgID,
-			Details:   auditutil.AuditDetails(map[string]interface{}{"org_id": input.OrgID}),
-			CreatedAt: time.Now(),
-		})
-	}
+
 	return c.JSON(settings)
 }
 
@@ -286,16 +229,7 @@ func (h *OrganizationHandler) UpdateSettings(c *fiber.Ctx) error {
 		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.String("org_id", input.OrgID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.OrgAuditLogger != nil {
-		go h.OrgAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        "",
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "update_settings",
-			TargetID:  input.OrgID,
-			Details:   auditutil.AuditDetails(input),
-			CreatedAt: time.Now(),
-		})
-	}
+
 	// Optionally: test connection/feature if settings include credentials, return result
 	return c.JSON(fiber.Map{"ok": true})
 }

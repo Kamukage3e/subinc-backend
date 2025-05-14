@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
@@ -136,7 +137,6 @@ func (s *PostgresStore) ListUsage(ctx context.Context, accountID, metric, period
 	return out, nil
 }
 
-
 // --- Usage Aggregation/Overage ---
 func (s *PostgresStore) AggregateUsageForBillingCycle(ctx context.Context, accountID string, periodStart, periodEnd time.Time) (map[string]float64, error) {
 	if accountID == "" {
@@ -160,7 +160,6 @@ func (s *PostgresStore) AggregateUsageForBillingCycle(ctx context.Context, accou
 	}
 	return usageTotals, nil
 }
-
 
 func (s *PostgresStore) CalculateOverageCharges(ctx context.Context, accountID, planID string, periodStart, periodEnd time.Time) (map[string]float64, error) {
 	if accountID == "" || planID == "" {
@@ -190,7 +189,6 @@ func (s *PostgresStore) CalculateOverageCharges(ctx context.Context, accountID, 
 	return overageCharges, nil
 }
 
-
 // --- Plan Pricing Parsing ---
 func parsePlanPricing(pricing string) (map[string]float64, map[string]float64, error) {
 	var raw map[string]map[string]float64
@@ -205,4 +203,180 @@ func parsePlanPricing(pricing string) (map[string]float64, map[string]float64, e
 		overages[k] = v["overage"]
 	}
 	return limits, overages, nil
+}
+
+// --- Subscription CRUD ---
+func (s *PostgresStore) CreateSubscription(ctx context.Context, sub Subscription) (Subscription, error) {
+	const q = `INSERT INTO subscriptions (
+		id, account_id, plan_id, status, currency, trial_start, trial_end, current_period_start, current_period_end, cancel_at, canceled_at, grace_period_end, dunning_until, scheduled_plan_id, scheduled_change_at, created_at, updated_at, metadata
+	) VALUES (
+		$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+	) RETURNING id, account_id, plan_id, status, currency, trial_start, trial_end, current_period_start, current_period_end, cancel_at, canceled_at, grace_period_end, dunning_until, scheduled_plan_id, scheduled_change_at, created_at, updated_at, metadata`
+	row := s.DB.QueryRow(ctx, q,
+		sub.ID, sub.AccountID, sub.PlanID, sub.Status, sub.Currency, sub.TrialStart, sub.TrialEnd, sub.CurrentPeriodStart, sub.CurrentPeriodEnd, sub.CancelAt, sub.CanceledAt, sub.GracePeriodEnd, sub.DunningUntil, sub.ScheduledPlanID, sub.ScheduledChangeAt, sub.CreatedAt, sub.UpdatedAt, sub.Metadata,
+	)
+	var out Subscription
+	err := row.Scan(
+		&out.ID, &out.AccountID, &out.PlanID, &out.Status, &out.Currency, &out.TrialStart, &out.TrialEnd, &out.CurrentPeriodStart, &out.CurrentPeriodEnd, &out.CancelAt, &out.CanceledAt, &out.GracePeriodEnd, &out.DunningUntil, &out.ScheduledPlanID, &out.ScheduledChangeAt, &out.CreatedAt, &out.UpdatedAt, &out.Metadata,
+	)
+	if err != nil {
+		logger.LogError("CreateSubscription failed", logger.ErrorField(err), logger.Any("sub", sub))
+		return Subscription{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) UpdateSubscription(ctx context.Context, sub Subscription) (Subscription, error) {
+	const q = `UPDATE subscriptions SET
+		plan_id = $2, status = $3, currency = $4, trial_start = $5, trial_end = $6, current_period_start = $7, current_period_end = $8, cancel_at = $9, canceled_at = $10, grace_period_end = $11, dunning_until = $12, scheduled_plan_id = $13, scheduled_change_at = $14, updated_at = $15, metadata = $16
+	WHERE id = $1
+	RETURNING id, account_id, plan_id, status, currency, trial_start, trial_end, current_period_start, current_period_end, cancel_at, canceled_at, grace_period_end, dunning_until, scheduled_plan_id, scheduled_change_at, created_at, updated_at, metadata`
+	row := s.DB.QueryRow(ctx, q,
+		sub.ID, sub.PlanID, sub.Status, sub.Currency, sub.TrialStart, sub.TrialEnd, sub.CurrentPeriodStart, sub.CurrentPeriodEnd, sub.CancelAt, sub.CanceledAt, sub.GracePeriodEnd, sub.DunningUntil, sub.ScheduledPlanID, sub.ScheduledChangeAt, sub.UpdatedAt, sub.Metadata,
+	)
+	var out Subscription
+	err := row.Scan(
+		&out.ID, &out.AccountID, &out.PlanID, &out.Status, &out.Currency, &out.TrialStart, &out.TrialEnd, &out.CurrentPeriodStart, &out.CurrentPeriodEnd, &out.CancelAt, &out.CanceledAt, &out.GracePeriodEnd, &out.DunningUntil, &out.ScheduledPlanID, &out.ScheduledChangeAt, &out.CreatedAt, &out.UpdatedAt, &out.Metadata,
+	)
+	if err != nil {
+		logger.LogError("UpdateSubscription failed", logger.ErrorField(err), logger.Any("sub", sub))
+		return Subscription{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) PatchSubscription(ctx context.Context, id, action string) error {
+	// Only allow specific actions for patch
+	switch action {
+	case "pause":
+		const q = `UPDATE subscriptions SET status = 'paused', updated_at = $2 WHERE id = $1`
+		_, err := s.DB.Exec(ctx, q, id, time.Now().UTC())
+		if err != nil {
+			logger.LogError("PatchSubscription: pause failed", logger.ErrorField(err), logger.String("id", id))
+			return err
+		}
+		return nil
+	case "reactivate":
+		const q = `UPDATE subscriptions SET status = 'active', updated_at = $2 WHERE id = $1`
+		_, err := s.DB.Exec(ctx, q, id, time.Now().UTC())
+		if err != nil {
+			logger.LogError("PatchSubscription: reactivate failed", logger.ErrorField(err), logger.String("id", id))
+			return err
+		}
+		return nil
+	default:
+		return errors.New("unsupported patch action")
+	}
+}
+
+func (s *PostgresStore) DeleteSubscription(ctx context.Context, id string) error {
+	const q = `DELETE FROM subscriptions WHERE id = $1`
+	_, err := s.DB.Exec(ctx, q, id)
+	if err != nil {
+		logger.LogError("DeleteSubscription failed", logger.ErrorField(err), logger.String("id", id))
+		return err
+	}
+	return nil
+}
+
+func (s *PostgresStore) GetSubscription(ctx context.Context, id string) (Subscription, error) {
+	const q = `SELECT id, account_id, plan_id, status, currency, trial_start, trial_end, current_period_start, current_period_end, cancel_at, canceled_at, grace_period_end, dunning_until, scheduled_plan_id, scheduled_change_at, created_at, updated_at, metadata FROM subscriptions WHERE id = $1`
+	row := s.DB.QueryRow(ctx, q, id)
+	var out Subscription
+	err := row.Scan(
+		&out.ID, &out.AccountID, &out.PlanID, &out.Status, &out.Currency, &out.TrialStart, &out.TrialEnd, &out.CurrentPeriodStart, &out.CurrentPeriodEnd, &out.CancelAt, &out.CanceledAt, &out.GracePeriodEnd, &out.DunningUntil, &out.ScheduledPlanID, &out.ScheduledChangeAt, &out.CreatedAt, &out.UpdatedAt, &out.Metadata,
+	)
+	if err != nil {
+		logger.LogError("GetSubscription failed", logger.ErrorField(err), logger.String("id", id))
+		return Subscription{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) ListSubscriptions(ctx context.Context, accountID, status string, page, pageSize int) ([]Subscription, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 100
+	}
+	q := `SELECT id, account_id, plan_id, status, currency, trial_start, trial_end, current_period_start, current_period_end, cancel_at, canceled_at, grace_period_end, dunning_until, scheduled_plan_id, scheduled_change_at, created_at, updated_at, metadata FROM subscriptions WHERE 1=1`
+	args := []interface{}{}
+	argIdx := 1
+	if accountID != "" {
+		q += " AND account_id = $" + itoa(argIdx)
+		args = append(args, accountID)
+		argIdx++
+	}
+	if status != "" {
+		q += " AND status = $" + itoa(argIdx)
+		args = append(args, status)
+		argIdx++
+	}
+	q += " ORDER BY created_at DESC LIMIT $" + itoa(argIdx) + " OFFSET $" + itoa(argIdx+1)
+	args = append(args, pageSize, (page-1)*pageSize)
+	rows, err := s.DB.Query(ctx, q, args...)
+	if err != nil {
+		logger.LogError("ListSubscriptions query failed", logger.ErrorField(err))
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Subscription
+	for rows.Next() {
+		var sub Subscription
+		err := rows.Scan(
+			&sub.ID, &sub.AccountID, &sub.PlanID, &sub.Status, &sub.Currency, &sub.TrialStart, &sub.TrialEnd, &sub.CurrentPeriodStart, &sub.CurrentPeriodEnd, &sub.CancelAt, &sub.CanceledAt, &sub.GracePeriodEnd, &sub.DunningUntil, &sub.ScheduledPlanID, &sub.ScheduledChangeAt, &sub.CreatedAt, &sub.UpdatedAt, &sub.Metadata,
+		)
+		if err != nil {
+			logger.LogError("ListSubscriptions scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+		out = append(out, sub)
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) ChangePlanSubscription(ctx context.Context, id, planID string) error {
+	const q = `UPDATE subscriptions SET plan_id = $2, updated_at = $3 WHERE id = $1`
+	_, err := s.DB.Exec(ctx, q, id, planID, time.Now().UTC())
+	if err != nil {
+		logger.LogError("ChangePlanSubscription failed", logger.ErrorField(err), logger.String("id", id), logger.String("planID", planID))
+		return err
+	}
+	return nil
+}
+
+func (s *PostgresStore) CancelSubscriptionNow(ctx context.Context, id string) error {
+	const q = `UPDATE subscriptions SET status = 'canceled', canceled_at = $2, updated_at = $2 WHERE id = $1`
+	_, err := s.DB.Exec(ctx, q, id, time.Now().UTC())
+	if err != nil {
+		logger.LogError("CancelSubscriptionNow failed", logger.ErrorField(err), logger.String("id", id))
+		return err
+	}
+	return nil
+}
+
+func (s *PostgresStore) ResumeSubscription(ctx context.Context, id string) error {
+	const q = `UPDATE subscriptions SET status = 'active', updated_at = $2 WHERE id = $1`
+	_, err := s.DB.Exec(ctx, q, id, time.Now().UTC())
+	if err != nil {
+		logger.LogError("ResumeSubscription failed", logger.ErrorField(err), logger.String("id", id))
+		return err
+	}
+	return nil
+}
+
+func (s *PostgresStore) UpgradeNowSubscription(ctx context.Context, id, planID string) error {
+	const q = `UPDATE subscriptions SET plan_id = $2, status = 'active', updated_at = $3 WHERE id = $1`
+	_, err := s.DB.Exec(ctx, q, id, planID, time.Now().UTC())
+	if err != nil {
+		logger.LogError("UpgradeNowSubscription failed", logger.ErrorField(err), logger.String("id", id), logger.String("planID", planID))
+		return err
+	}
+	return nil
+}
+
+// Helper for dynamic SQL arg numbering
+func itoa(i int) string {
+	return fmt.Sprintf("%d", i)
 }

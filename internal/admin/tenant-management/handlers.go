@@ -2,12 +2,10 @@ package tenant_management
 
 import (
 	"errors"
-	"time"
+
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
-	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-	"github.com/subinc/subinc-backend/internal/pkg/auditutil"
+
 	"github.com/subinc/subinc-backend/internal/pkg/contextutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
@@ -53,16 +51,7 @@ func (h *TenantAdminHandler) CreateTenant(c *fiber.Ctx) error {
 		logger.LogError("CreateTenant: failed", logger.ErrorField(err), logger.String("name", tenant.Name))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "create_tenant",
-			TargetID:  tenant.ID,
-			Details:   auditutil.MarshalAuditDetails(tenant),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
+
 	return c.Status(fiber.StatusCreated).JSON(tenant)
 }
 
@@ -95,16 +84,7 @@ func (h *TenantAdminHandler) UpdateTenant(c *fiber.Ctx) error {
 		logger.LogError("UpdateTenant: failed", logger.ErrorField(err), logger.String("id", input.ID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "update_tenant",
-			TargetID:  input.ID,
-			Details:   auditutil.MarshalAuditDetails(input.Tenant),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
+
 	return c.Status(fiber.StatusOK).JSON(input.Tenant)
 }
 
@@ -131,16 +111,7 @@ func (h *TenantAdminHandler) DeleteTenant(c *fiber.Ctx) error {
 		logger.LogError("DeleteTenant: failed", logger.ErrorField(err), logger.String("id", input.ID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "delete_tenant",
-			TargetID:  input.ID,
-			Details:   auditutil.MarshalAuditDetails(fiber.Map{"id": input.ID}),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
+
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -171,29 +142,11 @@ func (h *TenantAdminHandler) GetTenant(c *fiber.Ctx) error {
 	}
 	for _, t := range tenants {
 		if tenant, ok := t.(Tenant); ok && tenant.ID == input.ID {
-			if h.AuditLogger != nil {
-				go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-					ID:        uuid.NewString(),
-					ActorID:   contextutil.GetActorID(c),
-					Action:    "read_tenant",
-					TargetID:  input.ID,
-					Details:   auditutil.MarshalAuditDetails(fiber.Map{"id": input.ID}),
-					CreatedAt: time.Now().UTC(),
-				})
-			}
+
 			return c.Status(fiber.StatusOK).JSON(tenant)
 		}
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "read_tenant",
-			TargetID:  input.ID,
-			Details:   auditutil.MarshalAuditDetails(fiber.Map{"id": input.ID}),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
+
 	return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "tenant not found"})
 }
 
@@ -219,16 +172,7 @@ func (h *TenantAdminHandler) ListTenants(c *fiber.Ctx) error {
 		logger.LogError("ListTenants: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list tenants"})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "list_tenants",
-			TargetID:  "",
-			Details:   auditutil.MarshalAuditDetails(filter),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
+
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"tenants": tenants, "total": total})
 }
 
@@ -258,16 +202,7 @@ func (h *TenantAdminHandler) GetTenantSettings(c *fiber.Ctx) error {
 		logger.LogError("GetTenantSettings: failed", logger.ErrorField(err), logger.String("id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "read_tenant_settings",
-			TargetID:  tenantID,
-			Details:   auditutil.MarshalAuditDetails(fiber.Map{"id": tenantID}),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
+
 	return c.Status(fiber.StatusOK).JSON(settings)
 }
 
@@ -305,16 +240,7 @@ func (h *TenantAdminHandler) UpdateTenantSettings(c *fiber.Ctx) error {
 		logger.LogError("UpdateTenantSettings: failed", logger.ErrorField(err), logger.String("id", input.TenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   contextutil.GetActorID(c),
-			Action:    "update_tenant_settings",
-			TargetID:  input.TenantID,
-			Details:   auditutil.MarshalAuditDetails(input.Settings),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
+
 	return c.Status(fiber.StatusOK).JSON(settings)
 }
 
@@ -339,16 +265,7 @@ func (h *TenantAdminHandler) SetTenantStatus(c *fiber.Ctx) error {
 	if err := h.TenantStore.SetTenantStatus(c.Context(), input.TenantID, input.Status); err != nil {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		_, _ = h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        input.TenantID,
-			ActorID:   c.Locals("actor_id").(string),
-			Action:    "set_tenant_status",
-			TargetID:  input.TenantID,
-			Details:   auditutil.MarshalAuditDetails(input),
-			CreatedAt: time.Now().UTC(),
-		})
-	}
+
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -363,14 +280,6 @@ func (h *TenantAdminHandler) GetTenantStatus(c *fiber.Ctx) error {
 		logger.LogError("GetTenantStatus: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.AuditLogger != nil {
-		go h.AuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:       uuid.NewString(),
-			ActorID:  contextutil.GetActorID(c),
-			Action:   "get_tenant_status",
-			TargetID: tenantID,
-			Details:  auditutil.MarshalAuditDetails(fiber.Map{"id": tenantID}),
-		})
-	}
+
 	return c.JSON(fiber.Map{"tenant_id": tenantID, "status": status})
 }

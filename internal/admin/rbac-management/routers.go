@@ -3,6 +3,7 @@ package rbac_management
 import (
 	"github.com/gofiber/fiber/v2"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
 )
 
 func rbacScopeExtractor(c *fiber.Ctx) (string, string) {
@@ -10,11 +11,13 @@ func rbacScopeExtractor(c *fiber.Ctx) (string, string) {
 }
 
 // RegisterAdminRBACRoutes allows optional RBAC middleware as a plugin.
-func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler, jwtSecretName string) {
+func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler, jwtSecretName string, auditLogger security_management.AuditLogger) {
 	rbac := router.Group("/rbac-management",
 		security_management.OIDCMiddleware(jwtSecretName),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, rbacScopeExtractor),
+		auditmiddleware.AuditLoggerMiddleware(auditLogger),
 	)
+
 	rbac.Post("/roles/create", handler.CreateRole)
 	rbac.Put("/roles/update", handler.UpdateRole)
 	rbac.Delete("/roles/delete", handler.DeleteRole)
@@ -33,7 +36,7 @@ func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler, jwtSecre
 	rbac.Post("/role-bindings/bulk-assign", handler.BulkAssignRoleBindings)
 	rbac.Delete("/role-bindings/bulk-remove", handler.BulkRemoveRoleBindings)
 	rbac.Post("/roles/restore", handler.RestoreRole)
-	
+
 	rbac.Post("/policies/create", handler.CreatePolicy)
 	rbac.Put("/policies/update", handler.UpdatePolicy)
 	rbac.Delete("/policies/delete", handler.DeletePolicy)
@@ -60,7 +63,4 @@ func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler, jwtSecre
 	rbac.Post("/permission-templates/create", handler.CreatePermissionTemplate)
 	rbac.Get("/permission-templates/list", handler.ListPermissionTemplates)
 	rbac.Post("/permission-templates/apply", handler.ApplyPermissionTemplate)
-
-
-
 }
