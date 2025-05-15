@@ -25,8 +25,7 @@ func getActorID(c *fiber.Ctx) string {
 	return ""
 }
 
-// swagger:route POST /user-management/users/create user createUser
-// ---
+// swagger:route POST /users user createUser
 // summary: Create a user
 // description: Creates a new user.
 // tags:
@@ -64,8 +63,7 @@ func (h *UserHandler) CreateUser(c *fiber.Ctx) error {
 	return c.Status(http.StatusCreated).JSON(created)
 }
 
-// swagger:route PUT /user-management/users/update user updateUser
-// ---
+// swagger:route PUT /users/:id user updateUser
 // summary: Update a user
 // description: Updates an existing user.
 // tags:
@@ -100,7 +98,6 @@ func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
 }
 
 // swagger:route DELETE /users/:id user deleteUser
-// ---
 // summary: Delete a user
 // description: Deletes a user by ID.
 // tags:
@@ -124,7 +121,6 @@ func (h *UserHandler) DeleteUser(c *fiber.Ctx) error {
 }
 
 // swagger:route GET /users/:id user getUser
-// ---
 // summary: Get a user
 // description: Retrieves a user by ID.
 // tags:
@@ -148,8 +144,7 @@ func (h *UserHandler) GetUser(c *fiber.Ctx) error {
 	return c.JSON(user)
 }
 
-// swagger:route GET /users/by-email user getUserByEmail
-// ---
+// swagger:route GET /users/email/:email user getUserByEmail
 // summary: Get user by email
 // description: Retrieves a user by email address.
 // tags:
@@ -161,7 +156,7 @@ func (h *UserHandler) GetUser(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	404: ErrorResponse
 func (h *UserHandler) GetUserByEmail(c *fiber.Ctx) error {
-	email := c.Query("email")
+	email := c.Params("email")
 	if email == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing email"})
 	}
@@ -173,8 +168,7 @@ func (h *UserHandler) GetUserByEmail(c *fiber.Ctx) error {
 	return c.JSON(user)
 }
 
-// swagger:route GET /user-management/users/list user listUsers
-// ---
+// swagger:route GET /users user listUsers
 // summary: List users
 // description: Lists users with optional filters.
 // tags:
@@ -197,9 +191,7 @@ func (h *UserHandler) ListUsers(c *fiber.Ctx) error {
 	return c.JSON(users)
 }
 
-// --- UserProfile Handlers ---
-// swagger:route POST /user-management/profiles/create user createProfile
-// ---
+// swagger:route POST /profiles user createProfile
 // summary: Create a user profile
 // description: Creates a new user profile.
 // tags:
@@ -226,8 +218,7 @@ func (h *UserHandler) CreateProfile(c *fiber.Ctx) error {
 	return c.Status(http.StatusCreated).JSON(created)
 }
 
-// swagger:route PUT /user-management/profiles/update user updateProfile
-// ---
+// swagger:route PUT /profiles/:user_id user updateProfile
 // summary: Update a user profile
 // description: Updates an existing user profile.
 // tags:
@@ -258,8 +249,7 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	return c.JSON(updated)
 }
 
-// swagger:route GET /user-management/profiles/get user getProfile
-// ---
+// swagger:route GET /profiles/:user_id user getProfile
 // summary: Get a user profile
 // description: Retrieves a user profile by user ID.
 // tags:
@@ -284,9 +274,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	return c.JSON(profile)
 }
 
-// --- UserSettings Handlers ---
-// swagger:route GET /user-management/settings/get user getSettings
-// ---
+// swagger:route GET /settings/:user_id user getSettings
 // summary: Get user settings
 // description: Retrieves user settings by user ID.
 // tags:
@@ -311,8 +299,7 @@ func (h *UserHandler) GetSettings(c *fiber.Ctx) error {
 	return c.JSON(settings)
 }
 
-// swagger:route PUT /user-management/settings/update user updateSettings
-// ---
+// swagger:route PUT /settings/:user_id user updateSettings
 // summary: Update user settings
 // description: Updates user settings by user ID.
 // tags:
@@ -342,10 +329,7 @@ func (h *UserHandler) UpdateSettings(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"ok": true})
 }
 
-// --- Org/Project Membership/Invite Handlers ---
-
-// swagger:route POST /user-management/orgs/add-user user addUserToOrg
-// ---
+// swagger:route PUT /orgs/:org_id/users/:user_id user addUserToOrg
 // summary: Add user to organization
 // description: Adds a user to an organization.
 // tags:
@@ -379,8 +363,7 @@ func (h *UserHandler) AddUserToOrg(c *fiber.Ctx) error {
 	return c.SendStatus(http.StatusNoContent)
 }
 
-// swagger:route DELETE /user-management/orgs/remove-user user removeUserFromOrg
-// ---
+// swagger:route DELETE /orgs/:org_id/users/:user_id user removeUserFromOrg
 // summary: Remove user from organization
 // description: Removes a user from an organization.
 // tags:
@@ -407,8 +390,7 @@ func (h *UserHandler) RemoveUserFromOrg(c *fiber.Ctx) error {
 	return c.SendStatus(http.StatusNoContent)
 }
 
-// swagger:route GET /user-management/orgs/list-users user listOrgUsers
-// ---
+// swagger:route GET /orgs/:org_id/users user listOrgUsers
 // summary: List organization users
 // description: Lists users in an organization.
 // tags:
@@ -435,8 +417,7 @@ func (h *UserHandler) ListOrgUsers(c *fiber.Ctx) error {
 	return c.JSON(users)
 }
 
-// swagger:route POST /user-management/orgs/invite-user user inviteUserToOrg
-// ---
+// swagger:route POST /orgs/:org_id/invites user inviteUserToOrg
 // summary: Invite user to organization
 // description: Invites a user to an organization by email.
 // tags:
@@ -470,8 +451,7 @@ func (h *UserHandler) InviteUserToOrg(c *fiber.Ctx) error {
 	return c.SendStatus(http.StatusNoContent)
 }
 
-// swagger:route POST /user-management/projects/add-user user addUserToProject
-// ---
+// swagger:route PUT /projects/:project_id/users/:user_id user addUserToProject
 // summary: Add user to project
 // description: Adds a user to a project.
 // tags:
@@ -505,8 +485,7 @@ func (h *UserHandler) AddUserToProject(c *fiber.Ctx) error {
 	return c.SendStatus(http.StatusNoContent)
 }
 
-// swagger:route DELETE /user-management/projects/remove-user user removeUserFromProject
-// ---
+// swagger:route DELETE /projects/:project_id/users/:user_id user removeUserFromProject
 // summary: Remove user from project
 // description: Removes a user from a project.
 // tags:
@@ -533,8 +512,7 @@ func (h *UserHandler) RemoveUserFromProject(c *fiber.Ctx) error {
 	return c.SendStatus(http.StatusNoContent)
 }
 
-// swagger:route GET /user-management/projects/list-users user listProjectUsers
-// ---
+// swagger:route GET /projects/:project_id/users user listProjectUsers
 // summary: List project users
 // description: Lists users in a project.
 // tags:
@@ -561,8 +539,7 @@ func (h *UserHandler) ListProjectUsers(c *fiber.Ctx) error {
 	return c.JSON(users)
 }
 
-// swagger:route POST /user-management/projects/invite-user user inviteUserToProject
-// ---
+// swagger:route POST /projects/:project_id/invites user inviteUserToProject
 // summary: Invite user to project
 // description: Invites a user to a project by email.
 // tags:

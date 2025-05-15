@@ -220,6 +220,28 @@ func (s *PostgresStore) GetTenantStatus(ctx context.Context, tenantID string) (T
 	return status, nil
 }
 
+// GetTenant retrieves a single tenant by ID
+func (s *PostgresStore) GetTenant(ctx context.Context, id string) (Tenant, error) {
+	if id == "" {
+		return Tenant{}, errors.New("tenant id required")
+	}
+
+	const q = `SELECT id, name, status, settings, created_at, updated_at FROM tenants WHERE id = $1`
+	row := s.DB.QueryRow(ctx, q, id)
+
+	var tenant Tenant
+	err := row.Scan(&tenant.ID, &tenant.Name, &tenant.Status, &tenant.Settings, &tenant.CreatedAt, &tenant.UpdatedAt)
+	if err != nil {
+		logger.LogError("failed to get tenant", logger.ErrorField(err), logger.String("id", id))
+		if strings.Contains(err.Error(), "no rows") {
+			return Tenant{}, errors.New("tenant not found")
+		}
+		return Tenant{}, errors.New("failed to get tenant: " + err.Error())
+	}
+
+	return tenant, nil
+}
+
 func NewPostgresStore(db *pgxpool.Pool, serverConfigService *server_config.Service, auditLogger security_management.AuditLogger) *PostgresStore {
 	if db == nil {
 		panic("PostgresStore: DB must not be nil")

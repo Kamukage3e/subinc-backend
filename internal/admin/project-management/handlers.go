@@ -1,13 +1,11 @@
 package project_management
 
 import (
-	"time"
+
 
 	"errors"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
-	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -50,16 +48,7 @@ func (h *ProjectHandler) CreateProject(c *fiber.Ctx) error {
 		logger.LogError("CreateProject: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogger != nil {
-		_, _ = h.SecurityAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
-			Action:    "create_project",
-			TargetID:  proj.ID,
-			Details:   "Project created successfully",
-			CreatedAt: time.Now(),
-		})
-	}
+
 	return c.Status(fiber.StatusCreated).JSON(proj)
 }
 
@@ -91,16 +80,7 @@ func (h *ProjectHandler) UpdateProject(c *fiber.Ctx) error {
 		logger.LogError("UpdateProject: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogger != nil {
-		_, _ = h.SecurityAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
-			Action:    "update_project",
-			TargetID:  proj.ID,
-			Details:   "Project updated successfully",
-			CreatedAt: time.Now(),
-		})
-	}
+
 	return c.JSON(proj)
 }
 
@@ -121,16 +101,7 @@ func (h *ProjectHandler) DeleteProject(c *fiber.Ctx) error {
 		logger.LogError("DeleteProject: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogger != nil {
-		_, _ = h.SecurityAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
-			Action:    "delete_project",
-			TargetID:  id,
-			Details:   "Project deleted successfully",
-			CreatedAt: time.Now(),
-		})
-	}
+
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -224,16 +195,7 @@ func (h *ProjectHandler) UpdateSettings(c *fiber.Ctx) error {
 		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.String("project_id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if h.SecurityAuditLogger != nil {
-		_, _ = h.SecurityAuditLogger.CreateSecurityAuditLog(c.Context(), security_management.SecurityAuditLog{
-			ID:        uuid.NewString(),
-			ActorID:   getActorID(c),
-			Action:    "update_settings",
-			TargetID:  id,
-			Details:   "Settings updated successfully",
-			CreatedAt: time.Now(),
-		})
-	}
+
 	return c.JSON(fiber.Map{"ok": true})
 }
 

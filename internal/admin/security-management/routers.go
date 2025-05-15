@@ -8,14 +8,19 @@ import (
 
 // Architectural decision: All security-management endpoints use in-memory rate limiting and strict security headers.
 // Sensitive endpoints have stricter limits.
-func RegisteryRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretName string, auditLogger AuditLogger) {
+func RegisterRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretName string, auditLogger AuditLogger) {
 	// General rate limiter: 30 req/min/IP
 	generalLimiter := newInMemoryRateLimiter(30, time.Minute)
 	// Sensitive: 10 req/min/IP
 	strictLimiter := newInMemoryRateLimiter(10, time.Minute)
 
-	// --- Auth ---
-	route := router.Group("/auth", securityHeadersMiddleware())
+	// --- Bootstrap Owner Admin Resource ---
+	// This route must be protected and only accessible when no users exist
+	route := router.Group("/bootstrap", securityHeadersMiddleware())
+	route.Post("/admin", strictLimiter.middleware(), handler.BootstrapOwnerAdmin)
+
+	// --- Auth Resource ---
+	route = router.Group("/auth", securityHeadersMiddleware())
 	route.Post("/login", strictLimiter.middleware(), handler.Login)
 	route.Post("/logout", strictLimiter.middleware(), handler.Logout)
 	route.Post("/register", generalLimiter.middleware(), handler.Register)
@@ -31,123 +36,126 @@ func RegisteryRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretNam
 	// Apply session auth middleware to protected routes
 	sessionAuth := SessionAuthMiddleware(handler.Store)
 
-	// --- User Security Events (Batch 1) ---
+	// --- Users Resource ---
 	route = router.Group("/users", securityHeadersMiddleware(), sessionAuth)
+	// Security events
 	route.Get("/:user_id/security-events", generalLimiter.middleware(), handler.ListUserSecurityEvents)
+	route.Get("/:user_id/security-events/:event_id", generalLimiter.middleware(), handler.GetUserSecurityEvent)
 	route.Get("/:user_id/login-history", generalLimiter.middleware(), handler.ListUserLoginHistory)
+	route.Get("/:user_id/login-history/:history_id", generalLimiter.middleware(), handler.GetUserLoginHistoryItem)
 
-	route.Post("/mfa/enable", strictLimiter.middleware(), handler.EnableMFA)
-	route.Post("/mfa/disable", strictLimiter.middleware(), handler.DisableMFA)
-
-	route.Post("/password/reset", strictLimiter.middleware(), handler.ResetUserPassword)
-
-	route.Post("/sessions/create", securityHeadersMiddleware(), sessionAuth, generalLimiter.middleware(), handler.CreateUserSession)
-	route.Post("/sessions/delete", securityHeadersMiddleware(), sessionAuth, generalLimiter.middleware(), handler.DeleteUserSession)
-	route.Post("/sessions/get", securityHeadersMiddleware(), sessionAuth, generalLimiter.middleware(), handler.GetUserSession)
-	route.Get("/:user_id/sessions", securityHeadersMiddleware(), sessionAuth, generalLimiter.middleware(), handler.ListUserSessions)
-	route.Delete("/:user_id/sessions/:refresh_token", generalLimiter.middleware(), handler.RevokeUserSession)
-
+	// API Keys
 	route.Get("/:user_id/api-keys", generalLimiter.middleware(), handler.ListUserAPIKeys)
 	route.Post("/:user_id/api-keys", strictLimiter.middleware(), handler.CreateUserAPIKey)
 	route.Delete("/:user_id/api-keys/:key_id", strictLimiter.middleware(), handler.RevokeUserAPIKey)
 
+	// Devices
 	route.Get("/:user_id/devices", generalLimiter.middleware(), handler.ListUserDevices)
 	route.Delete("/:user_id/devices/:device_id", generalLimiter.middleware(), handler.RevokeUserDevice)
+	route.Put("/:user_id/devices/:device_id/trust", strictLimiter.middleware(), handler.TrustDevice)
 
-	// --- Audit Logs ---
+	// Sessions
+	route.Get("/:user_id/sessions", generalLimiter.middleware(), handler.ListUserSessions)
+	route.Post("/:user_id/sessions", generalLimiter.middleware(), handler.CreateUserSession)
+	route.Get("/:user_id/sessions/:session_id", generalLimiter.middleware(), handler.GetUserSession)
+	route.Delete("/:user_id/sessions/:session_id", generalLimiter.middleware(), handler.DeleteUserSession)
+	route.Delete("/:user_id/sessions/:session_id/revoke", generalLimiter.middleware(), handler.RevokeUserSession)
+
+	// MFA
+	route.Get("/:user_id/mfa", generalLimiter.middleware(), handler.GetMFAConfig)
+	route.Put("/:user_id/mfa", strictLimiter.middleware(), handler.EnableMFA)
+	route.Delete("/:user_id/mfa", strictLimiter.middleware(), handler.DisableMFA)
+	route.Get("/:user_id/mfa/challenge", strictLimiter.middleware(), handler.MFAChallenge)
+	route.Post("/:user_id/mfa/verify", strictLimiter.middleware(), handler.MFAVerify)
+
+	// Profile
+	route.Get("/me", generalLimiter.middleware(), handler.GetProfile)            // Current user profile
+	route.Put("/me", generalLimiter.middleware(), handler.UpdateProfile)         // Current user profile updates
+	route.Delete("/me", strictLimiter.middleware(), handler.DeleteAccount)       // Current user account deletion
+	route.Get("/:user_id", generalLimiter.middleware(), handler.GetProfile)      // Admin access to user profile
+	route.Put("/:user_id", generalLimiter.middleware(), handler.UpdateProfile)   // Admin update of user profile
+	route.Delete("/:user_id", strictLimiter.middleware(), handler.DeleteAccount) // Admin deletion of user
+	route.Post("/recover", strictLimiter.middleware(), handler.AccountRecover)
+	route.Post("/consent", generalLimiter.middleware(), handler.Consent)
+
+	// Password
+	route.Post("/:user_id/password/reset", strictLimiter.middleware(), handler.ResetUserPassword)
+
+	// --- Audit Logs Resource ---
 	route = router.Group("/audit-logs", securityHeadersMiddleware(), sessionAuth)
-	route.Post("/list", generalLimiter.middleware(), handler.ListSecurityAuditLogs)
+	route.Get("/", generalLimiter.middleware(), handler.ListSecurityAuditLogs)
+	route.Get("/:log_id", generalLimiter.middleware(), handler.GetSecurityAuditLog)
 
-	// --- Breaches ---
+	// --- Breaches Resource ---
 	route = router.Group("/breaches", securityHeadersMiddleware(), sessionAuth)
-	route.Post("/list", generalLimiter.middleware(), handler.ListBreaches)
+	route.Get("/", generalLimiter.middleware(), handler.ListBreaches)
+	route.Get("/:breach_id", generalLimiter.middleware(), handler.GetBreach)
 
-	// --- Security Policies ---
+	// --- Policies Resource ---
 	route = router.Group("/policies", securityHeadersMiddleware(), sessionAuth)
 	route.Get("/", generalLimiter.middleware(), handler.ListSecurityPolicies)
 	route.Post("/", generalLimiter.middleware(), handler.CreateSecurityPolicy)
-	route.Put("/:id", generalLimiter.middleware(), handler.UpdateSecurityPolicy)
-	route.Delete("/:id", generalLimiter.middleware(), handler.DeleteSecurityPolicy)
+	route.Put("/:policy_id", generalLimiter.middleware(), handler.UpdateSecurityPolicy)
+	route.Delete("/:policy_id", generalLimiter.middleware(), handler.DeleteSecurityPolicy)
 
-	// --- Webhooks ---
+	// --- Webhooks Resource ---
 	route = router.Group("/webhooks", securityHeadersMiddleware(), sessionAuth)
-	route.Get("/:tenant_id", generalLimiter.middleware(), handler.ListWebhooks)
-	route.Post("/:tenant_id", generalLimiter.middleware(), handler.CreateWebhook)
-	route.Delete("/:tenant_id/:id", strictLimiter.middleware(), handler.DeleteWebhook)
-	route.Post("/trigger", strictLimiter.middleware(), handler.TriggerWebhook)
+	route.Get("/tenants/:tenant_id", generalLimiter.middleware(), handler.ListWebhooks)
+	route.Post("/tenants/:tenant_id", generalLimiter.middleware(), handler.CreateWebhook)
+	route.Delete("/tenants/:tenant_id/:webhook_id", strictLimiter.middleware(), handler.DeleteWebhook)
+	route.Post("/tenants/:tenant_id/:webhook_id/trigger", strictLimiter.middleware(), handler.TriggerWebhook)
 
-	// --- Password Reset ---
+	// --- Password Reset Resource ---
 	// Password reset should be open without session auth
 	route = router.Group("/password-reset", securityHeadersMiddleware())
 	route.Post("/request", strictLimiter.middleware(), handler.RequestPasswordResetToken)
-	route.Post("/verify", strictLimiter.middleware(), handler.VerifyPasswordResetToken)
-	route.Post("/use", strictLimiter.middleware(), handler.UsePasswordResetToken)
+	route.Post("/tokens/:token/verify", strictLimiter.middleware(), handler.VerifyPasswordResetToken)
+	route.Post("/tokens/:token/redeem", strictLimiter.middleware(), handler.UsePasswordResetToken)
 
-	// --- Rate Limit ---
-	route = router.Group("/rate-limit", securityHeadersMiddleware(), sessionAuth)
-	route.Post("/set", strictLimiter.middleware(), handler.SetRateLimit)
-	route.Get("/get", strictLimiter.middleware(), handler.GetRateLimit)
-	route.Post("/delete", strictLimiter.middleware(), handler.DeleteRateLimit)
-	route.Get("/config", generalLimiter.middleware(), handler.GetRateLimitConfig)
-	route.Post("/config", strictLimiter.middleware(), handler.SetRateLimitConfig)
+	// --- Rate Limits Resource ---
+	route = router.Group("/rate-limits", securityHeadersMiddleware(), sessionAuth)
+	route.Get("/:scope/:scope_id", strictLimiter.middleware(), handler.GetRateLimit)
+	route.Put("/:scope/:scope_id", strictLimiter.middleware(), handler.SetRateLimit)
+	route.Delete("/:rate_limit_id", strictLimiter.middleware(), handler.DeleteRateLimit)
 
-	// --- Profile ---
-	route = router.Group("/profile", securityHeadersMiddleware(), sessionAuth)
-	route.Post("/get", generalLimiter.middleware(), handler.GetProfile)
-	route.Post("/update", generalLimiter.middleware(), handler.UpdateProfile)
-
-	// --- Account ---
-	route = router.Group("/account", securityHeadersMiddleware(), sessionAuth)
-	route.Post("/delete", strictLimiter.middleware(), handler.DeleteAccount)
-	route.Post("/recover", strictLimiter.middleware(), handler.AccountRecover)
-
-	// --- Consent ---
-	route.Post("/consent", securityHeadersMiddleware(), sessionAuth, generalLimiter.middleware(), handler.Consent)
-
-	// --- MFA ---
-	route = router.Group("/mfa", securityHeadersMiddleware(), sessionAuth)
-	route.Post("/challenge", strictLimiter.middleware(), handler.MFAChallenge)
-	route.Post("/verify", strictLimiter.middleware(), handler.MFAVerify)
-	route.Get("/config", generalLimiter.middleware(), handler.GetMFAConfig)
-	route.Post("/config", strictLimiter.middleware(), handler.SetMFAConfig)
-
-	// --- Invite ---
-	route = router.Group("/invite", securityHeadersMiddleware())
-	route.Post("/send", sessionAuth, strictLimiter.middleware(), handler.SendInvite)
+	// --- Invite Resource ---
+	route = router.Group("/invites", securityHeadersMiddleware())
+	route.Post("/", sessionAuth, strictLimiter.middleware(), handler.SendInvite)
 	route.Post("/accept", generalLimiter.middleware(), handler.AcceptInvite) // Accept invite doesn't need session auth
 
-	// --- Device ---
-	route = router.Group("/device", securityHeadersMiddleware(), sessionAuth)
-	route.Post("/trust", strictLimiter.middleware(), handler.TrustDevice)
-
-	// --- Notification ---
-	route = router.Group("/notification", securityHeadersMiddleware())
+	// --- Notifications Resource ---
+	route = router.Group("/notifications", securityHeadersMiddleware())
 	route.Get("/providers/status", handler.GetNotificationProvidersStatus)
 	route.Post("/queue/retry", handler.RetryNotificationQueue)
-	route.Get("/config", generalLimiter.middleware(), handler.GetNotificationConfig)
-	route.Post("/config", strictLimiter.middleware(), handler.UpdateNotificationConfig)
-	route.Post("/test", strictLimiter.middleware(), handler.SendTestNotification)
-	route.Post("/channel/enabled", strictLimiter.middleware(), handler.SetNotificationChannelEnabled)
-	route.Get("/channel/enabled", generalLimiter.middleware(), handler.GetNotificationChannelEnabled)
-	route.Post("/provider/config", strictLimiter.middleware(), handler.SetProviderConfig)
-	route.Get("/provider/config", generalLimiter.middleware(), handler.GetProviderConfig)
+	route.Get("/tenants/:tenant_id/config", generalLimiter.middleware(), handler.GetNotificationConfig)
+	route.Put("/tenants/:tenant_id/config", strictLimiter.middleware(), handler.UpdateNotificationConfig)
+	route.Post("/tenants/:tenant_id/test", strictLimiter.middleware(), handler.SendTestNotification)
+	route.Get("/tenants/:tenant_id/channels/:channel/providers/:provider/status", generalLimiter.middleware(), handler.GetNotificationChannelEnabled)
+	route.Put("/tenants/:tenant_id/channels/:channel/providers/:provider/status", strictLimiter.middleware(), handler.SetNotificationChannelEnabled)
+	route.Get("/tenants/:tenant_id/providers/:provider/config", generalLimiter.middleware(), handler.GetProviderConfig)
+	route.Put("/tenants/:tenant_id/providers/:provider/config", strictLimiter.middleware(), handler.SetProviderConfig)
 
-	// --- Module Config ---
-	route = router.Group("/module", securityHeadersMiddleware())
-	route.Post("/config", strictLimiter.middleware(), handler.SetSecurityModuleConfig)
-	route.Get("/config", generalLimiter.middleware(), handler.GetSecurityModuleConfig)
+	// --- Config Resources ---
+	// Module config
+	route = router.Group("/configs", securityHeadersMiddleware())
+	route.Get("/tenants/:tenant_id/security", generalLimiter.middleware(), handler.GetSecurityModuleConfig)
+	route.Put("/tenants/:tenant_id/security", strictLimiter.middleware(), handler.SetSecurityModuleConfig)
 
-	// --- Password Policy ---
-	route = router.Group("/password-policy", securityHeadersMiddleware())
-	route.Get("/config", generalLimiter.middleware(), handler.GetPasswordPolicyConfig)
-	route.Post("/config", strictLimiter.middleware(), handler.SetPasswordPolicyConfig)
+	// Password policy
+	route.Get("/tenants/:tenant_id/password-policy", generalLimiter.middleware(), handler.GetPasswordPolicyConfig)
+	route.Put("/tenants/:tenant_id/password-policy", strictLimiter.middleware(), handler.SetPasswordPolicyConfig)
 
-	// --- Session Config ---
-	route = router.Group("/session", securityHeadersMiddleware())
-	route.Get("/config", generalLimiter.middleware(), handler.GetSessionConfig)
-	route.Post("/config", strictLimiter.middleware(), handler.SetSessionConfig)
+	// Session config
+	route.Get("/tenants/:tenant_id/session", generalLimiter.middleware(), handler.GetSessionConfig)
+	route.Put("/tenants/:tenant_id/session", strictLimiter.middleware(), handler.SetSessionConfig)
 
-	// --- Self Service ---
+	// --- Self Service Resource ---
 	route = router.Group("/self-service", securityHeadersMiddleware())
-	route.Get("/", generalLimiter.middleware(), handler.GetSelfServiceSecurity)
+	route.Get("/security", generalLimiter.middleware(), handler.GetSelfServiceSecurity)
+
+	// --- Security Analytics Resource ---
+	route = router.Group("/analytics", securityHeadersMiddleware(), sessionAuth)
+	route.Get("/tenants/:tenant_id/security", generalLimiter.middleware(), handler.GetSecurityAnalytics)
+	route.Get("/tenants/:tenant_id/anomalies", generalLimiter.middleware(), handler.ListAnomalies)
+	route.Get("/tenants/:tenant_id/anomalies/:anomaly_id", generalLimiter.middleware(), handler.GetAnomaly)
 }

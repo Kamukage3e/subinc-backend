@@ -5,14 +5,17 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -51,39 +54,158 @@ func getTenantID(c *fiber.Ctx) string {
 }
 
 func (h *SecurityHandler) ListUserSecurityEvents(c *fiber.Ctx) error {
-	var input struct {
-		UserID string `json:"user_id"`
+	userID := c.Params("user_id")
+	if userID == "" {
+		logger.LogError("ListUserSecurityEvents: missing user_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required", "tenant_id": getTenantID(c)})
 	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
-		logger.LogError("ListUserSecurityEvents: invalid input", logger.ErrorField(err), logger.String("tenant_id", getTenantID(c)))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id required", "tenant_id": getTenantID(c)})
+
+	// Optional pagination parameters
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 20)
+	eventType := c.Query("event_type", "")
+
+	if page < 1 {
+		page = 1
 	}
-	events, err := h.SecurityEventService.ListUserSecurityEvents(c.Context(), input.UserID)
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	events, err := h.SecurityEventService.ListUserSecurityEvents(c.Context(), userID)
 	if err != nil {
-		logger.LogError("ListUserSecurityEvents: failed", logger.ErrorField(err), logger.String("user_id", input.UserID), logger.String("tenant_id", getTenantID(c)))
+		logger.LogError("ListUserSecurityEvents: failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("tenant_id", getTenantID(c)))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error(), "tenant_id": getTenantID(c)})
 	}
-	return c.JSON(events)
+
+	// Filter by event type if specified
+	if eventType != "" {
+		var filteredEvents []SecurityEvent
+		for _, event := range events {
+			if event.EventType == eventType {
+				filteredEvents = append(filteredEvents, event)
+			}
+		}
+		events = filteredEvents
+	}
+
+	// Calculate total before pagination
+	total := len(events)
+
+	// Apply pagination
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if start >= len(events) {
+		events = []SecurityEvent{}
+	} else if end > len(events) {
+		events = events[start:]
+	} else {
+		events = events[start:end]
+	}
+
+	return c.JSON(fiber.Map{
+		"events":    events,
+		"page":      page,
+		"page_size": pageSize,
+		"total":     total,
+	})
+}
+
+func (h *SecurityHandler) GetUserSecurityEvent(c *fiber.Ctx) error {
+	userID := c.Params("user_id")
+	if userID == "" {
+		logger.LogError("GetUserSecurityEvent: missing user_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+	}
+
+	eventID := c.Params("event_id")
+	if eventID == "" {
+		logger.LogError("GetUserSecurityEvent: missing event_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "event_id parameter required"})
+	}
+
+	events, err := h.SecurityEventService.ListUserSecurityEvents(c.Context(), userID)
+	if err != nil {
+		logger.LogError("GetUserSecurityEvent: failed to list events", logger.ErrorField(err), logger.String("user_id", userID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Find the specific event
+	for _, event := range events {
+		if event.ID == eventID {
+			return c.JSON(event)
+		}
+	}
+
+	logger.LogError("GetUserSecurityEvent: event not found", logger.String("user_id", userID), logger.String("event_id", eventID))
+	return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "security event not found"})
 }
 
 func (h *SecurityHandler) ListUserLoginHistory(c *fiber.Ctx) error {
-	var input struct {
-		UserID string `json:"user_id"`
+	userID := c.Params("user_id")
+	if userID == "" {
+		logger.LogError("ListUserLoginHistory: missing user_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
 	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
-		logger.LogError("ListUserLoginHistory: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id required"})
+
+	// Optional pagination parameters
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 20)
+
+	if page < 1 {
+		page = 1
 	}
-	history, err := h.LoginHistoryService.ListUserLoginHistory(c.Context(), input.UserID)
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	history, err := h.LoginHistoryService.ListUserLoginHistory(c.Context(), userID)
 	if err != nil {
-		logger.LogError("ListUserLoginHistory: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
+		logger.LogError("ListUserLoginHistory: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(history)
+
+	return c.JSON(fiber.Map{
+		"history":   history,
+		"page":      page,
+		"page_size": pageSize,
+		"total":     len(history),
+	})
+}
+
+func (h *SecurityHandler) GetUserLoginHistoryItem(c *fiber.Ctx) error {
+	userID := c.Params("user_id")
+	if userID == "" {
+		logger.LogError("GetUserLoginHistoryItem: missing user_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+	}
+
+	historyID := c.Params("history_id")
+	if historyID == "" {
+		logger.LogError("GetUserLoginHistoryItem: missing history_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "history_id parameter required"})
+	}
+
+	// Get all login history items
+	history, err := h.LoginHistoryService.ListUserLoginHistory(c.Context(), userID)
+	if err != nil {
+		logger.LogError("GetUserLoginHistoryItem: failed to list history", logger.ErrorField(err), logger.String("user_id", userID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Find the specific history item
+	for _, item := range history {
+		if item.ID == historyID {
+			return c.JSON(item)
+		}
+	}
+
+	logger.LogError("GetUserLoginHistoryItem: history item not found", logger.String("user_id", userID), logger.String("history_id", historyID))
+	return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "login history item not found"})
 }
 
 // --- MFA ---
-// swagger:route POST /users/mfa/enable mfa enableMFA
+// swagger:route PUT /users/{user_id}/mfa mfa enableMFA
 // summary: Enable MFA for user
 // tags:
 //   - mfa
@@ -110,32 +232,21 @@ func (h *SecurityHandler) EnableMFA(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		UserID string `json:"user_id"`
+
+	userID := c.Params("user_id")
+	if userID == "" {
+		logger.LogError("EnableMFA: missing user_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
 	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
-		logger.LogError("EnableMFA: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id required"})
-	}
-	if err := h.MFAService.EnableMFA(c.Context(), input.UserID); err != nil {
-		logger.LogError("EnableMFA: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
+
+	if err := h.MFAService.EnableMFA(c.Context(), userID); err != nil {
+		logger.LogError("EnableMFA: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// swagger:parameters enableMFA
-// in: body
-// name: body
-// schema:
-//   type: object
-//   properties:
-//     user_id:
-//       type: string
-//   required:
-//     - user_id
-
-// swagger:route POST /users/mfa/disable mfa disableMFA
+// swagger:route DELETE /users/{user_id}/mfa mfa disableMFA
 // summary: Disable MFA for user
 // tags:
 //   - mfa
@@ -162,32 +273,21 @@ func (h *SecurityHandler) DisableMFA(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		UserID string `json:"user_id"`
+
+	userID := c.Params("user_id")
+	if userID == "" {
+		logger.LogError("DisableMFA: missing user_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
 	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
-		logger.LogError("DisableMFA: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id required"})
-	}
-	if err := h.MFAService.DisableMFA(c.Context(), input.UserID); err != nil {
-		logger.LogError("DisableMFA: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
+
+	if err := h.MFAService.DisableMFA(c.Context(), userID); err != nil {
+		logger.LogError("DisableMFA: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// swagger:parameters disableMFA
-// in: body
-// name: body
-// schema:
-//   type: object
-//   properties:
-//     user_id:
-//       type: string
-//   required:
-//     - user_id
-
-// swagger:route POST /users/mfa/challenge mfa mfaChallenge
+// swagger:route GET /users/{user_id}/mfa/challenge mfa mfaChallenge
 // summary: Generate MFA challenge
 // tags:
 //   - mfa
@@ -201,11 +301,16 @@ func (h *SecurityHandler) DisableMFA(c *fiber.Ctx) error {
 //	401: ErrorResponse
 //	422: ErrorResponse
 func (h *SecurityHandler) MFAChallenge(c *fiber.Ctx) error {
-	userID := getActorID(c)
+	userID := c.Params("user_id")
+	if userID == "" {
+		userID = getActorID(c) // Fallback to actor ID if path param not available
+	}
+
 	if userID == "" {
 		logger.LogError("MFAChallenge: unauthorized", logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
+
 	challenge, err := h.MFAService.GenerateChallenge(c.Context(), userID)
 	if err != nil {
 		logger.LogError("MFAChallenge: failed", logger.ErrorField(err), logger.String("user_id", userID))
@@ -214,18 +319,7 @@ func (h *SecurityHandler) MFAChallenge(c *fiber.Ctx) error {
 	return c.JSON(challenge)
 }
 
-// swagger:parameters mfaChallenge
-// in: body
-// name: body
-// schema:
-//   type: object
-//   properties:
-//     user_id:
-//       type: string
-//   required:
-//     - user_id
-
-// swagger:route POST /users/mfa/verify mfa mfaVerify
+// swagger:route POST /users/{user_id}/mfa/verify mfa mfaVerify
 // summary: Verify MFA challenge
 // tags:
 //   - mfa
@@ -240,11 +334,16 @@ func (h *SecurityHandler) MFAChallenge(c *fiber.Ctx) error {
 //	401: ErrorResponse
 //	422: ErrorResponse
 func (h *SecurityHandler) MFAVerify(c *fiber.Ctx) error {
-	userID := getActorID(c)
+	userID := c.Params("user_id")
+	if userID == "" {
+		userID = getActorID(c) // Fallback to actor ID if path param not available
+	}
+
 	if userID == "" {
 		logger.LogError("MFAVerify: unauthorized", logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
+
 	var input struct {
 		Code string `json:"code"`
 	}
@@ -252,11 +351,17 @@ func (h *SecurityHandler) MFAVerify(c *fiber.Ctx) error {
 		logger.LogError("MFAVerify: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "code required"})
 	}
+
 	if err := h.MFAService.VerifyChallenge(c.Context(), userID, input.Code); err != nil {
 		logger.LogError("MFAVerify: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid code"})
 	}
-	return c.SendStatus(fiber.StatusNoContent)
+	return c.JSON(fiber.Map{
+		"verified": true,
+		"metadata": fiber.Map{
+			"user_id": userID,
+		},
+	})
 }
 
 // swagger:parameters mfaVerify
@@ -271,7 +376,7 @@ func (h *SecurityHandler) MFAVerify(c *fiber.Ctx) error {
 //     - code
 
 // --- Sessions ---
-// swagger:route POST /users/sessions sessions createUserSession
+// swagger:route POST /users/{user_id}/sessions sessions createUserSession
 // summary: Create user session
 // tags:
 //   - sessions
@@ -282,37 +387,135 @@ func (h *SecurityHandler) MFAVerify(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	500: ErrorResponse
 func (h *SecurityHandler) CreateUserSession(c *fiber.Ctx) error {
-	var input struct {
-		UserID   string `json:"user_id"`
-		Page     int    `json:"page"`
-		PageSize int    `json:"page_size"`
+	userID := c.Params("user_id")
+	if userID == "" {
+		logger.LogError("CreateUserSession: missing user_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
 	}
-	if err := c.BodyParser(&input); err != nil || input.Page <= 0 || input.PageSize <= 0 {
-		logger.LogError("ListSecurityAuditLogs: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid page or page_size"})
+
+	ip := c.IP()
+	device := c.Get("User-Agent")
+
+	// Optional duration parameter, default to 24 hours
+	var durationHours int = 24
+	if durationStr := c.Query("duration_hours"); durationStr != "" {
+		if parsed, err := strconv.Atoi(durationStr); err == nil && parsed > 0 {
+			durationHours = parsed
+		}
 	}
-	logs, err := h.SecurityAuditLogService.ListSecurityAuditLogs(c.Context(), input.Page, input.PageSize)
+
+	sess, err := h.SessionService.CreateSession(c.Context(), userID, ip, device, time.Duration(durationHours)*time.Hour)
 	if err != nil {
-		logger.LogError("ListSecurityAuditLogs: failed", logger.ErrorField(err))
+		logger.LogError("CreateUserSession: failed", logger.ErrorField(err), logger.String("user_id", userID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create session"})
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(sess)
+}
+
+func (h *SecurityHandler) ListUserSessions(c *fiber.Ctx) error {
+	userID := c.Params("user_id")
+	if userID == "" {
+		logger.LogError("ListUserSessions: missing user_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+	}
+
+	sessions, err := h.SessionService.ListUserSessions(c.Context(), userID)
+	if err != nil {
+		logger.LogError("ListUserSessions: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"audit_logs": logs, "page": input.Page, "page_size": input.PageSize})
+
+	return c.JSON(fiber.Map{
+		"sessions": sessions,
+		"count":    len(sessions),
+		"metadata": fiber.Map{
+			"user_id": userID,
+		},
+	})
+}
+
+func (h *SecurityHandler) GetUserSession(c *fiber.Ctx) error {
+	sessionID := c.Params("session_id")
+	if sessionID == "" {
+		logger.LogError("GetUserSession: missing session_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session_id parameter required"})
+	}
+
+	sess, err := h.SessionService.GetSession(c.Context(), sessionID)
+	if err != nil {
+		logger.LogError("GetUserSession: failed", logger.ErrorField(err), logger.String("session_id", sessionID))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "session not found"})
+	}
+
+	return c.JSON(sess)
+}
+
+func (h *SecurityHandler) DeleteUserSession(c *fiber.Ctx) error {
+	sessionID := c.Params("session_id")
+	if sessionID == "" {
+		logger.LogError("DeleteUserSession: missing session_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session_id parameter required"})
+	}
+
+	if err := h.SessionService.LogoutSession(c.Context(), sessionID); err != nil {
+		logger.LogError("DeleteUserSession: failed", logger.ErrorField(err), logger.String("session_id", sessionID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete session"})
+	}
+
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *SecurityHandler) RevokeUserSession(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "session", "revoke")
+		if err != nil || !permitted {
+			logger.LogError("RevokeUserSession: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	userID := c.Params("user_id")
+	if userID == "" {
+		logger.LogError("RevokeUserSession: missing user_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+	}
+
+	sessionID := c.Params("session_id")
+	if sessionID == "" {
+		logger.LogError("RevokeUserSession: missing session_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session_id parameter required"})
+	}
+
+	if err := h.SessionService.RevokeUserSession(c.Context(), userID, sessionID); err != nil {
+		logger.LogError("RevokeUserSession: failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("session_id", sessionID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (h *SecurityHandler) ListUserAPIKeys(c *fiber.Ctx) error {
-	var input struct {
-		UserID string `json:"user_id"`
+	userID := c.Params("user_id")
+	if userID == "" {
+		logger.LogError("ListUserAPIKeys: missing user_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
 	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
-		logger.LogError("ListUserAPIKeys: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id required"})
-	}
-	keys, err := h.APIKeyService.ListUserAPIKeys(c.Context(), input.UserID)
+
+	keys, err := h.APIKeyService.ListUserAPIKeys(c.Context(), userID)
 	if err != nil {
-		logger.LogError("ListUserAPIKeys: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
+		logger.LogError("ListUserAPIKeys: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(keys)
+
+	return c.JSON(fiber.Map{
+		"api_keys": keys,
+		"count":    len(keys),
+		"metadata": fiber.Map{
+			"user_id": userID,
+		},
+	})
 }
 
 func (h *SecurityHandler) CreateUserAPIKey(c *fiber.Ctx) error {
@@ -324,17 +527,24 @@ func (h *SecurityHandler) CreateUserAPIKey(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
+
+	userID := c.Params("user_id")
+	if userID == "" {
+		logger.LogError("CreateUserAPIKey: missing user_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+	}
+
 	var input struct {
-		UserID string `json:"user_id"`
-		Name   string `json:"name"`
+		Name string `json:"name"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" || input.Name == "" {
+	if err := c.BodyParser(&input); err != nil || input.Name == "" {
 		logger.LogError("CreateUserAPIKey: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id and name required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "name required"})
 	}
-	key, err := h.APIKeyService.CreateUserAPIKey(c.Context(), input.UserID, input.Name)
+
+	key, err := h.APIKeyService.CreateUserAPIKey(c.Context(), userID, input.Name)
 	if err != nil {
-		logger.LogError("CreateUserAPIKey: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
+		logger.LogError("CreateUserAPIKey: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.Status(fiber.StatusCreated).JSON(key)
@@ -349,35 +559,46 @@ func (h *SecurityHandler) RevokeUserAPIKey(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		UserID string `json:"user_id"`
-		KeyID  string `json:"key_id"`
+
+	userID := c.Params("user_id")
+	if userID == "" {
+		logger.LogError("RevokeUserAPIKey: missing user_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
 	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" || input.KeyID == "" {
-		logger.LogError("RevokeUserAPIKey: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id and key id required"})
+
+	keyID := c.Params("key_id")
+	if keyID == "" {
+		logger.LogError("RevokeUserAPIKey: missing key_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "key_id parameter required"})
 	}
-	if err := h.APIKeyService.RevokeUserAPIKey(c.Context(), input.UserID, input.KeyID); err != nil {
-		logger.LogError("RevokeUserAPIKey: failed", logger.ErrorField(err), logger.String("user_id", input.UserID), logger.String("key_id", input.KeyID))
+
+	if err := h.APIKeyService.RevokeUserAPIKey(c.Context(), userID, keyID); err != nil {
+		logger.LogError("RevokeUserAPIKey: failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("key_id", keyID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (h *SecurityHandler) ListUserDevices(c *fiber.Ctx) error {
-	var input struct {
-		UserID string `json:"user_id"`
+	userID := c.Params("user_id")
+	if userID == "" {
+		logger.LogError("ListUserDevices: missing user_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
 	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
-		logger.LogError("ListUserDevices: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id required"})
-	}
-	devices, err := h.DeviceService.ListUserDevices(c.Context(), input.UserID)
+
+	devices, err := h.DeviceService.ListUserDevices(c.Context(), userID)
 	if err != nil {
-		logger.LogError("ListUserDevices: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
+		logger.LogError("ListUserDevices: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(devices)
+
+	return c.JSON(fiber.Map{
+		"devices": devices,
+		"count":   len(devices),
+		"metadata": fiber.Map{
+			"user_id": userID,
+		},
+	})
 }
 
 func (h *SecurityHandler) RevokeUserDevice(c *fiber.Ctx) error {
@@ -388,36 +609,177 @@ func (h *SecurityHandler) RevokeUserDevice(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		UserID   string `json:"user_id"`
-		DeviceID string `json:"device_id"`
+
+	userID := c.Params("user_id")
+	if userID == "" {
+		logger.LogError("RevokeUserDevice: missing user_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
 	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" || input.DeviceID == "" {
-		logger.LogError("RevokeUserDevice: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id and device id required"})
+
+	deviceID := c.Params("device_id")
+	if deviceID == "" {
+		logger.LogError("RevokeUserDevice: missing device_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "device_id parameter required"})
 	}
-	if err := h.DeviceService.RevokeUserDevice(c.Context(), input.UserID, input.DeviceID); err != nil {
-		logger.LogError("RevokeUserDevice: failed", logger.ErrorField(err), logger.String("user_id", input.UserID), logger.String("device_id", input.DeviceID))
+
+	if err := h.DeviceService.RevokeUserDevice(c.Context(), userID, deviceID); err != nil {
+		logger.LogError("RevokeUserDevice: failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("device_id", deviceID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// --- Device Trust ---
+func (h *SecurityHandler) TrustDevice(c *fiber.Ctx) error {
+	userID := c.Params("user_id")
+	if userID == "" {
+		userID = getActorID(c) // Fallback to current user if path param not available
+		if userID == "" {
+			logger.LogError("TrustDevice: unauthorized", logger.String("user_id", userID))
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+		}
+	}
+
+	deviceID := c.Params("device_id")
+	if deviceID == "" {
+		logger.LogError("TrustDevice: missing device_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "device_id parameter required"})
+	}
+
+	if err := h.DeviceService.TrustDevice(c.Context(), userID, deviceID); err != nil {
+		logger.LogError("TrustDevice: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (h *SecurityHandler) ListBreaches(c *fiber.Ctx) error {
-	var input struct {
-		Page     int `json:"page"`
-		PageSize int `json:"page_size"`
+	// Permission check
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "breach", "read")
+		if err != nil || !permitted {
+			logger.LogError("RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
 	}
-	if err := c.BodyParser(&input); err != nil || input.Page <= 0 || input.PageSize <= 0 {
-		logger.LogError("ListBreaches: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid page or page_size"})
+
+	// Pagination parameters
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 20)
+
+	// Filtering parameters
+	breachType := c.Query("type", "")
+	startDate := c.Query("start_date", "")
+	endDate := c.Query("end_date", "")
+
+	// Validate pagination parameters
+	if page < 1 {
+		page = 1
 	}
-	breaches, err := h.BreachService.ListBreaches(c.Context(), input.Page, input.PageSize)
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	breaches, err := h.BreachService.ListBreaches(c.Context(), page, pageSize)
 	if err != nil {
 		logger.LogError("ListBreaches: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to retrieve breaches"})
 	}
-	return c.JSON(fiber.Map{"breaches": breaches, "page": input.Page, "page_size": input.PageSize})
+
+	// Apply filters if specified
+	var filteredBreaches []Breach
+	for _, breach := range breaches {
+		// Skip if doesn't match type filter
+		if breachType != "" && breach.Type != breachType {
+			continue
+		}
+
+		// Date range filtering
+		if startDate != "" {
+			startTime, err := time.Parse(time.RFC3339, startDate)
+			if err == nil && breach.DetectedAt.Before(startTime) {
+				continue
+			}
+		}
+		if endDate != "" {
+			endTime, err := time.Parse(time.RFC3339, endDate)
+			if err == nil && breach.DetectedAt.After(endTime) {
+				continue
+			}
+		}
+
+		filteredBreaches = append(filteredBreaches, breach)
+	}
+
+	return c.JSON(fiber.Map{
+		"breaches":  filteredBreaches,
+		"page":      page,
+		"page_size": pageSize,
+		"total":     len(filteredBreaches),
+		"filters": fiber.Map{
+			"type":       breachType,
+			"start_date": startDate,
+			"end_date":   endDate,
+		},
+	})
+}
+
+func (h *SecurityHandler) GetBreach(c *fiber.Ctx) error {
+	// Permission check
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "breach", "read")
+		if err != nil || !permitted {
+			logger.LogError("RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	breachID := c.Params("breach_id")
+	if breachID == "" {
+		logger.LogError("GetBreach: missing breach_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "breach_id parameter required"})
+	}
+
+	// Retrieve all breaches and search for the specified ID
+	// In a production environment, this should be a direct database query by ID
+	page := 1
+	pageSize := 100
+	var foundBreach *Breach
+
+	for {
+		breaches, err := h.BreachService.ListBreaches(c.Context(), page, pageSize)
+		if err != nil {
+			logger.LogError("GetBreach: failed to list breaches", logger.ErrorField(err))
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to retrieve breaches"})
+		}
+
+		if len(breaches) == 0 {
+			break // No more breaches to check
+		}
+
+		for i := range breaches {
+			if breaches[i].ID == breachID {
+				foundBreach = &breaches[i]
+				break
+			}
+		}
+
+		if foundBreach != nil || len(breaches) < pageSize {
+			break // Found the breach or reached the end
+		}
+
+		page++
+	}
+
+	if foundBreach == nil {
+		logger.LogError("GetBreach: breach not found", logger.String("breach_id", breachID))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "breach not found"})
+	}
+
+	return c.JSON(foundBreach)
 }
 
 func (h *SecurityHandler) ListSecurityPolicies(c *fiber.Ctx) error {
@@ -430,109 +792,330 @@ func (h *SecurityHandler) ListSecurityPolicies(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) CreateSecurityPolicy(c *fiber.Ctx) error {
+	// Permission check
 	if h.RBACService != nil {
 		actorID := getActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "security_policy", "create")
 		if err != nil || !permitted {
+			logger.LogError("CreateSecurityPolicy: RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input SecurityPolicy
-	if err := c.BodyParser(&input); err != nil {
-		logger.LogError("CreateSecurityPolicy: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+
+	var policy SecurityPolicy
+	if err := c.BodyParser(&policy); err != nil {
+		logger.LogError("CreateSecurityPolicy: invalid request body", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
-	policy, err := h.SecurityPolicyService.CreateSecurityPolicy(c.Context(), input)
+
+	// Validate required fields
+	if policy.Name == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "policy name is required"})
+	}
+
+	// Set creation time
+	policy.CreatedAt = time.Now()
+	policy.UpdatedAt = policy.CreatedAt
+
+	// Generate UUID if not provided
+	if policy.ID == "" {
+		policy.ID = uuid.NewString()
+	}
+
+	createdPolicy, err := h.SecurityPolicyService.CreateSecurityPolicy(c.Context(), policy)
 	if err != nil {
-		logger.LogError("CreateSecurityPolicy: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		logger.LogError("CreateSecurityPolicy: creation failed", logger.ErrorField(err), logger.Any("policy", policy))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create security policy"})
 	}
-	return c.Status(fiber.StatusCreated).JSON(policy)
+
+	return c.Status(fiber.StatusCreated).JSON(createdPolicy)
 }
 
 func (h *SecurityHandler) UpdateSecurityPolicy(c *fiber.Ctx) error {
+	// Permission check
 	if h.RBACService != nil {
 		actorID := getActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "security_policy", "update")
 		if err != nil || !permitted {
+			logger.LogError("UpdateSecurityPolicy: RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input SecurityPolicy
-	if err := c.BodyParser(&input); err != nil {
-		logger.LogError("UpdateSecurityPolicy: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+
+	policyID := c.Params("id")
+	if policyID == "" {
+		logger.LogError("UpdateSecurityPolicy: missing policy ID")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "policy ID is required"})
 	}
-	policy, err := h.SecurityPolicyService.UpdateSecurityPolicy(c.Context(), input)
+
+	var policyUpdate SecurityPolicy
+	if err := c.BodyParser(&policyUpdate); err != nil {
+		logger.LogError("UpdateSecurityPolicy: invalid request body", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	// Ensure the ID in the URL matches the ID in the body, or set it if not provided
+	policyUpdate.ID = policyID
+
+	// Validate required fields
+	if policyUpdate.Name == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "policy name is required"})
+	}
+
+	// Set update time
+	policyUpdate.UpdatedAt = time.Now()
+
+	updatedPolicy, err := h.SecurityPolicyService.UpdateSecurityPolicy(c.Context(), policyUpdate)
 	if err != nil {
-		logger.LogError("UpdateSecurityPolicy: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		logger.LogError("UpdateSecurityPolicy: update failed", logger.ErrorField(err), logger.Any("policy", policyUpdate))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update security policy"})
 	}
-	return c.JSON(policy)
+
+	return c.JSON(updatedPolicy)
 }
 
 func (h *SecurityHandler) DeleteSecurityPolicy(c *fiber.Ctx) error {
+	// Permission check
 	if h.RBACService != nil {
 		actorID := getActorID(c)
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "security_policy", "delete")
 		if err != nil || !permitted {
+			logger.LogError("DeleteSecurityPolicy: RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		ID string `json:"id"`
+
+	policyID := c.Params("id")
+	if policyID == "" {
+		logger.LogError("DeleteSecurityPolicy: missing policy ID")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "policy ID is required"})
 	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
-		logger.LogError("DeleteSecurityPolicy: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+
+	// Verify policy exists before deletion
+	policies, err := h.SecurityPolicyService.ListSecurityPolicies(c.Context())
+	if err != nil {
+		logger.LogError("DeleteSecurityPolicy: failed to list policies", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to verify policy existence"})
 	}
-	if err := h.SecurityPolicyService.DeleteSecurityPolicy(c.Context(), input.ID); err != nil {
-		logger.LogError("DeleteSecurityPolicy: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+
+	var policyExists bool
+	var policyName string
+	for _, policy := range policies {
+		if policy.ID == policyID {
+			policyExists = true
+			policyName = policy.Name
+			break
+		}
 	}
+
+	if !policyExists {
+		logger.LogError("DeleteSecurityPolicy: policy not found", logger.String("policy_id", policyID))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "security policy not found"})
+	}
+
+	err = h.SecurityPolicyService.DeleteSecurityPolicy(c.Context(), policyID)
+	if err != nil {
+		logger.LogError("DeleteSecurityPolicy: deletion failed", logger.ErrorField(err), logger.String("policy_id", policyID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete security policy"})
+	}
+
+	// Audit the deletion
+	if h.SecurityAuditLogService != nil {
+		_, _ = h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
+			ID:         uuid.NewString(),
+			UserID:     getActorID(c),
+			Action:     "delete_security_policy",
+			Resource:   "security_policy",
+			ResourceID: policyID,
+			IP:         c.IP(),
+			UserAgent:  c.Get("User-Agent"),
+			CreatedAt:  time.Now(),
+			Metadata: map[string]interface{}{
+				"policy_name": policyName,
+			},
+		})
+	}
+
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
 // --- Security Analytics Handlers ---
 
 func (h *SecurityHandler) GetSecurityAnalytics(c *fiber.Ctx) error {
-	var input struct {
-		TenantID string `json:"tenant_id"`
+	// Permission check
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "security_analytics", "read")
+		if err != nil || !permitted {
+			logger.LogError("GetSecurityAnalytics: RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
 	}
-	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
-		logger.LogError("GetSecurityAnalytics: tenant_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+
+	tenantID := c.Params("tenant_id")
+	if tenantID == "" {
+		tenantID = getTenantID(c) // Fallback to header/query tenantID
 	}
-	analytics, err := h.SecurityAnalyticsService.GetSecurityAnalytics(c.Context(), input.TenantID)
+
+	if tenantID == "" {
+		logger.LogError("GetSecurityAnalytics: tenant ID required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant ID is required"})
+	}
+
+	analytics, err := h.SecurityAnalyticsService.GetSecurityAnalytics(c.Context(), tenantID)
 	if err != nil {
-		logger.LogError("GetSecurityAnalytics: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		logger.LogError("GetSecurityAnalytics: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to retrieve security analytics"})
 	}
+
 	return c.JSON(analytics)
 }
 
 func (h *SecurityHandler) ListAnomalies(c *fiber.Ctx) error {
-	var input struct {
-		TenantID string `json:"tenant_id"`
-		Page     int    `json:"page"`
-		PageSize int    `json:"page_size"`
+	// Permission check
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "security_analytics", "read")
+		if err != nil || !permitted {
+			logger.LogError("ListAnomalies: RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
 	}
-	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
-		logger.LogError("ListAnomalies: tenant_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+
+	tenantID := c.Params("tenant_id")
+	if tenantID == "" {
+		tenantID = getTenantID(c) // Fallback to header/query tenantID
 	}
-	if input.Page == 0 {
-		input.Page = 1
+
+	if tenantID == "" {
+		logger.LogError("ListAnomalies: tenant ID required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant ID is required"})
 	}
-	if input.PageSize == 0 {
-		input.PageSize = 50
+
+	// Pagination parameters
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 20)
+
+	// Filtering
+	anomalyType := c.Query("type", "")
+	startDate := c.Query("start_date", "")
+	endDate := c.Query("end_date", "")
+
+	// Validate pagination parameters
+	if page < 1 {
+		page = 1
 	}
-	anomalies, err := h.SecurityAnalyticsService.ListAnomalies(c.Context(), input.TenantID, input.Page, input.PageSize)
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	anomalies, err := h.SecurityAnalyticsService.ListAnomalies(c.Context(), tenantID, page, pageSize)
 	if err != nil {
-		logger.LogError("ListAnomalies: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		logger.LogError("ListAnomalies: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to retrieve anomalies"})
 	}
-	return c.JSON(anomalies)
+
+	// Apply filters if specified
+	var filteredAnomalies []Anomaly
+	for _, anomaly := range anomalies {
+		// Skip if doesn't match type filter
+		if anomalyType != "" && anomaly.Type != anomalyType {
+			continue
+		}
+
+		// Date range filtering
+		if startDate != "" {
+			startTime, err := time.Parse(time.RFC3339, startDate)
+			if err == nil && anomaly.DetectedAt.Before(startTime) {
+				continue
+			}
+		}
+		if endDate != "" {
+			endTime, err := time.Parse(time.RFC3339, endDate)
+			if err == nil && anomaly.DetectedAt.After(endTime) {
+				continue
+			}
+		}
+
+		filteredAnomalies = append(filteredAnomalies, anomaly)
+	}
+
+	return c.JSON(fiber.Map{
+		"anomalies": filteredAnomalies,
+		"page":      page,
+		"page_size": pageSize,
+		"total":     len(filteredAnomalies),
+		"filters": fiber.Map{
+			"type":       anomalyType,
+			"start_date": startDate,
+			"end_date":   endDate,
+		},
+	})
+}
+
+func (h *SecurityHandler) GetAnomaly(c *fiber.Ctx) error {
+	// Permission check
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "security_analytics", "read")
+		if err != nil || !permitted {
+			logger.LogError("GetAnomaly: RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
+	tenantID := c.Params("tenant_id")
+	if tenantID == "" {
+		tenantID = getTenantID(c) // Fallback to header/query tenantID
+	}
+
+	if tenantID == "" {
+		logger.LogError("GetAnomaly: tenant ID required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant ID is required"})
+	}
+
+	anomalyID := c.Params("anomaly_id")
+	if anomalyID == "" {
+		logger.LogError("GetAnomaly: anomaly ID required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "anomaly ID is required"})
+	}
+
+	// Get all anomalies and find the specific one
+	page := 1
+	pageSize := 100
+	var foundAnomaly *Anomaly
+
+	for {
+		anomalies, err := h.SecurityAnalyticsService.ListAnomalies(c.Context(), tenantID, page, pageSize)
+		if err != nil {
+			logger.LogError("GetAnomaly: failed to list anomalies", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to retrieve anomalies"})
+		}
+
+		if len(anomalies) == 0 {
+			break // No more anomalies to check
+		}
+
+		for i := range anomalies {
+			if anomalies[i].ID == anomalyID {
+				foundAnomaly = &anomalies[i]
+				break
+			}
+		}
+
+		if foundAnomaly != nil || len(anomalies) < pageSize {
+			break // Found the anomaly or reached the end
+		}
+
+		page++
+	}
+
+	if foundAnomaly == nil {
+		logger.LogError("GetAnomaly: anomaly not found", logger.String("tenant_id", tenantID), logger.String("anomaly_id", anomalyID))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "anomaly not found"})
+	}
+
+	return c.JSON(foundAnomaly)
 }
 
 // --- Self-Service Security Portal Handlers ---
@@ -565,37 +1148,50 @@ func (h *SecurityHandler) GetSelfServiceSecurity(c *fiber.Ctx) error {
 // --- Notification/Alerting Handlers ---
 
 func (h *SecurityHandler) GetNotificationConfig(c *fiber.Ctx) error {
-	var input struct {
-		TenantID string `json:"tenant_id"`
+	tenantID := c.Params("tenant_id")
+	if tenantID == "" {
+		logger.LogError("GetNotificationConfig: tenant_id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id parameter required"})
 	}
-	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
-		logger.LogError("GetNotificationConfig: tenant_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
-	}
-	cfg, err := h.NotificationService.GetNotificationConfig(c.Context(), input.TenantID)
+
+	cfg, err := h.NotificationService.GetNotificationConfig(c.Context(), tenantID)
 	if err != nil {
-		logger.LogError("GetNotificationConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		logger.LogError("GetNotificationConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(cfg)
 }
 
 func (h *SecurityHandler) UpdateNotificationConfig(c *fiber.Ctx) error {
-	var input NotificationConfig
-	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
-		logger.LogError("UpdateNotificationConfig: tenant_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	tenantID := c.Params("tenant_id")
+	if tenantID == "" {
+		logger.LogError("UpdateNotificationConfig: tenant_id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id parameter required"})
 	}
-	if err := h.NotificationService.UpdateNotificationConfig(c.Context(), input.TenantID, input); err != nil {
-		logger.LogError("UpdateNotificationConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+
+	var input NotificationConfig
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("UpdateNotificationConfig: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid notification config"})
+	}
+
+	// Ensure tenant ID in config matches path parameter
+	input.TenantID = tenantID
+
+	if err := h.NotificationService.UpdateNotificationConfig(c.Context(), tenantID, input); err != nil {
+		logger.LogError("UpdateNotificationConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
 // --- Runtime Notification Test Handler ---
-
 func (h *SecurityHandler) SendTestNotification(c *fiber.Ctx) error {
+	tenantID := c.Params("tenant_id")
+	if tenantID == "" {
+		tenantID = getTenantID(c) // Fallback to header or query
+	}
+
 	var input struct {
 		Channel    string                 `json:"channel"`
 		Provider   string                 `json:"provider"`
@@ -618,7 +1214,7 @@ func (h *SecurityHandler) SendTestNotification(c *fiber.Ctx) error {
 	default:
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid channel"})
 	}
-	err := h.Store.SendNotification(c.Context(), getTenantID(c), channel, input.Recipients, input.Event, input.Details, 3)
+	err := h.Store.SendNotification(c.Context(), tenantID, channel, input.Recipients, input.Event, input.Details, 3)
 	if err != nil {
 		logger.LogError("SendTestNotification: send failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
@@ -629,96 +1225,184 @@ func (h *SecurityHandler) SendTestNotification(c *fiber.Ctx) error {
 // --- Runtime Enable/Disable Handler ---
 
 func (h *SecurityHandler) GetSecurityModuleConfig(c *fiber.Ctx) error {
-	var input struct {
-		TenantID string `json:"tenant_id"`
+	tenantID := c.Params("tenant_id")
+	if tenantID == "" {
+		logger.LogError("GetSecurityModuleConfig: tenant_id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id parameter required"})
 	}
-	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
-		logger.LogError("GetSecurityModuleConfig: tenant_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
-	}
-	cfg, err := h.SecurityModuleConfigService.GetSecurityModuleConfig(c.Context(), input.TenantID)
+
+	cfg, err := h.SecurityModuleConfigService.GetSecurityModuleConfig(c.Context(), tenantID)
 	if err != nil {
-		logger.LogError("GetSecurityModuleConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		logger.LogError("GetSecurityModuleConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(cfg)
 }
 
 func (h *SecurityHandler) SetSecurityModuleConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenant_id")
+	if tenantID == "" {
+		logger.LogError("SetSecurityModuleConfig: tenant_id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id parameter required"})
+	}
+
 	var input struct {
-		TenantID string `json:"tenant_id"`
-		Enabled  bool   `json:"enabled"`
+		Enabled bool `json:"enabled"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
-		logger.LogError("SetSecurityModuleConfig: tenant_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("SetSecurityModuleConfig: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "enabled field required"})
 	}
-	if err := h.SecurityModuleConfigService.SetSecurityModuleConfig(c.Context(), input.TenantID, input.Enabled); err != nil {
-		logger.LogError("SetSecurityModuleConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+
+	if err := h.SecurityModuleConfigService.SetSecurityModuleConfig(c.Context(), tenantID, input.Enabled); err != nil {
+		logger.LogError("SetSecurityModuleConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.SendStatus(fiber.StatusNoContent)
+	return c.JSON(fiber.Map{"success": true, "tenant_id": tenantID, "enabled": input.Enabled})
 }
 
 func (h *SecurityHandler) SetNotificationChannelEnabled(c *fiber.Ctx) error {
-	var input NotificationChannelEnabledConfig
-	if err := c.BodyParser(&input); err != nil || input.TenantID == "" || input.Channel == "" || input.Provider == "" {
-		logger.LogError("SetNotificationChannelEnabled: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id, channel and provider required"})
+	tenantID := c.Params("tenant_id")
+	channel := c.Params("channel")
+	provider := c.Params("provider")
+
+	if tenantID == "" || channel == "" || provider == "" {
+		logger.LogError("SetNotificationChannelEnabled: missing parameters")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "tenant_id, channel and provider parameters required",
+		})
 	}
-	err := h.Store.SetNotificationChannelEnabledConfig(c.Context(), input)
+
+	var input struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("SetNotificationChannelEnabled: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "enabled field required"})
+	}
+
+	config := NotificationChannelEnabledConfig{
+		TenantID: tenantID,
+		Channel:  channel,
+		Provider: provider,
+		Enabled:  input.Enabled,
+	}
+
+	err := h.Store.SetNotificationChannelEnabledConfig(c.Context(), config)
 	if err != nil {
-		logger.LogError("SetNotificationChannelEnabled: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		logger.LogError("SetNotificationChannelEnabled: failed", logger.ErrorField(err),
+			logger.String("tenant_id", tenantID),
+			logger.String("channel", channel),
+			logger.String("provider", provider))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"success": true})
+	return c.JSON(fiber.Map{"success": true, "enabled": input.Enabled})
 }
 
 func (h *SecurityHandler) GetNotificationChannelEnabled(c *fiber.Ctx) error {
-	var input struct {
-		TenantID string `json:"tenant_id"`
-		Channel  string `json:"channel"`
-		Provider string `json:"provider"`
+	tenantID := c.Params("tenant_id")
+	channel := c.Params("channel")
+	provider := c.Params("provider")
+
+	if tenantID == "" || channel == "" || provider == "" {
+		logger.LogError("GetNotificationChannelEnabled: missing parameters")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "tenant_id, channel and provider parameters required",
+		})
 	}
-	if err := c.BodyParser(&input); err != nil || input.TenantID == "" || input.Channel == "" || input.Provider == "" {
-		logger.LogError("GetNotificationChannelEnabled: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id, channel and provider required"})
-	}
-	cfg, err := h.Store.GetNotificationChannelEnabledConfig(c.Context(), input.TenantID, input.Channel, input.Provider)
+
+	cfg, err := h.Store.GetNotificationChannelEnabledConfig(c.Context(), tenantID, channel, provider)
 	if err != nil {
-		logger.LogError("GetNotificationChannelEnabled: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		logger.LogError("GetNotificationChannelEnabled: failed", logger.ErrorField(err),
+			logger.String("tenant_id", tenantID),
+			logger.String("channel", channel),
+			logger.String("provider", provider))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"enabled": cfg.Enabled})
 }
 
 func (h *SecurityHandler) SetProviderConfig(c *fiber.Ctx) error {
-	var input ProviderConfig
-	if err := c.BodyParser(&input); err != nil || input.TenantID == "" || input.Channel == "" || input.Provider == "" || input.Config == nil {
-		logger.LogError("SetProviderConfig: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id, channel, provider, and config required"})
+	tenantID := c.Params("tenant_id")
+	channel := c.Params("channel")
+	provider := c.Params("provider")
+
+	if tenantID == "" || provider == "" {
+		logger.LogError("SetProviderConfig: missing parameters")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "tenant_id and provider parameters required",
+		})
 	}
-	err := h.Store.SetProviderConfig(c.Context(), input)
+
+	var rawConfig map[string]interface{}
+	if err := c.BodyParser(&rawConfig); err != nil {
+		logger.LogError("SetProviderConfig: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid config data"})
+	}
+
+	// If channel not in path, see if it's in the config
+	if channel == "" {
+		if ch, ok := rawConfig["channel"].(string); ok {
+			channel = ch
+			delete(rawConfig, "channel")
+		}
+
+		if channel == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "channel required"})
+		}
+	}
+
+	// Convert map[string]interface{} to map[string]string
+	configData := make(map[string]string)
+	for key, val := range rawConfig {
+		if strVal, ok := val.(string); ok {
+			configData[key] = strVal
+		} else {
+			// For non-string values, attempt to convert them to JSON strings
+			if jsonVal, err := json.Marshal(val); err == nil {
+				configData[key] = string(jsonVal)
+			} else {
+				// If JSON conversion fails, use string representation
+				configData[key] = fmt.Sprintf("%v", val)
+			}
+		}
+	}
+
+	providerConfig := ProviderConfig{
+		TenantID: tenantID,
+		Channel:  channel,
+		Provider: provider,
+		Config:   configData,
+	}
+
+	err := h.Store.SetProviderConfig(c.Context(), providerConfig)
 	if err != nil {
-		logger.LogError("SetProviderConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		logger.LogError("SetProviderConfig: failed", logger.ErrorField(err),
+			logger.String("tenant_id", tenantID),
+			logger.String("provider", provider))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"success": true})
 }
 
 func (h *SecurityHandler) GetProviderConfig(c *fiber.Ctx) error {
-	var input struct {
-		TenantID string `json:"tenant_id"`
-		Channel  string `json:"channel"`
-		Provider string `json:"provider"`
+	tenantID := c.Params("tenant_id")
+	channel := c.Params("channel")
+	provider := c.Params("provider")
+
+	if tenantID == "" || channel == "" || provider == "" {
+		logger.LogError("GetProviderConfig: missing parameters")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "tenant_id, channel, and provider parameters required",
+		})
 	}
-	if err := c.BodyParser(&input); err != nil || input.TenantID == "" || input.Channel == "" || input.Provider == "" {
-		logger.LogError("GetProviderConfig: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id, channel, and provider required"})
-	}
-	cfg, err := h.Store.GetProviderConfig(c.Context(), input.TenantID, input.Channel, input.Provider)
+
+	cfg, err := h.Store.GetProviderConfig(c.Context(), tenantID, channel, provider)
 	if err != nil {
-		logger.LogError("GetProviderConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		logger.LogError("GetProviderConfig: failed", logger.ErrorField(err),
+			logger.String("tenant_id", tenantID),
+			logger.String("channel", channel),
+			logger.String("provider", provider))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(cfg)
@@ -745,7 +1429,7 @@ func (h *SecurityHandler) CreateWebhook(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) ListWebhooks(c *fiber.Ctx) error {
-	tenantID := c.Query("tenant_id")
+	tenantID := c.Params("tenant_id")
 	if tenantID == "" {
 		logger.LogError("ListWebhooks: tenant_id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
@@ -755,39 +1439,58 @@ func (h *SecurityHandler) ListWebhooks(c *fiber.Ctx) error {
 		logger.LogError("ListWebhooks: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(list)
+	return c.JSON(fiber.Map{
+		"webhooks": list,
+		"count":    len(list),
+		"metadata": fiber.Map{
+			"tenant_id": tenantID,
+		},
+	})
 }
 
 func (h *SecurityHandler) DeleteWebhook(c *fiber.Ctx) error {
-	id := c.Query("id")
-	tenantID := c.Query("tenant_id")
-	if id == "" || tenantID == "" {
-		logger.LogError("DeleteWebhook: id and tenant_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id and tenant_id required"})
+	webhookID := c.Params("webhook_id")
+	tenantID := c.Params("tenant_id")
+
+	if webhookID == "" || tenantID == "" {
+		logger.LogError("DeleteWebhook: webhook_id and tenant_id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "webhook_id and tenant_id required"})
 	}
-	err := h.SecurityEventWebhookService.DeleteWebhook(c.Context(), id, tenantID)
+
+	err := h.SecurityEventWebhookService.DeleteWebhook(c.Context(), webhookID, tenantID)
 	if err != nil {
-		logger.LogError("DeleteWebhook: failed", logger.ErrorField(err), logger.String("id", id), logger.String("tenant_id", tenantID))
+		logger.LogError("DeleteWebhook: failed", logger.ErrorField(err), logger.String("webhook_id", webhookID), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (h *SecurityHandler) TriggerWebhook(c *fiber.Ctx) error {
-	id := c.Query("id")
-	tenantID := c.Query("tenant_id")
-	eventType := c.Query("event_type")
-	var payload map[string]interface{}
-	_ = c.BodyParser(&payload)
-	if id == "" || tenantID == "" || eventType == "" {
-		logger.LogError("TriggerWebhook: id, tenant_id, and event_type required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id, tenant_id, and event_type required"})
+	webhookID := c.Params("webhook_id")
+	tenantID := c.Params("tenant_id")
+
+	var input struct {
+		EventType string                 `json:"event_type"`
+		Payload   map[string]interface{} `json:"payload"`
 	}
-	err := h.SecurityEventWebhookService.TriggerWebhook(c.Context(), id, tenantID, eventType, payload)
+
+	if err := c.BodyParser(&input); err != nil || input.EventType == "" {
+		logger.LogError("TriggerWebhook: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "event_type required"})
+	}
+
+	if webhookID == "" || tenantID == "" {
+		logger.LogError("TriggerWebhook: webhook_id and tenant_id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "webhook_id and tenant_id required"})
+	}
+
+	err := h.SecurityEventWebhookService.TriggerWebhook(c.Context(), webhookID, tenantID, input.EventType, input.Payload)
 	if err != nil {
-		logger.LogError("TriggerWebhook: failed", logger.ErrorField(err), logger.String("id", id), logger.String("tenant_id", tenantID))
+		logger.LogError("TriggerWebhook: failed", logger.ErrorField(err), logger.String("webhook_id", webhookID), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+
 	return c.SendStatus(fiber.StatusOK)
 }
 
@@ -841,80 +1544,191 @@ func (h *SecurityHandler) RequestPasswordResetToken(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) VerifyPasswordResetToken(c *fiber.Ctx) error {
-	var input struct {
-		Token string `json:"token"`
+	token := c.Params("token")
+	if token == "" {
+		var input struct {
+			Token string `json:"token"`
+		}
+		if err := c.BodyParser(&input); err != nil || input.Token == "" {
+			logger.LogError("VerifyPasswordResetToken: invalid input", logger.ErrorField(err))
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "token required"})
+		}
+		token = input.Token
 	}
-	if err := c.BodyParser(&input); err != nil || input.Token == "" {
-		logger.LogError("VerifyPasswordResetToken: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "token required"})
-	}
-	token, err := h.PasswordResetTokenService.VerifyToken(c.Context(), input.Token)
+
+	valid, err := h.PasswordResetTokenService.VerifyToken(c.Context(), token)
 	if err != nil {
-		logger.LogError("VerifyPasswordResetToken: failed", logger.ErrorField(err), logger.String("token", input.Token))
+		logger.LogError("VerifyPasswordResetToken: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(token)
+
+	return c.JSON(fiber.Map{"valid": valid})
 }
 
 func (h *SecurityHandler) UsePasswordResetToken(c *fiber.Ctx) error {
+	token := c.Params("token")
+	if token == "" {
+		var tokenInput struct {
+			Token string `json:"token"`
+		}
+		if err := c.BodyParser(&tokenInput); err != nil || tokenInput.Token == "" {
+			logger.LogError("UsePasswordResetToken: invalid token input", logger.ErrorField(err))
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "token required"})
+		}
+		token = tokenInput.Token
+	}
+
 	var input struct {
-		Token   string `json:"token"`
-		UserID  string `json:"user_id"`
-		NewPass string `json:"new_password"`
+		Password string `json:"password"`
+		Email    string `json:"email"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.Token == "" || input.UserID == "" || input.NewPass == "" {
+	if err := c.BodyParser(&input); err != nil || input.Password == "" || input.Email == "" {
 		logger.LogError("UsePasswordResetToken: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "token, user_id, and new_password required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email and password required"})
 	}
-	if err := h.PasswordResetTokenService.UseToken(c.Context(), input.Token); err != nil {
-		logger.LogError("UsePasswordResetToken: failed to use token", logger.ErrorField(err), logger.String("token", input.Token))
+
+	if err := h.PasswordResetTokenService.UseToken(c.Context(), token, input.Email, input.Password); err != nil {
+		logger.LogError("UsePasswordResetToken: failed", logger.ErrorField(err), logger.String("email", input.Email))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if err := h.PasswordService.ResetUserPassword(c.Context(), input.UserID, input.NewPass); err != nil {
-		logger.LogError("UsePasswordResetToken: failed to reset password", logger.ErrorField(err), logger.String("user_id", input.UserID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
+
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
 // --- Rate Limit Config Handlers ---
 
 func (h *SecurityHandler) SetRateLimit(c *fiber.Ctx) error {
-	var input RateLimitConfig
+	scope := c.Params("scope")
+	scopeID := c.Params("scope_id")
+
+	if scope == "" || scopeID == "" {
+		logger.LogError("SetRateLimit: missing parameters")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "scope and scope_id parameters required",
+		})
+	}
+
+	var input struct {
+		Limit         int `json:"limit"`
+		WindowSeconds int `json:"window_seconds"`
+	}
+
 	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("SetRateLimit: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	cfg, err := h.RateLimitService.SetRateLimit(c.Context(), input)
+
+	if input.Limit <= 0 || input.WindowSeconds <= 0 {
+		logger.LogError("SetRateLimit: invalid limits", logger.Int("limit", input.Limit), logger.Int("window_seconds", input.WindowSeconds))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "limit and window_seconds must be positive"})
+	}
+
+	config := RateLimitConfig{
+		Scope:         scope,
+		ScopeID:       scopeID,
+		Limit:         input.Limit,
+		WindowSeconds: input.WindowSeconds,
+	}
+
+	cfg, err := h.RateLimitService.SetRateLimit(c.Context(), config)
 	if err != nil {
+		logger.LogError("SetRateLimit: failed", logger.ErrorField(err),
+			logger.String("scope", scope), logger.String("scope_id", scopeID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.Status(fiber.StatusOK).JSON(cfg)
 }
 
 func (h *SecurityHandler) GetRateLimit(c *fiber.Ctx) error {
-	scope := c.Query("scope")
-	scopeID := c.Query("scope_id")
+	scope := c.Params("scope")
+	scopeID := c.Params("scope_id")
+
 	if scope == "" || scopeID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "scope and scope_id required"})
+		logger.LogError("GetRateLimit: missing parameters")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "scope and scope_id parameters required",
+		})
 	}
+
 	cfg, err := h.RateLimitService.GetRateLimit(c.Context(), scope, scopeID)
 	if err != nil {
+		logger.LogError("GetRateLimit: failed", logger.ErrorField(err),
+			logger.String("scope", scope), logger.String("scope_id", scopeID))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.Status(fiber.StatusOK).JSON(cfg)
 }
 
 func (h *SecurityHandler) DeleteRateLimit(c *fiber.Ctx) error {
-	var input struct {
-		ID string `json:"id"`
+	rateLimitID := c.Params("rate_limit_id")
+
+	if rateLimitID == "" {
+		logger.LogError("DeleteRateLimit: missing rate_limit_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "rate_limit_id parameter required"})
 	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
-	}
-	if err := h.RateLimitService.DeleteRateLimit(c.Context(), input.ID); err != nil {
+
+	if err := h.RateLimitService.DeleteRateLimit(c.Context(), rateLimitID); err != nil {
+		logger.LogError("DeleteRateLimit: failed", logger.ErrorField(err), logger.String("rate_limit_id", rateLimitID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *SecurityHandler) GetRateLimitConfig(c *fiber.Ctx) error {
+	scope := c.Params("scope")
+	scopeID := c.Params("scope_id")
+
+	if scope == "" || scopeID == "" {
+		logger.LogError("GetRateLimitConfig: missing parameters")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "scope and scope_id parameters required",
+		})
+	}
+
+	cfg, err := h.Store.GetRateLimit(c.Context(), scope, scopeID)
+	if err != nil {
+		logger.LogError("GetRateLimitConfig: failed", logger.ErrorField(err),
+			logger.String("scope", scope), logger.String("scope_id", scopeID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(cfg)
+}
+
+func (h *SecurityHandler) SetRateLimitConfig(c *fiber.Ctx) error {
+	scope := c.Params("scope")
+	scopeID := c.Params("scope_id")
+
+	if scope == "" || scopeID == "" {
+		logger.LogError("SetRateLimitConfig: missing parameters")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "scope and scope_id parameters required",
+		})
+	}
+
+	var input struct {
+		Limit         int `json:"limit"`
+		WindowSeconds int `json:"window_seconds"`
+	}
+
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("SetRateLimitConfig: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+
+	config := RateLimitConfig{
+		Scope:         scope,
+		ScopeID:       scopeID,
+		Limit:         input.Limit,
+		WindowSeconds: input.WindowSeconds,
+	}
+
+	err := h.Store.SetRateLimitConfig(c.Context(), config)
+	if err != nil {
+		logger.LogError("SetRateLimitConfig: failed", logger.ErrorField(err),
+			logger.String("scope", scope), logger.String("scope_id", scopeID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"success": true})
 }
 
 // --- Auth Endpoints ---
@@ -1218,16 +2032,22 @@ func (h *SecurityHandler) RefreshSession(c *fiber.Ctx) error {
 //	401: ErrorResponse
 //	404: ErrorResponse
 func (h *SecurityHandler) GetProfile(c *fiber.Ctx) error {
-	userID := getActorID(c)
+	userID := c.Params("user_id")
+	if userID == "" {
+		userID = getActorID(c) // Fallback to the current user
+	}
+
 	if userID == "" {
 		logger.LogError("GetProfile: unauthorized", logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
+
 	profile, err := h.PasswordService.GetProfile(c.Context(), userID)
 	if err != nil {
 		logger.LogError("GetProfile: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
+
 	return c.JSON(profile)
 }
 
@@ -1248,21 +2068,28 @@ func (h *SecurityHandler) GetProfile(c *fiber.Ctx) error {
 //	401: ErrorResponse
 //	422: ErrorResponse
 func (h *SecurityHandler) UpdateProfile(c *fiber.Ctx) error {
-	userID := getActorID(c)
+	userID := c.Params("user_id")
+	if userID == "" {
+		userID = getActorID(c) // Fallback to the current user
+	}
+
 	if userID == "" {
 		logger.LogError("UpdateProfile: unauthorized", logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
+
 	var input map[string]interface{}
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateProfile: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
+
 	profile, err := h.PasswordService.UpdateProfile(c.Context(), userID, input)
 	if err != nil {
 		logger.LogError("UpdateProfile: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+
 	return c.JSON(profile)
 }
 
@@ -1378,27 +2205,6 @@ func (h *SecurityHandler) AcceptInvite(c *fiber.Ctx) error {
 	return c.JSON(user)
 }
 
-// --- Device Trust ---
-func (h *SecurityHandler) TrustDevice(c *fiber.Ctx) error {
-	userID := getActorID(c)
-	if userID == "" {
-		logger.LogError("TrustDevice: unauthorized", logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
-	}
-	var input struct {
-		DeviceID string `json:"device_id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.DeviceID == "" {
-		logger.LogError("TrustDevice: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "device_id required"})
-	}
-	if err := h.DeviceService.TrustDevice(c.Context(), userID, input.DeviceID); err != nil {
-		logger.LogError("TrustDevice: failed", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.SendStatus(fiber.StatusNoContent)
-}
-
 // --- Account Recovery ---
 func (h *SecurityHandler) AccountRecover(c *fiber.Ctx) error {
 	var input struct {
@@ -1452,11 +2258,11 @@ func (h *SecurityHandler) AuthGoogle(c *fiber.Ctx) error {
 
 func (h *SecurityHandler) AuthGoogleCallback(c *fiber.Ctx) error {
 	tenantID := getTenantID(c)
-	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
+	cfg, err := h.ConfigurationService.GetAuthTypeConfig(c.Context(), tenantID)
 	if err != nil || !cfg.OAuthEnabled {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "OAuth disabled"})
 	}
-	oauthCfg, err := h.Store.GetOAuthConfig(c.Context(), tenantID)
+	oauthCfg, err := h.ConfigurationService.GetOAuthConfig(c.Context(), tenantID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "OAuth config not found"})
 	}
@@ -1620,19 +2426,55 @@ func (h *SecurityHandler) RetryNotificationQueue(c *fiber.Ctx) error {
 
 // --- MFAConfig Handlers ---
 func (h *SecurityHandler) GetMFAConfig(c *fiber.Ctx) error {
-	var input struct {
-		TenantID string `json:"tenant_id"`
+	userID := c.Params("user_id")
+	if userID == "" {
+		logger.LogError("GetMFAConfig: missing user_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
 	}
-	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
-		logger.LogError("GetMFAConfig: tenant_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
-	}
-	cfg, err := h.Store.GetMFAConfig(c.Context(), input.TenantID)
+
+	tenantID := getTenantID(c)
+
+	// Get user-specific MFA status
+	userMFAStatus, err := h.Store.GetUserMFAStatus(c.Context(), userID)
 	if err != nil {
-		logger.LogError("GetMFAConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		logger.LogError("GetMFAConfig: failed to get user MFA status",
+			logger.ErrorField(err),
+			logger.String("user_id", userID))
+		// Continue with default values
+		userMFAStatus = UserMFAStatus{
+			UserID:  userID,
+			Enabled: false,
+			Methods: []string{},
+		}
 	}
-	return c.JSON(cfg)
+
+	// Get tenant-level MFA configuration
+	cfg, err := h.Store.GetMFAConfig(c.Context(), tenantID)
+	if err != nil {
+		logger.LogError("GetMFAConfig: failed to get tenant config",
+			logger.ErrorField(err),
+			logger.String("tenant_id", tenantID))
+		// Return a response with just the user status
+		return c.JSON(fiber.Map{
+			"enabled": userMFAStatus.Enabled,
+			"methods": userMFAStatus.Methods,
+			"user_id": userID,
+			"metadata": fiber.Map{
+				"tenant_id": tenantID,
+			},
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"enabled":       userMFAStatus.Enabled,
+		"methods":       userMFAStatus.Methods,
+		"user_id":       userID,
+		"tenant_config": cfg,
+		"metadata": fiber.Map{
+			"tenant_id":    tenantID,
+			"last_updated": userMFAStatus.LastUpdated,
+		},
+	})
 }
 
 func (h *SecurityHandler) SetMFAConfig(c *fiber.Ctx) error {
@@ -1651,193 +2493,269 @@ func (h *SecurityHandler) SetMFAConfig(c *fiber.Ctx) error {
 
 // --- PasswordPolicyConfig Handlers ---
 func (h *SecurityHandler) GetPasswordPolicyConfig(c *fiber.Ctx) error {
-	var input struct {
-		TenantID string `json:"tenant_id"`
+	tenantID := c.Params("tenant_id")
+	if tenantID == "" {
+		logger.LogError("GetPasswordPolicyConfig: tenant_id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id parameter required"})
 	}
-	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
-		logger.LogError("GetPasswordPolicyConfig: tenant_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
-	}
-	cfg, err := h.Store.GetPasswordPolicyConfig(c.Context(), input.TenantID)
+
+	cfg, err := h.Store.GetPasswordPolicyConfig(c.Context(), tenantID)
 	if err != nil {
-		logger.LogError("GetPasswordPolicyConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		logger.LogError("GetPasswordPolicyConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(cfg)
 }
 
 func (h *SecurityHandler) SetPasswordPolicyConfig(c *fiber.Ctx) error {
-	var input PasswordPolicyConfig
-	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
-		logger.LogError("SetPasswordPolicyConfig: tenant_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	tenantID := c.Params("tenant_id")
+	if tenantID == "" {
+		logger.LogError("SetPasswordPolicyConfig: tenant_id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id parameter required"})
 	}
-	err := h.Store.SetPasswordPolicyConfig(c.Context(), input.TenantID, input)
+
+	var input PasswordPolicyConfig
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("SetPasswordPolicyConfig: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+
+	// Ensure tenant ID matches path parameter
+	input.TenantID = tenantID
+
+	err := h.Store.SetPasswordPolicyConfig(c.Context(), tenantID, input)
 	if err != nil {
-		logger.LogError("SetPasswordPolicyConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		logger.LogError("SetPasswordPolicyConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"success": true})
+	return c.JSON(fiber.Map{
+		"success": true,
+		"config":  input,
+	})
 }
 
 // --- SessionConfig Handlers ---
 func (h *SecurityHandler) GetSessionConfig(c *fiber.Ctx) error {
-	var input struct {
-		TenantID string `json:"tenant_id"`
+	tenantID := c.Params("tenant_id")
+	if tenantID == "" {
+		logger.LogError("GetSessionConfig: tenant_id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id parameter required"})
 	}
-	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
-		logger.LogError("GetSessionConfig: tenant_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
-	}
-	cfg, err := h.Store.GetSessionConfig(c.Context(), input.TenantID)
+
+	cfg, err := h.Store.GetSessionConfig(c.Context(), tenantID)
 	if err != nil {
-		logger.LogError("GetSessionConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		logger.LogError("GetSessionConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(cfg)
 }
 
 func (h *SecurityHandler) SetSessionConfig(c *fiber.Ctx) error {
+	tenantID := c.Params("tenant_id")
+	if tenantID == "" {
+		logger.LogError("SetSessionConfig: tenant_id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id parameter required"})
+	}
+
 	var input SessionConfig
-	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
-		logger.LogError("SetSessionConfig: tenant_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("SetSessionConfig: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	err := h.Store.SetSessionConfig(c.Context(), input.TenantID, input)
+
+	// Ensure tenant ID matches path parameter
+	input.TenantID = tenantID
+
+	err := h.Store.SetSessionConfig(c.Context(), tenantID, input)
 	if err != nil {
-		logger.LogError("SetSessionConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		logger.LogError("SetSessionConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"success": true})
+	return c.JSON(fiber.Map{
+		"success": true,
+		"config":  input,
+	})
 }
 
-// --- RateLimitConfig Handlers ---
-func (h *SecurityHandler) SetRateLimitConfig(c *fiber.Ctx) error {
-	var input RateLimitConfig
-	if err := c.BodyParser(&input); err != nil || input.Scope == "" || input.ScopeID == "" {
-		logger.LogError("SetRateLimitConfig: scope and scope_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "scope and scope_id required"})
-	}
-	err := h.Store.SetRateLimitConfig(c.Context(), input)
-	if err != nil {
-		logger.LogError("SetRateLimitConfig: failed", logger.ErrorField(err), logger.String("scope", input.Scope), logger.String("scope_id", input.ScopeID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(fiber.Map{"success": true})
-}
-
-func (h *SecurityHandler) GetRateLimitConfig(c *fiber.Ctx) error {
-	var input struct {
-		Scope   string `json:"scope"`
-		ScopeID string `json:"scope_id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.Scope == "" || input.ScopeID == "" {
-		logger.LogError("GetRateLimitConfig: scope and scope_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "scope and scope_id required"})
-	}
-	cfg, err := h.Store.GetRateLimit(c.Context(), input.Scope, input.ScopeID)
-	if err != nil {
-		logger.LogError("GetRateLimitConfig: failed", logger.ErrorField(err), logger.String("scope", input.Scope), logger.String("scope_id", input.ScopeID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(cfg)
-}
-
-func (h *SecurityHandler) DeleteUserSession(c *fiber.Ctx) error {
-	var input struct {
-		RefreshToken string `json:"refresh_token"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.RefreshToken == "" {
-		logger.LogError("DeleteUserSession: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "refresh_token required"})
-	}
-	if err := h.SessionService.LogoutSession(c.Context(), input.RefreshToken); err != nil {
-		logger.LogError("DeleteUserSession: failed", logger.ErrorField(err), logger.String("refresh_token", input.RefreshToken))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete session"})
-	}
-	return c.SendStatus(fiber.StatusNoContent)
-}
-
-func (h *SecurityHandler) GetUserSession(c *fiber.Ctx) error {
-	var input struct {
-		RefreshToken string `json:"refresh_token"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.RefreshToken == "" {
-		logger.LogError("GetUserSession: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "refresh_token required"})
-	}
-	sess, err := h.SessionService.GetSession(c.Context(), input.RefreshToken)
-	if err != nil {
-		logger.LogError("GetUserSession: failed", logger.ErrorField(err), logger.String("refresh_token", input.RefreshToken))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "session not found"})
-	}
-	return c.JSON(sess)
-}
-
-func (h *SecurityHandler) ListUserSessions(c *fiber.Ctx) error {
-	var input struct {
-		UserID string `json:"user_id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
-		logger.LogError("ListUserSessions: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id required"})
-	}
-	sessions, err := h.SessionService.ListUserSessions(c.Context(), input.UserID)
-	if err != nil {
-		logger.LogError("ListUserSessions: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(sessions)
-}
-
-func (h *SecurityHandler) RevokeUserSession(c *fiber.Ctx) error {
+func (h *SecurityHandler) ListSecurityAuditLogs(c *fiber.Ctx) error {
+	// Permission check
 	if h.RBACService != nil {
 		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "session", "revoke")
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "audit", "read")
 		if err != nil || !permitted {
-			logger.LogError("RevokeUserSession: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID))
+			logger.LogError("RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		UserID       string `json:"user_id"`
-		RefreshToken string `json:"refresh_token"`
+
+	// Pagination parameters
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 20)
+
+	// Filtering parameters
+	actorID := c.Query("actor_id", "")
+	action := c.Query("action", "")
+	targetID := c.Query("target_id", "")
+
+	// Date range filters
+	startDate := c.Query("start_date", "")
+	endDate := c.Query("end_date", "")
+
+	// Validate pagination parameters
+	if page < 1 {
+		page = 1
 	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" || input.RefreshToken == "" {
-		logger.LogError("RevokeUserSession: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user id and refresh token required"})
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
 	}
-	if err := h.SessionService.RevokeUserSession(c.Context(), input.UserID, input.RefreshToken); err != nil {
-		logger.LogError("RevokeUserSession: failed", logger.ErrorField(err), logger.String("user_id", input.UserID), logger.String("refresh_token", input.RefreshToken))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+
+	logs, err := h.SecurityAuditLogService.ListSecurityAuditLogs(c.Context(), page, pageSize)
+	if err != nil {
+		logger.LogError("ListSecurityAuditLogs: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to retrieve audit logs"})
 	}
-	return c.SendStatus(fiber.StatusNoContent)
+
+	// Apply filters if specified
+	var filteredLogs []SecurityAuditLog
+	for _, log := range logs {
+		// Skip if doesn't match actor filter
+		if actorID != "" && log.ActorID != actorID {
+			continue
+		}
+		// Skip if doesn't match action filter
+		if action != "" && log.Action != action {
+			continue
+		}
+		// Skip if doesn't match target filter
+		if targetID != "" && log.TargetID != targetID {
+			continue
+		}
+
+		// Date range filtering
+		if startDate != "" {
+			startTime, err := time.Parse(time.RFC3339, startDate)
+			if err == nil && log.CreatedAt.Before(startTime) {
+				continue
+			}
+		}
+		if endDate != "" {
+			endTime, err := time.Parse(time.RFC3339, endDate)
+			if err == nil && log.CreatedAt.After(endTime) {
+				continue
+			}
+		}
+
+		filteredLogs = append(filteredLogs, log)
+	}
+
+	return c.JSON(fiber.Map{
+		"logs":      filteredLogs,
+		"page":      page,
+		"page_size": pageSize,
+		"total":     len(filteredLogs),
+		"filters": fiber.Map{
+			"actor_id":   actorID,
+			"action":     action,
+			"target_id":  targetID,
+			"start_date": startDate,
+			"end_date":   endDate,
+		},
+	})
 }
 
 // --- Owner Admin Bootstrap Endpoint ---
 func (h *SecurityHandler) BootstrapOwnerAdmin(c *fiber.Ctx) error {
-	// Only allow if no users exist
+	// Check if any users exist first - if they do, this endpoint shouldn't work
 	count, err := h.PasswordService.CountUsers(c.Context())
 	if err != nil {
 		logger.LogError("BootstrapOwnerAdmin: failed to count users", logger.ErrorField(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Could not check existing users",
+		})
 	}
+
 	if count > 0 {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "owner admin already exists"})
+		logger.LogError("BootstrapOwnerAdmin: users already exist", logger.Int("count", count))
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "Cannot bootstrap admin when users already exist",
+		})
 	}
+
 	var input struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
+		Name     string `json:"name"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.Email == "" || input.Password == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email and password required"})
+
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("BootstrapOwnerAdmin: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid input format",
+		})
 	}
+
+	// Validate inputs
+	if input.Email == "" || input.Password == "" || input.Name == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Email, password and name are required",
+		})
+	}
+
+	// Register the user
 	user, err := h.PasswordService.RegisterUser(c.Context(), input.Email, input.Password)
 	if err != nil {
-		logger.LogError("BootstrapOwnerAdmin: failed to register", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		logger.LogError("BootstrapOwnerAdmin: registration failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
+			"error": err.Error(),
+		})
 	}
-	return c.Status(fiber.StatusCreated).JSON(user)
+
+	// Update profile with name
+	_, err = h.PasswordService.UpdateProfile(c.Context(), user.ID, map[string]interface{}{
+		"name": input.Name,
+		"role": "owner",
+	})
+
+	if err != nil {
+		logger.LogError("BootstrapOwnerAdmin: failed to update profile",
+			logger.ErrorField(err),
+			logger.String("user_id", user.ID))
+		// Continue anyway since the user was created
+	}
+
+	// Auto-verify this user's email since it's the bootstrap admin
+	err = h.PasswordService.VerifyEmail(c.Context(), user.ID, "bootstrap")
+	if err != nil {
+		logger.LogError("BootstrapOwnerAdmin: failed to verify email",
+			logger.ErrorField(err),
+			logger.String("user_id", user.ID))
+		// Continue anyway since the user was created
+	}
+
+	// Create a security audit log
+	if h.SecurityAuditLogService != nil {
+		h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
+			ID:         uuid.NewString(),
+			UserID:     user.ID,
+			Action:     "owner_bootstrap",
+			Resource:   "user",
+			ResourceID: user.ID,
+			IP:         c.IP(),
+			UserAgent:  c.Get("User-Agent"),
+			CreatedAt:  time.Now(),
+			Metadata: map[string]interface{}{
+				"email": input.Email,
+			},
+		})
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"user": user,
+		"metadata": fiber.Map{
+			"verified": true,
+			"role":     "owner",
+		},
+	})
 }
 
 func (h *SecurityHandler) ResetUserPassword(c *fiber.Ctx) error {
@@ -1856,19 +2774,77 @@ func (h *SecurityHandler) ResetUserPassword(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *SecurityHandler) ListSecurityAuditLogs(c *fiber.Ctx) error {
-	var input struct {
-		Page     int `json:"page"`
-		PageSize int `json:"page_size"`
+func (h *SecurityHandler) GetSecurityAuditLog(c *fiber.Ctx) error {
+	// Permission check
+	if h.RBACService != nil {
+		actorID := getActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "audit", "read")
+		if err != nil || !permitted {
+			logger.LogError("RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
 	}
-	if err := c.BodyParser(&input); err != nil || input.Page <= 0 || input.PageSize <= 0 {
-		logger.LogError("ListSecurityAuditLogs: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid page or page_size"})
+
+	logID := c.Params("log_id")
+	if logID == "" {
+		logger.LogError("GetSecurityAuditLog: missing log_id parameter")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "log_id parameter required"})
 	}
-	logs, err := h.SecurityAuditLogService.ListSecurityAuditLogs(c.Context(), input.Page, input.PageSize)
-	if err != nil {
-		logger.LogError("ListSecurityAuditLogs: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+
+	// Retrieve all logs and search for the specified ID
+	// In a production environment, this should be a direct database query by ID
+	page := 1
+	pageSize := 100
+	var foundLog *SecurityAuditLog
+
+	for {
+		logs, err := h.SecurityAuditLogService.ListSecurityAuditLogs(c.Context(), page, pageSize)
+		if err != nil {
+			logger.LogError("GetSecurityAuditLog: failed to list logs", logger.ErrorField(err))
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to retrieve audit logs"})
+		}
+
+		if len(logs) == 0 {
+			break // No more logs to check
+		}
+
+		for i := range logs {
+			if logs[i].ID == logID {
+				foundLog = &logs[i]
+				break
+			}
+		}
+
+		if foundLog != nil || len(logs) < pageSize {
+			break // Found the log or reached the end
+		}
+
+		page++
 	}
-	return c.JSON(fiber.Map{"audit_logs": logs, "page": input.Page, "page_size": input.PageSize})
+
+	if foundLog == nil {
+		logger.LogError("GetSecurityAuditLog: log not found", logger.String("log_id", logID))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "audit log not found"})
+	}
+
+	return c.JSON(foundLog)
+}
+
+// Security audit log creation with proper field usage
+func (h *SecurityHandler) createAuditLog(c *fiber.Ctx, action, resourceType, resourceID, details string) {
+	if h.SecurityAuditLogService != nil {
+		h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
+			ID:         uuid.NewString(),
+			UserID:     getActorID(c),
+			Action:     action,
+			Resource:   resourceType,
+			ResourceID: resourceID,
+			IP:         c.IP(),
+			UserAgent:  c.Get("User-Agent"),
+			CreatedAt:  time.Now(),
+			Metadata: map[string]interface{}{
+				"details": details,
+			},
+		})
+	}
 }

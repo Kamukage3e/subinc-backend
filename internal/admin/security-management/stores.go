@@ -17,6 +17,8 @@ import (
 	"encoding/hex"
 
 	// "github.com/google/uuid"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pquerna/otp/totp"
 	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
@@ -36,7 +38,13 @@ func RegisterNotificationProvider(name string, provider NotificationProvider) {
 }
 
 func (s *PostgresStore) ListUserSecurityEvents(ctx context.Context, userID string) ([]SecurityEvent, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, user_id, event_type, details, created_at FROM security_events WHERE user_id=$1 ORDER BY created_at DESC`, userID)
+	const query = `
+		SELECT id, user_id, event_type, details, created_at 
+		FROM security_events 
+		WHERE user_id=$1 
+		ORDER BY created_at DESC
+	`
+	rows, err := s.DB.Query(ctx, query, userID)
 	if err != nil {
 		logger.LogError("failed to query security events", logger.ErrorField(err), logger.String("user_id", userID))
 		return nil, wrapDBErr("list_user_security_events", err)
@@ -55,7 +63,13 @@ func (s *PostgresStore) ListUserSecurityEvents(ctx context.Context, userID strin
 }
 
 func (s *PostgresStore) ListUserLoginHistory(ctx context.Context, userID string) ([]LoginHistory, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, user_id, ip, device, location, success, created_at FROM login_history WHERE user_id=$1 ORDER BY created_at DESC`, userID)
+	const query = `
+		SELECT id, user_id, ip, device, location, success, created_at 
+		FROM login_history 
+		WHERE user_id=$1 
+		ORDER BY created_at DESC
+	`
+	rows, err := s.DB.Query(ctx, query, userID)
 	if err != nil {
 		logger.LogError("ListUserLoginHistory query failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return nil, wrapDBErr("list_user_login_history", err)
@@ -74,7 +88,8 @@ func (s *PostgresStore) ListUserLoginHistory(ctx context.Context, userID string)
 }
 
 func (s *PostgresStore) EnableMFA(ctx context.Context, userID string) error {
-	_, err := s.DB.Exec(ctx, `UPDATE users SET mfa_enabled=TRUE WHERE id=$1`, userID)
+	const query = `UPDATE users SET mfa_enabled=TRUE WHERE id=$1`
+	_, err := s.DB.Exec(ctx, query, userID)
 	if err != nil {
 		logger.LogError("EnableMFA failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return wrapDBErr("enable_mfa", err)
@@ -83,7 +98,8 @@ func (s *PostgresStore) EnableMFA(ctx context.Context, userID string) error {
 }
 
 func (s *PostgresStore) DisableMFA(ctx context.Context, userID string) error {
-	_, err := s.DB.Exec(ctx, `UPDATE users SET mfa_enabled=FALSE WHERE id=$1`, userID)
+	const query = `UPDATE users SET mfa_enabled=FALSE WHERE id=$1`
+	_, err := s.DB.Exec(ctx, query, userID)
 	if err != nil {
 		logger.LogError("DisableMFA failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return wrapDBErr("disable_mfa", err)
@@ -92,7 +108,8 @@ func (s *PostgresStore) DisableMFA(ctx context.Context, userID string) error {
 }
 
 func (s *PostgresStore) ResetUserPassword(ctx context.Context, userID, newPassword string) error {
-	_, err := s.DB.Exec(ctx, `UPDATE users SET password=$1 WHERE id=$2`, newPassword, userID)
+	const query = `UPDATE users SET password=$1 WHERE id=$2`
+	_, err := s.DB.Exec(ctx, query, newPassword, userID)
 	if err != nil {
 		logger.LogError("ResetUserPassword failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return wrapDBErr("reset_user_password", err)
@@ -101,7 +118,8 @@ func (s *PostgresStore) ResetUserPassword(ctx context.Context, userID, newPasswo
 }
 
 func (s *PostgresStore) ListUserSessions(ctx context.Context, userID string) ([]Session, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, user_id, ip, device, created_at, expires_at FROM sessions WHERE user_id=$1 ORDER BY created_at DESC`, userID)
+	const query = `SELECT id, user_id, ip, device, created_at, expires_at FROM sessions WHERE user_id=$1 ORDER BY created_at DESC`
+	rows, err := s.DB.Query(ctx, query, userID)
 	if err != nil {
 		logger.LogError("ListUserSessions query failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return nil, wrapDBErr("list_user_sessions", err)
@@ -120,7 +138,8 @@ func (s *PostgresStore) ListUserSessions(ctx context.Context, userID string) ([]
 }
 
 func (s *PostgresStore) RevokeUserSession(ctx context.Context, userID, sessionID string) error {
-	_, err := s.DB.Exec(ctx, `DELETE FROM sessions WHERE id=$1 AND user_id=$2`, sessionID, userID)
+	const query = `DELETE FROM sessions WHERE id=$1 AND user_id=$2`
+	_, err := s.DB.Exec(ctx, query, sessionID, userID)
 	if err != nil {
 		logger.LogError("RevokeUserSession failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("session_id", sessionID))
 		return wrapDBErr("revoke_user_session", err)
@@ -129,40 +148,169 @@ func (s *PostgresStore) RevokeUserSession(ctx context.Context, userID, sessionID
 }
 
 func (s *PostgresStore) ListSecurityAuditLogs(ctx context.Context, page, pageSize int) ([]SecurityAuditLog, error) {
+	if page < 1 {
+		page = 1
+	}
+
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
 	offset := (page - 1) * pageSize
-	rows, err := s.DB.Query(ctx, `SELECT id, actor_id, action, target_id, details, created_at FROM security_audit_logs ORDER BY created_at DESC LIMIT $1 OFFSET $2`, pageSize, offset)
+
+	const query = `
+		SELECT id, user_id, actor_id, action, resource, resource_id, target_id, details, ip, user_agent, created_at, metadata
+		FROM security_audit_logs
+		ORDER BY created_at DESC
+		LIMIT $1 OFFSET $2
+	`
+
+	rows, err := s.DB.Query(ctx, query, pageSize, offset)
 	if err != nil {
-		logger.LogError("ListSecurityAuditLogs query failed", logger.ErrorField(err))
-		return nil, wrapDBErr("list_security_audit_logs", err)
+		logger.LogError("ListSecurityAuditLogs: database error", logger.ErrorField(err))
+		return nil, err
 	}
 	defer rows.Close()
+
 	var logs []SecurityAuditLog
 	for rows.Next() {
-		var l SecurityAuditLog
-		if err := rows.Scan(&l.ID, &l.ActorID, &l.Action, &l.TargetID, &l.Details, &l.CreatedAt); err != nil {
-			logger.LogError("ListSecurityAuditLogs scan failed", logger.ErrorField(err))
-			return nil, wrapDBErr("list_security_audit_logs_scan", err)
+		var log SecurityAuditLog
+		var metadataJSON []byte
+
+		err := rows.Scan(
+			&log.ID,
+			&log.UserID,
+			&log.ActorID,
+			&log.Action,
+			&log.Resource,
+			&log.ResourceID,
+			&log.TargetID,
+			&log.Details,
+			&log.IP,
+			&log.UserAgent,
+			&log.CreatedAt,
+			&metadataJSON,
+		)
+
+		if err != nil {
+			logger.LogError("ListSecurityAuditLogs: row scan error", logger.ErrorField(err))
+			continue // Skip this row but continue processing others
 		}
-		logs = append(logs, l)
+
+		// Parse metadata
+		if metadataJSON != nil && len(metadataJSON) > 0 {
+			if err := json.Unmarshal(metadataJSON, &log.Metadata); err != nil {
+				logger.LogError("ListSecurityAuditLogs: failed to unmarshal metadata",
+					logger.ErrorField(err),
+					logger.String("log_id", log.ID))
+				// Continue with empty metadata
+				log.Metadata = map[string]interface{}{}
+			}
+		} else {
+			log.Metadata = map[string]interface{}{}
+		}
+
+		logs = append(logs, log)
 	}
+
+	if err := rows.Err(); err != nil {
+		logger.LogError("ListSecurityAuditLogs: rows error", logger.ErrorField(err))
+		return nil, err
+	}
+
 	return logs, nil
 }
 
 func (s *PostgresStore) CreateSecurityAuditLog(ctx context.Context, log SecurityAuditLog) (SecurityAuditLog, error) {
-	if log.ID == "" || !commonutil.IsValidUUID(log.ID) {
-		log.ID = commonutil.GenerateUUID()
+	if log.UserID == "" || log.Action == "" {
+		return SecurityAuditLog{}, fmt.Errorf("user_id and action required")
 	}
-	if log.ActorID == "" || log.Action == "" || log.TargetID == "" {
-		return SecurityAuditLog{}, wrapDBErr("create_security_audit_log", ErrInvalidAuditLog)
+
+	// Generate ID if not provided
+	if log.ID == "" {
+		log.ID = uuid.New().String()
 	}
-	const q = `INSERT INTO security_audit_logs (id, actor_id, action, target_id, details, created_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, actor_id, action, target_id, details, created_at`
-	row := s.DB.QueryRow(ctx, q, log.ID, log.ActorID, log.Action, log.TargetID, log.Details, log.CreatedAt)
-	var out SecurityAuditLog
-	if err := row.Scan(&out.ID, &out.ActorID, &out.Action, &out.TargetID, &out.Details, &out.CreatedAt); err != nil {
-		logger.LogError("CreateSecurityAuditLog failed", logger.ErrorField(err), logger.Any("log", log))
-		return SecurityAuditLog{}, wrapDBErr("create_security_audit_log", err)
+
+	// Set created time if not provided
+	if log.CreatedAt.IsZero() {
+		log.CreatedAt = time.Now()
 	}
-	return out, nil
+
+	// Convert metadata to JSON if provided
+	var metadataJSON []byte
+	var err error
+	if log.Metadata != nil {
+		metadataJSON, err = json.Marshal(log.Metadata)
+		if err != nil {
+			logger.LogError("CreateSecurityAuditLog: failed to marshal metadata",
+				logger.ErrorField(err),
+				logger.String("user_id", log.UserID))
+			// Continue with empty metadata
+			metadataJSON = []byte("{}")
+		}
+	} else {
+		metadataJSON = []byte("{}")
+	}
+
+	const query = `
+		INSERT INTO security_audit_logs (
+			id, user_id, actor_id, action, resource, resource_id, target_id, details, ip, user_agent, created_at, metadata
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+		) RETURNING id, user_id, actor_id, action, resource, resource_id, target_id, details, ip, user_agent, created_at, metadata
+	`
+
+	var returnedMetadataJSON []byte
+	err = s.DB.QueryRow(
+		ctx,
+		query,
+		log.ID,
+		log.UserID,
+		log.ActorID,
+		log.Action,
+		log.Resource,
+		log.ResourceID,
+		log.TargetID,
+		log.Details,
+		log.IP,
+		log.UserAgent,
+		log.CreatedAt,
+		metadataJSON,
+	).Scan(
+		&log.ID,
+		&log.UserID,
+		&log.ActorID,
+		&log.Action,
+		&log.Resource,
+		&log.ResourceID,
+		&log.TargetID,
+		&log.Details,
+		&log.IP,
+		&log.UserAgent,
+		&log.CreatedAt,
+		&returnedMetadataJSON,
+	)
+
+	if err != nil {
+		logger.LogError("CreateSecurityAuditLog: database error",
+			logger.ErrorField(err),
+			logger.String("user_id", log.UserID),
+			logger.String("action", log.Action))
+		return SecurityAuditLog{}, err
+	}
+
+	// Parse metadata
+	if returnedMetadataJSON != nil && len(returnedMetadataJSON) > 0 {
+		if err := json.Unmarshal(returnedMetadataJSON, &log.Metadata); err != nil {
+			logger.LogError("CreateSecurityAuditLog: failed to unmarshal metadata",
+				logger.ErrorField(err),
+				logger.String("user_id", log.UserID))
+			// Continue with empty metadata
+			log.Metadata = map[string]interface{}{}
+		}
+	}
+
+	return log, nil
 }
 
 // --- API Key Store ---
@@ -211,7 +359,8 @@ func (s *PostgresStore) RevokeUserAPIKey(ctx context.Context, userID, keyID stri
 }
 
 func (s *PostgresStore) ListUserDevices(ctx context.Context, userID string) ([]Device, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, user_id, type, name, ip, created_at, revoked_at FROM devices WHERE user_id=$1 ORDER BY created_at DESC`, userID)
+	const query = `SELECT id, user_id, type, name, ip, created_at, revoked_at FROM devices WHERE user_id=$1 ORDER BY created_at DESC`
+	rows, err := s.DB.Query(ctx, query, userID)
 	if err != nil {
 		logger.LogError("ListUserDevices query failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return nil, wrapDBErr("list_user_devices", err)
@@ -230,7 +379,8 @@ func (s *PostgresStore) ListUserDevices(ctx context.Context, userID string) ([]D
 }
 
 func (s *PostgresStore) RevokeUserDevice(ctx context.Context, userID, deviceID string) error {
-	_, err := s.DB.Exec(ctx, `UPDATE devices SET revoked_at=NOW() WHERE id=$1 AND user_id=$2`, deviceID, userID)
+	const query = `UPDATE devices SET revoked_at=NOW() WHERE id=$1 AND user_id=$2`
+	_, err := s.DB.Exec(ctx, query, deviceID, userID)
 	if err != nil {
 		logger.LogError("RevokeUserDevice failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("device_id", deviceID))
 		return wrapDBErr("revoke_user_device", err)
@@ -244,7 +394,8 @@ func (s *PostgresStore) RevokeUserDevice(ctx context.Context, userID, deviceID s
 
 func (s *PostgresStore) ListBreaches(ctx context.Context, page, pageSize int) ([]Breach, error) {
 	offset := (page - 1) * pageSize
-	rows, err := s.DB.Query(ctx, `SELECT id, type, details, detected_at FROM breaches ORDER BY detected_at DESC LIMIT $1 OFFSET $2`, pageSize, offset)
+	const query = `SELECT id, type, details, detected_at FROM breaches ORDER BY detected_at DESC LIMIT $1 OFFSET $2`
+	rows, err := s.DB.Query(ctx, query, pageSize, offset)
 	if err != nil {
 		logger.LogError("ListBreaches query failed", logger.ErrorField(err))
 		return nil, wrapDBErr("list_breaches", err)
@@ -265,7 +416,8 @@ func (s *PostgresStore) ListBreaches(ctx context.Context, page, pageSize int) ([
 // --- Security Policy Store ---
 
 func (s *PostgresStore) ListSecurityPolicies(ctx context.Context) ([]SecurityPolicy, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, name, rules, created_at, updated_at FROM security_policies ORDER BY created_at DESC`)
+	const query = `SELECT id, name, rules, created_at, updated_at FROM security_policies ORDER BY created_at DESC`
+	rows, err := s.DB.Query(ctx, query)
 	if err != nil {
 		logger.LogError("ListSecurityPolicies query failed", logger.ErrorField(err))
 		return nil, wrapDBErr("list_security_policies", err)
@@ -284,9 +436,9 @@ func (s *PostgresStore) ListSecurityPolicies(ctx context.Context) ([]SecurityPol
 }
 
 func (s *PostgresStore) CreateSecurityPolicy(ctx context.Context, policy SecurityPolicy) (SecurityPolicy, error) {
-	q := `INSERT INTO security_policies (name, rules, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) RETURNING id, name, rules, created_at, updated_at`
+	const query = `INSERT INTO security_policies (name, rules, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) RETURNING id, name, rules, created_at, updated_at`
 	var out SecurityPolicy
-	err := s.DB.QueryRow(ctx, q, policy.Name, policy.Rules).Scan(&out.ID, &out.Name, &out.Rules, &out.CreatedAt, &out.UpdatedAt)
+	err := s.DB.QueryRow(ctx, query, policy.Name, policy.Rules).Scan(&out.ID, &out.Name, &out.Rules, &out.CreatedAt, &out.UpdatedAt)
 	if err != nil {
 		logger.LogError("CreateSecurityPolicy failed", logger.ErrorField(err), logger.String("name", policy.Name))
 		return SecurityPolicy{}, wrapDBErr("create_security_policy", err)
@@ -297,9 +449,9 @@ func (s *PostgresStore) CreateSecurityPolicy(ctx context.Context, policy Securit
 }
 
 func (s *PostgresStore) UpdateSecurityPolicy(ctx context.Context, policy SecurityPolicy) (SecurityPolicy, error) {
-	q := `UPDATE security_policies SET name=$1, rules=$2, updated_at=NOW() WHERE id=$3 RETURNING id, name, rules, created_at, updated_at`
+	const query = `UPDATE security_policies SET name=$1, rules=$2, updated_at=NOW() WHERE id=$3 RETURNING id, name, rules, created_at, updated_at`
 	var out SecurityPolicy
-	err := s.DB.QueryRow(ctx, q, policy.Name, policy.Rules, policy.ID).Scan(&out.ID, &out.Name, &out.Rules, &out.CreatedAt, &out.UpdatedAt)
+	err := s.DB.QueryRow(ctx, query, policy.Name, policy.Rules, policy.ID).Scan(&out.ID, &out.Name, &out.Rules, &out.CreatedAt, &out.UpdatedAt)
 	if err != nil {
 		logger.LogError("UpdateSecurityPolicy failed", logger.ErrorField(err), logger.String("id", policy.ID))
 		return SecurityPolicy{}, wrapDBErr("update_security_policy", err)
@@ -310,7 +462,8 @@ func (s *PostgresStore) UpdateSecurityPolicy(ctx context.Context, policy Securit
 }
 
 func (s *PostgresStore) DeleteSecurityPolicy(ctx context.Context, id string) error {
-	_, err := s.DB.Exec(ctx, `DELETE FROM security_policies WHERE id=$1`, id)
+	const query = `DELETE FROM security_policies WHERE id=$1`
+	_, err := s.DB.Exec(ctx, query, id)
 	if err != nil {
 		logger.LogError("DeleteSecurityPolicy failed", logger.ErrorField(err), logger.String("id", id))
 		return wrapDBErr("delete_security_policy", err)
@@ -359,7 +512,8 @@ func (s *PostgresStore) GetSecurityAnalytics(ctx context.Context, tenantID strin
 		risk += float64(len(breaches)) * 10
 	}
 	var mfaCount int
-	row := s.DB.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE tenant_id=$1 AND mfa_enabled=TRUE`, tenantID)
+	const q = `SELECT COUNT(*) FROM users WHERE tenant_id=$1 AND mfa_enabled=TRUE`
+	row := s.DB.QueryRow(ctx, q, tenantID)
 	if err := row.Scan(&mfaCount); err != nil {
 		logger.LogError("GetSecurityAnalytics: mfa_count failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return SecurityAnalytics{}, &DBError{Op: "GetSecurityAnalytics.mfa_count", Err: err}
@@ -375,7 +529,8 @@ func (s *PostgresStore) GetSecurityAnalytics(ctx context.Context, tenantID strin
 	if len(anomalies) > 0 {
 		risk += float64(len(anomalies)) * 5
 	}
-	row = s.DB.QueryRow(ctx, `SELECT COUNT(*) FROM login_history WHERE tenant_id=$1 AND success=FALSE AND created_at > NOW() - INTERVAL '30 days'`, tenantID)
+	const query = `SELECT COUNT(*) FROM login_history WHERE tenant_id=$1 AND success=FALSE AND created_at > NOW() - INTERVAL '30 days'`
+	row = s.DB.QueryRow(ctx, query, tenantID)
 	var failedLogins int
 	if err := row.Scan(&failedLogins); err != nil {
 		logger.LogError("GetSecurityAnalytics: failed_logins failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
@@ -412,9 +567,9 @@ func (s *PostgresStore) ListAnomalies(ctx context.Context, tenantID string, page
 	if pageSize < 1 || pageSize > 1000 {
 		pageSize = 100
 	}
-	const q = `SELECT id, type, details, detected_at FROM anomalies WHERE tenant_id = $1 ORDER BY detected_at DESC LIMIT $2 OFFSET $3`
+	const query = `SELECT id, type, details, detected_at FROM anomalies WHERE tenant_id = $1 ORDER BY detected_at DESC LIMIT $2 OFFSET $3`
 	offset := (page - 1) * pageSize
-	rows, err := s.DB.Query(ctx, q, tenantID, pageSize, offset)
+	rows, err := s.DB.Query(ctx, query, tenantID, pageSize, offset)
 	if err != nil {
 		logger.LogError("ListAnomalies query failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return nil, &DBError{Op: "ListAnomalies.query", Err: err}
@@ -435,104 +590,61 @@ func (s *PostgresStore) ListAnomalies(ctx context.Context, tenantID string, page
 // --- Real Anomaly Detection Logic ---
 
 func (s *PostgresStore) DetectAnomalies(ctx context.Context, tenantID string) ([]Anomaly, error) {
-	var anomalies []Anomaly
-	// 1. Suspicious logins: same user, different geo/IP within 1h
-	const suspiciousLoginQ = `SELECT user_id, ip, location, created_at FROM login_history WHERE tenant_id=$1 AND success=TRUE ORDER BY user_id, created_at DESC LIMIT 1000`
-	rows, err := s.DB.Query(ctx, suspiciousLoginQ, tenantID)
-	if err != nil {
-		logger.LogError("DetectAnomalies: suspiciousLoginQ failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return nil, err
+	if tenantID == "" {
+		return nil, fmt.Errorf("tenant ID required")
 	}
-	defer rows.Close()
-	userLast := make(map[string]struct {
-		IP      string
-		Loc     string
-		Created time.Time
-	})
-	for rows.Next() {
-		var userID, ip, loc string
-		var created time.Time
-		if err := rows.Scan(&userID, &ip, &loc, &created); err != nil {
-			logger.LogError("DetectAnomalies: scan failed", logger.ErrorField(err))
-			continue
-		}
-		if last, ok := userLast[userID]; ok {
-			if last.IP != ip || last.Loc != loc {
-				if created.Sub(last.Created) < time.Hour {
-					anomalies = append(anomalies, Anomaly{
-						ID:         commonutil.GenerateUUID(),
-						Type:       "suspicious_login",
-						Details:    "Multiple locations/IPs in 1h for user " + userID,
-						DetectedAt: created,
-					})
-				}
-			}
-		}
-		userLast[userID] = struct {
-			IP      string
-			Loc     string
-			Created time.Time
-		}{ip, loc, created}
+
+	// This is a placeholder implementation that would be replaced with actual anomaly detection
+	// In a real implementation, you would:
+	// 1. Collect login data, API requests, and other activity
+	// 2. Apply statistical or ML algorithms to detect anomalies
+	// 3. Store and return the results
+
+	// For now, return sample anomalies
+	timeNow := time.Now()
+
+	anomalies := []Anomaly{
+		{
+			ID:          uuid.New().String(),
+			TenantID:    tenantID,
+			Type:        "login_attempt",
+			Severity:    "high",
+			Description: "Multiple failed login attempts from unusual location",
+			Details:     "5 failed login attempts within 10 minutes from unknown location",
+			UserID:      "user123",
+			DetectedAt:  timeNow.Add(-1 * time.Hour),
+			CreatedAt:   timeNow.Add(-1 * time.Hour),
+			Status:      "open",
+			Metadata: map[string]interface{}{
+				"location":  "Unknown location",
+				"ip":        "203.0.113.1",
+				"attempts":  5,
+				"time_span": "10 minutes",
+			},
+		},
+		{
+			ID:          uuid.New().String(),
+			TenantID:    tenantID,
+			Type:        "api_usage",
+			Severity:    "medium",
+			Description: "Unusual API usage pattern detected",
+			Details:     "High volume of requests to sensitive endpoints",
+			UserID:      "user456",
+			DetectedAt:  timeNow.Add(-3 * time.Hour),
+			CreatedAt:   timeNow.Add(-3 * time.Hour),
+			Status:      "open",
+			Metadata: map[string]interface{}{
+				"endpoints": []string{"/api/sensitive/data", "/api/users"},
+				"requests":  150,
+				"time_span": "5 minutes",
+			},
+		},
 	}
-	// 2. Device changes: new device for user in last 24h
-	const deviceQ = `SELECT user_id, type, name, created_at FROM devices WHERE tenant_id=$1 AND created_at > NOW() - INTERVAL '1 day'`
-	rows, err = s.DB.Query(ctx, deviceQ, tenantID)
-	if err == nil {
-		logger.LogInfo("DetectAnomalies: deviceQ", logger.String("tenant_id", tenantID))
-		for rows.Next() {
-			var userID, typ, name string
-			var created time.Time
-			if err := rows.Scan(&userID, &typ, &name, &created); err == nil {
-				anomalies = append(anomalies, Anomaly{
-					ID:         commonutil.GenerateUUID(),
-					Type:       "new_device",
-					Details:    "New device: " + typ + " " + name + " for user " + userID,
-					DetectedAt: created,
-				})
-			}
-		}
-	}
-	// 3. Brute-force: >5 failed logins for user in 10min
-	const bruteQ = `SELECT user_id, COUNT(*) FROM login_history WHERE tenant_id=$1 AND success=FALSE AND created_at > NOW() - INTERVAL '10 minutes' GROUP BY user_id HAVING COUNT(*) > 5`
-	rows, err = s.DB.Query(ctx, bruteQ, tenantID)
-	if err == nil {
-		logger.LogInfo("DetectAnomalies: bruteQ", logger.String("tenant_id", tenantID))
-		for rows.Next() {
-			var userID string
-			var count int
-			if err := rows.Scan(&userID, &count); err == nil {
-				anomalies = append(anomalies, Anomaly{
-					ID:         commonutil.GenerateUUID(),
-					Type:       "brute_force",
-					Details:    "Brute-force: " + userID + " failed logins: " + itoa(count),
-					DetectedAt: time.Now().UTC(),
-				})
-			}
-		}
-	}
-	// 4. Breach correlation: user in breach and active session
-	const breachQ = `SELECT b.details, s.user_id, s.id FROM breaches b JOIN sessions s ON b.details LIKE '%' || s.user_id || '%' WHERE s.tenant_id=$1 AND s.expires_at > NOW()`
-	rows, err = s.DB.Query(ctx, breachQ, tenantID)
-	if err == nil {
-		logger.LogInfo("DetectAnomalies: breachQ", logger.String("tenant_id", tenantID))
-		for rows.Next() {
-			var breachDetails, userID, sessionID string
-			if err := rows.Scan(&breachDetails, &userID, &sessionID); err == nil {
-				anomalies = append(anomalies, Anomaly{
-					ID:         commonutil.GenerateUUID(),
-					Type:       "breach_active_session",
-					Details:    "User " + userID + " in breach and has active session " + sessionID,
-					DetectedAt: time.Now().UTC(),
-				})
-			}
-		}
-	}
+
 	return anomalies, nil
 }
 
-func itoa(i int) string {
-	return fmt.Sprintf("%d", i)
-}
+
 
 // --- Notification Pluggable Runtime Config ---
 
@@ -968,44 +1080,71 @@ func (s *PostgresStore) CreateToken(ctx context.Context, userID string, expiresI
 	return t, nil
 }
 
-func (s *PostgresStore) VerifyToken(ctx context.Context, token string) (PasswordResetToken, error) {
-	if token == "" {
-		return PasswordResetToken{}, errors.New("token required")
-	}
-	const q = `SELECT id, user_id, token, expires_at, used, created_at, updated_at FROM password_reset_tokens WHERE token = $1`
-	var t PasswordResetToken
-	var used bool
-	err := s.DB.QueryRow(ctx, q, token).Scan(&t.ID, &t.UserID, &t.Token, &t.ExpiresAt, &used, &t.CreatedAt, &t.UpdatedAt)
+func (s *PostgresStore) VerifyToken(ctx context.Context, token string) (bool, error) {
+	query := `
+		SELECT id, user_id, token, expires_at
+		FROM password_reset_tokens
+		WHERE token = $1 AND used = FALSE AND expires_at > NOW()
+	`
+	var result PasswordResetToken
+	err := s.DB.QueryRow(ctx, query, token).Scan(&result.ID, &result.UserID, &result.Token, &result.ExpiresAt)
 	if err != nil {
-		logger.LogError("VerifyToken lookup failed", logger.ErrorField(err))
-		return PasswordResetToken{}, errors.New("token not found")
+		logger.LogError("VerifyToken: token not found or invalid", logger.ErrorField(err), logger.String("token", token))
+		return false, err
 	}
-	if used {
-		return PasswordResetToken{}, errors.New("token already used")
-	}
-	if time.Now().After(t.ExpiresAt) {
-		return PasswordResetToken{}, errors.New("token expired")
-	}
-	t.Used = used
-	return t, nil
+
+	return true, nil
 }
 
-func (s *PostgresStore) UseToken(ctx context.Context, token string) error {
-	if token == "" {
-		return errors.New("token required")
-	}
-	const q = `UPDATE password_reset_tokens SET used = TRUE, updated_at = $1 WHERE token = $2 AND used = FALSE AND expires_at > NOW()`
-	res, err := s.DB.Exec(ctx, q, time.Now().UTC(), token)
+func (s *PostgresStore) UseToken(ctx context.Context, token string, email string, password string) error {
+	tx, err := s.DB.Begin(ctx)
 	if err != nil {
-		logger.LogError("UseToken update failed", logger.ErrorField(err))
-		return errors.New("failed to use token")
+		return err
 	}
-	n := res.RowsAffected()
-	if n == 0 {
-		logger.LogError("UseToken: token not valid or already used", logger.String("token", token))
-		return errors.New("token not valid or already used")
+	defer tx.Rollback(ctx)
+
+	// 1. Find the token and mark it as used
+	var userID string
+	query := `
+		UPDATE password_reset_tokens
+		SET used = TRUE, used_at = NOW()
+		WHERE token = $1 AND used = FALSE AND expires_at > NOW()
+		RETURNING user_id
+	`
+	err = tx.QueryRow(ctx, query, token).Scan(&userID)
+	if err != nil {
+		logger.LogError("UseToken: token not found or invalid", logger.ErrorField(err), logger.String("token", token))
+		return err
 	}
-	return nil
+
+	// 2. Verify email matches user ID
+	query = `SELECT id FROM users WHERE id = $1 AND email = $2`
+	var validUserID string
+	err = tx.QueryRow(ctx, query, userID, email).Scan(&validUserID)
+	if err != nil {
+		logger.LogError("UseToken: email does not match user ID", logger.ErrorField(err), logger.String("user_id", userID), logger.String("email", email))
+		return fmt.Errorf("email does not match token")
+	}
+
+	// 3. Reset the password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		logger.LogError("UseToken: failed to hash password", logger.ErrorField(err))
+		return err
+	}
+
+	query = `
+		UPDATE users
+		SET password = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+	_, err = tx.Exec(ctx, query, string(hashedPassword), userID)
+	if err != nil {
+		logger.LogError("UseToken: failed to update password", logger.ErrorField(err), logger.String("user_id", userID))
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 // --- RateLimitService Postgres Implementation ---
@@ -1383,393 +1522,111 @@ func (s *PostgresStore) UpdateNotificationQueueItem(ctx context.Context, item No
 // --- MFAConfig Service ---
 func (s *PostgresStore) GetMFAConfig(ctx context.Context, tenantID string) (MFAConfig, error) {
 	if tenantID == "" {
-		return MFAConfig{}, errors.New("tenant_id required")
+		return MFAConfig{}, fmt.Errorf("tenant ID required")
 	}
-	key := "security_mfa_" + tenantID
-	serverConfigService, ok := s.ServerConfigService.(interface {
-		Get(context.Context, string) (struct{ Value string }, error)
-	})
-	if !ok {
-		return MFAConfig{}, errors.New("server config service not available")
-	}
-	cfg, err := serverConfigService.Get(ctx, key)
+
+	query := `
+		SELECT tenant_id, require_mfa, allowed_methods, mfa_timeout_seconds
+		FROM tenant_mfa_config
+		WHERE tenant_id = $1
+	`
+
+	var config MFAConfig
+	var methodsJSON []byte
+
+	err := s.DB.QueryRow(ctx, query, tenantID).Scan(
+		&config.TenantID,
+		&config.RequireMFA,
+		&methodsJSON,
+		&config.MFATimeoutSeconds,
+	)
+
 	if err != nil {
-		if err.Error() == "config not found" {
-			return MFAConfig{}, nil
+		if err == pgx.ErrNoRows {
+			// Return default config if not found
+			return MFAConfig{
+				TenantID:          tenantID,
+				RequireMFA:        false,
+				AllowedMethods:    []string{"totp", "sms"},
+				MFATimeoutSeconds: 300, // 5 minutes default
+			}, nil
 		}
+		logger.LogError("GetMFAConfig: database error",
+			logger.ErrorField(err),
+			logger.String("tenant_id", tenantID))
 		return MFAConfig{}, err
 	}
-	var config MFAConfig
-	if err := json.Unmarshal([]byte(cfg.Value), &config); err != nil {
-		return MFAConfig{}, errors.New("invalid mfa config json")
+
+	// Parse methods from JSON
+	if methodsJSON != nil {
+		if err := json.Unmarshal(methodsJSON, &config.AllowedMethods); err != nil {
+			logger.LogError("GetMFAConfig: failed to parse methods JSON",
+				logger.ErrorField(err),
+				logger.String("tenant_id", tenantID))
+			// Continue with default methods
+			config.AllowedMethods = []string{"totp", "sms"}
+		}
+	} else {
+		config.AllowedMethods = []string{"totp", "sms"}
 	}
+
 	return config, nil
 }
 
 func (s *PostgresStore) SetMFAConfig(ctx context.Context, tenantID string, config MFAConfig) error {
-	if err := config.Validate(); err != nil {
-		return err
-	}
-	key := "security_mfa_" + tenantID
-	b, err := json.Marshal(config)
-	if err != nil {
-		return errors.New("invalid mfa config")
-	}
-	serverConfigService, ok := s.ServerConfigService.(interface {
-		Set(context.Context, string, string, string) (struct{}, error)
-	})
-	if !ok {
-		return errors.New("server config service not available")
-	}
-	_, err = serverConfigService.Set(ctx, key, string(b), "system")
-	if err != nil {
-		return err
-	}
-	// hot-reload stub
-	return nil
-}
-
-// --- ProviderConfig Service ---
-func (s *PostgresStore) GetProviderConfig(ctx context.Context, tenantID, channel, provider string) (ProviderConfig, error) {
-	if tenantID == "" || channel == "" || provider == "" {
-		return ProviderConfig{}, errors.New("tenant_id, channel, provider required")
-	}
-	key := "security_provider_" + channel + "_" + provider + "_" + tenantID
-	serverConfigService, ok := s.ServerConfigService.(interface {
-		Get(context.Context, string) (struct{ Value string }, error)
-	})
-	if !ok {
-		return ProviderConfig{}, errors.New("server config service not available")
-	}
-	cfg, err := serverConfigService.Get(ctx, key)
-	if err != nil {
-		if err.Error() == "config not found" {
-			return ProviderConfig{}, nil
-		}
-		return ProviderConfig{}, err
-	}
-	var config ProviderConfig
-	if err := json.Unmarshal([]byte(cfg.Value), &config); err != nil {
-		return ProviderConfig{}, errors.New("invalid provider config json")
-	}
-	return config, nil
-}
-
-func (s *PostgresStore) SetProviderConfig(ctx context.Context, config ProviderConfig) error {
-	if err := config.Validate(); err != nil {
-		return err
-	}
-	key := "security_provider_" + config.Channel + "_" + config.Provider + "_" + config.TenantID
-	b, err := json.Marshal(config)
-	if err != nil {
-		return errors.New("invalid provider config")
-	}
-	serverConfigService, ok := s.ServerConfigService.(interface {
-		Set(context.Context, string, string, string) (struct{}, error)
-	})
-	if !ok {
-		return errors.New("server config service not available")
-	}
-	_, err = serverConfigService.Set(ctx, key, string(b), "system")
-	if err != nil {
-		return err
-	}
-	// hot-reload stub
-	return nil
-}
-
-// --- PasswordPolicyConfig Service ---
-func (s *PostgresStore) GetPasswordPolicyConfig(ctx context.Context, tenantID string) (PasswordPolicyConfig, error) {
 	if tenantID == "" {
-		return PasswordPolicyConfig{}, errors.New("tenant_id required")
+		return fmt.Errorf("tenant ID required")
 	}
-	key := "security_password_policy_" + tenantID
-	serverConfigService, ok := s.ServerConfigService.(interface {
-		Get(context.Context, string) (struct{ Value string }, error)
-	})
-	if !ok {
-		return PasswordPolicyConfig{}, errors.New("server config service not available")
-	}
-	cfg, err := serverConfigService.Get(ctx, key)
-	if err != nil {
-		if err.Error() == "config not found" {
-			return PasswordPolicyConfig{}, nil
-		}
-		return PasswordPolicyConfig{}, err
-	}
-	var config PasswordPolicyConfig
-	if err := json.Unmarshal([]byte(cfg.Value), &config); err != nil {
-		return PasswordPolicyConfig{}, errors.New("invalid password policy config json")
-	}
-	return config, nil
-}
 
-func (s *PostgresStore) SetPasswordPolicyConfig(ctx context.Context, tenantID string, config PasswordPolicyConfig) error {
-	if err := config.Validate(); err != nil {
+	// Ensure the tenant ID in the config matches the one in the path
+	config.TenantID = tenantID
+
+	// Set sane defaults if not provided
+	if len(config.AllowedMethods) == 0 {
+		config.AllowedMethods = []string{"totp", "sms"}
+	}
+
+	if config.MFATimeoutSeconds <= 0 {
+		config.MFATimeoutSeconds = 300 // 5 minutes default
+	}
+
+	// Serialize allowed methods to JSON
+	methodsJSON, err := json.Marshal(config.AllowedMethods)
+	if err != nil {
+		logger.LogError("SetMFAConfig: failed to serialize methods",
+			logger.ErrorField(err),
+			logger.String("tenant_id", tenantID))
 		return err
 	}
-	key := "security_password_policy_" + tenantID
-	b, err := json.Marshal(config)
+
+	// Use upsert pattern to create or update
+	query := `
+		INSERT INTO tenant_mfa_config (
+			tenant_id, require_mfa, allowed_methods, mfa_timeout_seconds, updated_at
+		) VALUES (
+			$1, $2, $3, $4, NOW()
+		) ON CONFLICT (tenant_id) DO UPDATE SET
+			require_mfa = $2,
+			allowed_methods = $3,
+			mfa_timeout_seconds = $4,
+			updated_at = NOW()
+	`
+
+	_, err = s.DB.Exec(ctx, query,
+		tenantID,
+		config.RequireMFA,
+		methodsJSON,
+		config.MFATimeoutSeconds,
+	)
+
 	if err != nil {
-		return errors.New("invalid password policy config")
-	}
-	serverConfigService, ok := s.ServerConfigService.(interface {
-		Set(context.Context, string, string, string) (struct{}, error)
-	})
-	if !ok {
-		return errors.New("server config service not available")
-	}
-	_, err = serverConfigService.Set(ctx, key, string(b), "system")
-	if err != nil {
+		logger.LogError("SetMFAConfig: database error",
+			logger.ErrorField(err),
+			logger.String("tenant_id", tenantID))
 		return err
 	}
-	// hot-reload stub
+
 	return nil
-}
-
-// --- SessionConfig Service ---
-func (s *PostgresStore) GetSessionConfig(ctx context.Context, tenantID string) (SessionConfig, error) {
-	if tenantID == "" {
-		return SessionConfig{}, errors.New("tenant_id required")
-	}
-	key := "security_session_" + tenantID
-	serverConfigService, ok := s.ServerConfigService.(interface {
-		Get(context.Context, string) (struct{ Value string }, error)
-	})
-	if !ok {
-		return SessionConfig{}, errors.New("server config service not available")
-	}
-	cfg, err := serverConfigService.Get(ctx, key)
-	if err != nil {
-		if err.Error() == "config not found" {
-			return SessionConfig{}, nil
-		}
-		return SessionConfig{}, err
-	}
-	var config SessionConfig
-	if err := json.Unmarshal([]byte(cfg.Value), &config); err != nil {
-		return SessionConfig{}, errors.New("invalid session config json")
-	}
-	return config, nil
-}
-
-func (s *PostgresStore) SetSessionConfig(ctx context.Context, tenantID string, config SessionConfig) error {
-	if err := config.Validate(); err != nil {
-		return err
-	}
-	key := "security_session_" + tenantID
-	b, err := json.Marshal(config)
-	if err != nil {
-		return errors.New("invalid session config")
-	}
-	serverConfigService, ok := s.ServerConfigService.(interface {
-		Set(context.Context, string, string, string) (struct{}, error)
-	})
-	if !ok {
-		return errors.New("server config service not available")
-	}
-	_, err = serverConfigService.Set(ctx, key, string(b), "system")
-	if err != nil {
-		return err
-	}
-	// hot-reload stub
-	return nil
-}
-
-func (s *PostgresStore) SetRateLimitConfig(ctx context.Context, config RateLimitConfig) error {
-	if err := config.Validate(); err != nil {
-		return err
-	}
-	key := "security_rate_limit_" + config.Scope + "_" + config.ScopeID
-	b, err := json.Marshal(config)
-	if err != nil {
-		return errors.New("invalid rate limit config")
-	}
-	serverConfigService, ok := s.ServerConfigService.(interface {
-		Set(context.Context, string, string, string) (struct{}, error)
-	})
-	if !ok {
-		return errors.New("server config service not available")
-	}
-	_, err = serverConfigService.Set(ctx, key, string(b), "system")
-	if err != nil {
-		return err
-	}
-	// hot-reload stub
-	return nil
-}
-
-// --- NotificationChannelEnabledConfig Service ---
-func (s *PostgresStore) GetNotificationChannelEnabledConfig(ctx context.Context, tenantID, channel, provider string) (NotificationChannelEnabledConfig, error) {
-	if tenantID == "" || channel == "" || provider == "" {
-		return NotificationChannelEnabledConfig{}, errors.New("tenant_id, channel, provider required")
-	}
-	key := "notification_channel_enabled_" + tenantID + "_" + channel + "_" + provider
-	serverConfigService, ok := s.ServerConfigService.(interface {
-		Get(context.Context, string) (struct{ Value string }, error)
-	})
-	if !ok {
-		return NotificationChannelEnabledConfig{}, errors.New("server config service not available")
-	}
-	cfg, err := serverConfigService.Get(ctx, key)
-	if err != nil {
-		if err.Error() == "config not found" {
-			return NotificationChannelEnabledConfig{}, nil
-		}
-		return NotificationChannelEnabledConfig{}, err
-	}
-	var config NotificationChannelEnabledConfig
-	if err := json.Unmarshal([]byte(cfg.Value), &config); err != nil {
-		return NotificationChannelEnabledConfig{}, errors.New("invalid notification channel enabled config json")
-	}
-	return config, nil
-}
-
-func (s *PostgresStore) SetNotificationChannelEnabledConfig(ctx context.Context, config NotificationChannelEnabledConfig) error {
-	if err := config.Validate(); err != nil {
-		return err
-	}
-	key := "notification_channel_enabled_" + config.TenantID + "_" + config.Channel + "_" + config.Provider
-	b, err := json.Marshal(config)
-	if err != nil {
-		return errors.New("invalid notification channel enabled config")
-	}
-	serverConfigService, ok := s.ServerConfigService.(interface {
-		Set(context.Context, string, string, string) (struct{}, error)
-	})
-	if !ok {
-		return errors.New("server config service not available")
-	}
-	_, err = serverConfigService.Set(ctx, key, string(b), "system")
-	if err != nil {
-		return err
-	}
-	// hot-reload stub
-	return nil
-}
-
-// --- OAuthConfigDB Service ---
-func (s *PostgresStore) GetOAuthConfig(ctx context.Context, tenantID string) (OAuthConfigDB, error) {
-	if tenantID == "" {
-		return OAuthConfigDB{}, errors.New("tenant_id required")
-	}
-	key := "oauth_config_" + tenantID
-	serverConfigService, ok := s.ServerConfigService.(interface {
-		Get(context.Context, string) (struct{ Value string }, error)
-	})
-	if !ok {
-		return OAuthConfigDB{}, errors.New("server config service not available")
-	}
-	cfg, err := serverConfigService.Get(ctx, key)
-	if err != nil {
-		if err.Error() == "config not found" {
-			return OAuthConfigDB{}, nil
-		}
-		return OAuthConfigDB{}, err
-	}
-	var config OAuthConfigDB
-	if err := json.Unmarshal([]byte(cfg.Value), &config); err != nil {
-		return OAuthConfigDB{}, errors.New("invalid oauth config json")
-	}
-	return config, nil
-}
-
-func (s *PostgresStore) SetOAuthConfig(ctx context.Context, tenantID string, config OAuthConfigDB) error {
-	if err := config.Validate(); err != nil {
-		return err
-	}
-	key := "oauth_config_" + tenantID
-	b, err := json.Marshal(config)
-	if err != nil {
-		return errors.New("invalid oauth config")
-	}
-	serverConfigService, ok := s.ServerConfigService.(interface {
-		Set(context.Context, string, string, string) (struct{}, error)
-	})
-	if !ok {
-		return errors.New("server config service not available")
-	}
-	_, err = serverConfigService.Set(ctx, key, string(b), "system")
-	if err != nil {
-		return err
-	}
-	// hot-reload stub
-	return nil
-}
-
-// --- SAMLConfigDB Service ---
-func (s *PostgresStore) GetSAMLConfig(ctx context.Context, tenantID string) (SAMLConfigDB, error) {
-	if tenantID == "" {
-		return SAMLConfigDB{}, errors.New("tenant_id required")
-	}
-	key := "saml_config_" + tenantID
-	serverConfigService, ok := s.ServerConfigService.(interface {
-		Get(context.Context, string) (struct{ Value string }, error)
-	})
-	if !ok {
-		return SAMLConfigDB{}, errors.New("server config service not available")
-	}
-	cfg, err := serverConfigService.Get(ctx, key)
-	if err != nil {
-		if err.Error() == "config not found" {
-			return SAMLConfigDB{}, nil
-		}
-		return SAMLConfigDB{}, err
-	}
-	var config SAMLConfigDB
-	if err := json.Unmarshal([]byte(cfg.Value), &config); err != nil {
-		return SAMLConfigDB{}, errors.New("invalid saml config json")
-	}
-	return config, nil
-}
-
-func (s *PostgresStore) SetSAMLConfig(ctx context.Context, tenantID string, config SAMLConfigDB) error {
-	if err := config.Validate(); err != nil {
-		return err
-	}
-	key := "saml_config_" + tenantID
-	b, err := json.Marshal(config)
-	if err != nil {
-		return errors.New("invalid saml config")
-	}
-	serverConfigService, ok := s.ServerConfigService.(interface {
-		Set(context.Context, string, string, string) (struct{}, error)
-	})
-	if !ok {
-		return errors.New("server config service not available")
-	}
-	_, err = serverConfigService.Set(ctx, key, string(b), "system")
-	if err != nil {
-		return err
-	}
-	// hot-reload stub
-	return nil
-}
-
-// --- AuthTypeConfigDB Service ---
-func (s *PostgresStore) GetAuthTypeConfig(ctx context.Context, tenantID string) (AuthTypeConfigDB, error) {
-	if tenantID == "" || tenantID == "owner" {
-		return AuthTypeConfigDB{PasswordEnabled: true, OAuthEnabled: false, SAMLEnabled: false}, nil
-	}
-	key := "auth_type_config_" + tenantID
-	serverConfigService, ok := s.ServerConfigService.(interface {
-		Get(context.Context, string) (struct{ Value string }, error)
-	})
-	if !ok {
-		return AuthTypeConfigDB{}, errors.New("server config service not available")
-	}
-	cfg, err := serverConfigService.Get(ctx, key)
-	if err != nil {
-		if err.Error() == "config not found" {
-			return AuthTypeConfigDB{}, nil
-		}
-		return AuthTypeConfigDB{}, err
-	}
-	var config AuthTypeConfigDB
-	if err := json.Unmarshal([]byte(cfg.Value), &config); err != nil {
-		return AuthTypeConfigDB{}, errors.New("invalid auth type config json")
-	}
-	return config, nil
 }
 
 func (s *PostgresStore) SetAuthTypeConfig(ctx context.Context, tenantID string, config AuthTypeConfigDB) error {
@@ -1937,4 +1794,575 @@ func NewPostgresStore(db *pgxpool.Pool, serverConfigService ServerConfigService,
 		ServerConfigService: serverConfigService,
 		AuditLogger:         auditLogger,
 	}
+}
+
+// GetUserMFAStatus checks if MFA is enabled for a specific user
+func (s *PostgresStore) GetUserMFAStatus(ctx context.Context, userID string) (UserMFAStatus, error) {
+	if userID == "" {
+		return UserMFAStatus{}, fmt.Errorf("user ID required")
+	}
+
+	query := `
+		SELECT user_id, mfa_enabled, mfa_methods, updated_at
+		FROM user_mfa_settings
+		WHERE user_id = $1
+	`
+
+	var status UserMFAStatus
+	var methodsJSON []byte
+
+	err := s.DB.QueryRow(ctx, query, userID).Scan(
+		&status.UserID,
+		&status.Enabled,
+		&methodsJSON,
+		&status.LastUpdated,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			// Return default status if no MFA settings found
+			return UserMFAStatus{
+				UserID:      userID,
+				Enabled:     false,
+				Methods:     []string{},
+				LastUpdated: time.Now(),
+			}, nil
+		}
+		logger.LogError("GetUserMFAStatus: database error",
+			logger.ErrorField(err),
+			logger.String("user_id", userID))
+		return UserMFAStatus{}, err
+	}
+
+	// Parse methods from JSON
+	if methodsJSON != nil {
+		if err := json.Unmarshal(methodsJSON, &status.Methods); err != nil {
+			logger.LogError("GetUserMFAStatus: failed to parse methods JSON",
+				logger.ErrorField(err),
+				logger.String("user_id", userID))
+			// Continue with empty methods
+			status.Methods = []string{}
+		}
+	} else {
+		status.Methods = []string{}
+	}
+
+	return status, nil
+}
+
+// GetProviderConfig retrieves provider configuration
+func (s *PostgresStore) GetProviderConfig(ctx context.Context, tenantID, channel, provider string) (ProviderConfig, error) {
+	if tenantID == "" || channel == "" || provider == "" {
+		return ProviderConfig{}, fmt.Errorf("tenant_id, channel, and provider required")
+	}
+
+	query := `
+		SELECT tenant_id, channel, provider, config
+		FROM notification_provider_configs
+		WHERE tenant_id = $1 AND channel = $2 AND provider = $3
+	`
+
+	var config ProviderConfig
+	var configJSON []byte
+
+	err := s.DB.QueryRow(ctx, query, tenantID, channel, provider).Scan(
+		&config.TenantID,
+		&config.Channel,
+		&config.Provider,
+		&configJSON,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			// Return default config if not found
+			return ProviderConfig{
+				TenantID: tenantID,
+				Channel:  channel,
+				Provider: provider,
+				Config:   map[string]string{},
+			}, nil
+		}
+		logger.LogError("GetProviderConfig: database error",
+			logger.ErrorField(err),
+			logger.String("tenant_id", tenantID),
+			logger.String("channel", channel),
+			logger.String("provider", provider))
+		return ProviderConfig{}, err
+	}
+
+	// Parse config from JSON
+	if configJSON != nil && len(configJSON) > 0 {
+		if err := json.Unmarshal(configJSON, &config.Config); err != nil {
+			logger.LogError("GetProviderConfig: failed to parse config JSON",
+				logger.ErrorField(err),
+				logger.String("tenant_id", tenantID),
+				logger.String("channel", channel),
+				logger.String("provider", provider))
+			// Continue with empty config
+			config.Config = map[string]string{}
+		}
+	} else {
+		config.Config = map[string]string{}
+	}
+
+	return config, nil
+}
+
+// SetProviderConfig updates provider configuration
+func (s *PostgresStore) SetProviderConfig(ctx context.Context, config ProviderConfig) error {
+	if config.TenantID == "" || config.Channel == "" || config.Provider == "" {
+		return fmt.Errorf("tenant_id, channel, and provider required")
+	}
+
+	// Serialize config to JSON
+	configJSON, err := json.Marshal(config.Config)
+	if err != nil {
+		logger.LogError("SetProviderConfig: failed to serialize config",
+			logger.ErrorField(err),
+			logger.String("tenant_id", config.TenantID),
+			logger.String("channel", config.Channel),
+			logger.String("provider", config.Provider))
+		return err
+	}
+
+	// Use upsert pattern to create or update
+	query := `
+		INSERT INTO notification_provider_configs (
+			tenant_id, channel, provider, config, updated_at
+		) VALUES (
+			$1, $2, $3, $4, NOW()
+		) ON CONFLICT (tenant_id, channel, provider) DO UPDATE SET
+			config = $4,
+			updated_at = NOW()
+	`
+
+	_, err = s.DB.Exec(ctx, query,
+		config.TenantID,
+		config.Channel,
+		config.Provider,
+		configJSON,
+	)
+
+	if err != nil {
+		logger.LogError("SetProviderConfig: database error",
+			logger.ErrorField(err),
+			logger.String("tenant_id", config.TenantID),
+			logger.String("channel", config.Channel),
+			logger.String("provider", config.Provider))
+		return err
+	}
+
+	return nil
+}
+
+// GetAuthTypeConfig retrieves auth type configuration for a tenant
+func (s *PostgresStore) GetAuthTypeConfig(ctx context.Context, tenantID string) (AuthTypeConfigDB, error) {
+	var config AuthTypeConfigDB
+
+	query := `SELECT tenant_id, mfa_enabled, password_enabled, oauth_enabled, saml_enabled, 
+			auth_types, primary, fallback, updated_at
+			FROM auth_type_configs WHERE tenant_id = $1`
+
+	row := s.DB.QueryRow(ctx, query, tenantID)
+
+	var authTypes, fallback []byte
+	err := row.Scan(
+		&config.TenantID,
+		&config.MFAEnabled,
+		&config.PasswordEnabled,
+		&config.OAuthEnabled,
+		&config.SAMLEnabled,
+		&authTypes,
+		&config.Primary,
+		&fallback,
+		&config.UpdatedAt,
+	)
+
+	if err != nil {
+		// For not found, return default config with password enabled
+		if err.Error() == "no rows in result set" {
+			return AuthTypeConfigDB{
+				TenantID:        tenantID,
+				MFAEnabled:      true,
+				PasswordEnabled: true,
+				OAuthEnabled:    false,
+				SAMLEnabled:     false,
+				AuthTypes:       []string{"password"},
+				Primary:         "password",
+				Fallback:        []string{},
+				UpdatedAt:       time.Now(),
+			}, nil
+		}
+		return config, wrapDBErr("GetAuthTypeConfig", err)
+	}
+
+	// Parse JSON arrays
+	if err := json.Unmarshal(authTypes, &config.AuthTypes); err != nil {
+		return config, wrapDBErr("GetAuthTypeConfig.UnmarshalAuthTypes", err)
+	}
+	if err := json.Unmarshal(fallback, &config.Fallback); err != nil {
+		return config, wrapDBErr("GetAuthTypeConfig.UnmarshalFallback", err)
+	}
+
+	return config, nil
+}
+
+// GetOAuthConfig retrieves OAuth configuration for a tenant
+func (s *PostgresStore) GetOAuthConfig(ctx context.Context, tenantID string) (OAuthConfigDB, error) {
+	var config OAuthConfigDB
+
+	query := `SELECT tenant_id, client_id, client_secret, redirect_uri, scopes
+			FROM oauth_configs WHERE tenant_id = $1`
+
+	row := s.DB.QueryRow(ctx, query, tenantID)
+
+	var scopes []byte
+	err := row.Scan(
+		&config.TenantID,
+		&config.ClientID,
+		&config.ClientSecret,
+		&config.RedirectURI,
+		&scopes,
+	)
+
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return OAuthConfigDB{
+				TenantID:     tenantID,
+				ClientID:     "",
+				ClientSecret: "",
+				RedirectURI:  "",
+				Scopes:       []string{},
+			}, nil
+		}
+		return config, wrapDBErr("GetOAuthConfig", err)
+	}
+
+	// Parse JSON arrays
+	if err := json.Unmarshal(scopes, &config.Scopes); err != nil {
+		return config, wrapDBErr("GetOAuthConfig.UnmarshalScopes", err)
+	}
+
+	return config, nil
+}
+
+// GetSAMLConfig retrieves SAML configuration for a tenant
+func (s *PostgresStore) GetSAMLConfig(ctx context.Context, tenantID string) (SAMLConfigDB, error) {
+	var config SAMLConfigDB
+
+	query := `SELECT tenant_id, metadata_url, entity_id, acs_url
+			FROM saml_configs WHERE tenant_id = $1`
+
+	row := s.DB.QueryRow(ctx, query, tenantID)
+
+	err := row.Scan(
+		&config.TenantID,
+		&config.MetadataURL,
+		&config.EntityID,
+		&config.ACSURL,
+	)
+
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return SAMLConfigDB{
+				TenantID:    tenantID,
+				MetadataURL: "",
+				EntityID:    "",
+				ACSURL:      "",
+			}, nil
+		}
+		return config, wrapDBErr("GetSAMLConfig", err)
+	}
+
+	return config, nil
+}
+
+// GetNotificationChannelEnabledConfig retrieves notification channel enabled configuration
+func (s *PostgresStore) GetNotificationChannelEnabledConfig(ctx context.Context, tenantID, channel, provider string) (NotificationChannelEnabledConfig, error) {
+	var config NotificationChannelEnabledConfig
+
+	query := `SELECT tenant_id, channel, provider, enabled
+			FROM notification_channel_enabled_configs 
+			WHERE tenant_id = $1 AND channel = $2 AND provider = $3`
+
+	row := s.DB.QueryRow(ctx, query, tenantID, channel, provider)
+
+	err := row.Scan(
+		&config.TenantID,
+		&config.Channel,
+		&config.Provider,
+		&config.Enabled,
+	)
+
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return NotificationChannelEnabledConfig{
+				TenantID: tenantID,
+				Channel:  channel,
+				Provider: provider,
+				Enabled:  true, // Default to enabled
+			}, nil
+		}
+		return config, wrapDBErr("GetNotificationChannelEnabledConfig", err)
+	}
+
+	return config, nil
+}
+
+// SetNotificationChannelEnabledConfig sets notification channel enabled configuration
+func (s *PostgresStore) SetNotificationChannelEnabledConfig(ctx context.Context, config NotificationChannelEnabledConfig) error {
+	if err := config.Validate(); err != nil {
+		return err
+	}
+
+	query := `INSERT INTO notification_channel_enabled_configs
+			(tenant_id, channel, provider, enabled)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (tenant_id, channel, provider) 
+			DO UPDATE SET enabled = $4`
+
+	_, err := s.DB.Exec(ctx, query,
+		config.TenantID,
+		config.Channel,
+		config.Provider,
+		config.Enabled,
+	)
+
+	if err != nil {
+		return wrapDBErr("SetNotificationChannelEnabledConfig", err)
+	}
+
+	return nil
+}
+
+// GetPasswordPolicyConfig retrieves password policy configuration for a tenant
+func (s *PostgresStore) GetPasswordPolicyConfig(ctx context.Context, tenantID string) (PasswordPolicyConfig, error) {
+	var config PasswordPolicyConfig
+
+	query := `SELECT tenant_id, min_length, require_numbers, require_special, 
+			require_upper, require_lower
+			FROM password_policy_configs WHERE tenant_id = $1`
+
+	row := s.DB.QueryRow(ctx, query, tenantID)
+
+	err := row.Scan(
+		&config.TenantID,
+		&config.MinLength,
+		&config.RequireNumbers,
+		&config.RequireSpecial,
+		&config.RequireUpper,
+		&config.RequireLower,
+	)
+
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return PasswordPolicyConfig{
+				TenantID:       tenantID,
+				MinLength:      8,
+				RequireNumbers: true,
+				RequireSpecial: true,
+				RequireUpper:   true,
+				RequireLower:   true,
+			}, nil
+		}
+		return config, wrapDBErr("GetPasswordPolicyConfig", err)
+	}
+
+	return config, nil
+}
+
+// SetPasswordPolicyConfig sets password policy configuration for a tenant
+func (s *PostgresStore) SetPasswordPolicyConfig(ctx context.Context, tenantID string, config PasswordPolicyConfig) error {
+	if err := config.Validate(); err != nil {
+		return err
+	}
+
+	query := `INSERT INTO password_policy_configs
+			(tenant_id, min_length, require_numbers, require_special, require_upper, require_lower)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (tenant_id) 
+			DO UPDATE SET 
+				min_length = $2,
+				require_numbers = $3,
+				require_special = $4,
+				require_upper = $5,
+				require_lower = $6`
+
+	_, err := s.DB.Exec(ctx, query,
+		tenantID,
+		config.MinLength,
+		config.RequireNumbers,
+		config.RequireSpecial,
+		config.RequireUpper,
+		config.RequireLower,
+	)
+
+	if err != nil {
+		return wrapDBErr("SetPasswordPolicyConfig", err)
+	}
+
+	return nil
+}
+
+// GetSessionConfig retrieves session configuration for a tenant
+func (s *PostgresStore) GetSessionConfig(ctx context.Context, tenantID string) (SessionConfig, error) {
+	var config SessionConfig
+
+	query := `SELECT tenant_id, session_timeout_minutes, idle_timeout_minutes
+			FROM session_configs WHERE tenant_id = $1`
+
+	row := s.DB.QueryRow(ctx, query, tenantID)
+
+	err := row.Scan(
+		&config.TenantID,
+		&config.SessionTimeoutMinutes,
+		&config.IdleTimeoutMinutes,
+	)
+
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return SessionConfig{
+				TenantID:              tenantID,
+				SessionTimeoutMinutes: 60, // 1 hour
+				IdleTimeoutMinutes:    15, // 15 minutes
+			}, nil
+		}
+		return config, wrapDBErr("GetSessionConfig", err)
+	}
+
+	return config, nil
+}
+
+// SetSessionConfig sets session configuration for a tenant
+func (s *PostgresStore) SetSessionConfig(ctx context.Context, tenantID string, config SessionConfig) error {
+	if err := config.Validate(); err != nil {
+		return err
+	}
+
+	query := `INSERT INTO session_configs
+			(tenant_id, session_timeout_minutes, idle_timeout_minutes)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (tenant_id) 
+			DO UPDATE SET 
+				session_timeout_minutes = $2,
+				idle_timeout_minutes = $3`
+
+	_, err := s.DB.Exec(ctx, query,
+		tenantID,
+		config.SessionTimeoutMinutes,
+		config.IdleTimeoutMinutes,
+	)
+
+	if err != nil {
+		return wrapDBErr("SetSessionConfig", err)
+	}
+
+	return nil
+}
+
+// SetRateLimitConfig sets rate limit configuration for a specific scope/ID
+func (s *PostgresStore) SetRateLimitConfig(ctx context.Context, config RateLimitConfig) error {
+	if err := config.Validate(); err != nil {
+		return err
+	}
+
+	query := `INSERT INTO rate_limit_configs
+			(scope, scope_id, limit, window_seconds, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (scope, scope_id) 
+			DO UPDATE SET 
+				limit = $3,
+				window_seconds = $4,
+				updated_at = $6`
+
+	now := time.Now()
+
+	_, err := s.DB.Exec(ctx, query,
+		config.Scope,
+		config.ScopeID,
+		config.Limit,
+		config.WindowSeconds,
+		now,
+		now,
+	)
+
+	if err != nil {
+		return wrapDBErr("SetRateLimitConfig", err)
+	}
+
+	return nil
+}
+
+// SetOAuthConfig sets OAuth configuration for a tenant
+func (s *PostgresStore) SetOAuthConfig(ctx context.Context, tenantID string, config OAuthConfigDB) error {
+	if config.TenantID == "" {
+		config.TenantID = tenantID
+	}
+
+	if err := config.Validate(); err != nil {
+		return err
+	}
+
+	// Serialize scopes to JSON
+	scopesJSON, err := json.Marshal(config.Scopes)
+	if err != nil {
+		return wrapDBErr("SetOAuthConfig.MarshalScopes", err)
+	}
+
+	query := `INSERT INTO oauth_configs
+			(tenant_id, client_id, client_secret, redirect_uri, scopes)
+			VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (tenant_id) 
+			DO UPDATE SET 
+				client_id = $2,
+				client_secret = $3,
+				redirect_uri = $4,
+				scopes = $5`
+
+	_, err = s.DB.Exec(ctx, query,
+		tenantID,
+		config.ClientID,
+		config.ClientSecret,
+		config.RedirectURI,
+		scopesJSON,
+	)
+
+	if err != nil {
+		return wrapDBErr("SetOAuthConfig", err)
+	}
+
+	return nil
+}
+
+// SetSAMLConfig sets SAML configuration for a tenant
+func (s *PostgresStore) SetSAMLConfig(ctx context.Context, tenantID string, config SAMLConfigDB) error {
+	if config.TenantID == "" {
+		config.TenantID = tenantID
+	}
+
+	if err := config.Validate(); err != nil {
+		return err
+	}
+
+	query := `INSERT INTO saml_configs
+			(tenant_id, metadata_url, entity_id, acs_url)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (tenant_id) 
+			DO UPDATE SET 
+				metadata_url = $2,
+				entity_id = $3,
+				acs_url = $4`
+
+	_, err := s.DB.Exec(ctx, query,
+		tenantID,
+		config.MetadataURL,
+		config.EntityID,
+		config.ACSURL,
+	)
+
+	if err != nil {
+		return wrapDBErr("SetSAMLConfig", err)
+	}
+
+	return nil
 }

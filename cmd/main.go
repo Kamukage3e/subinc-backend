@@ -178,24 +178,29 @@ func main() {
 		NotificationService:         securityStore,
 		SecurityModuleConfigService: securityStore,
 	}
-	security_management.RegisterAdminSecurityRoutes(adminAPI, securityHandler, jwtCfg.SecretName, securityStore)
+	security_management.RegisterRoutes(adminAPI, securityHandler, jwtCfg.SecretName, securityStore)
+
 	userStore := user_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 	userHandler := user_management.NewUserHandler(userStore)
-	user_management.RegisterAdminUserRoutes(adminAPI, userHandler, jwtCfg.SecretName, securityStore)
+	user_management.RegisterRoutes(adminAPI, userHandler, jwtCfg.SecretName, securityStore)
+
 	tenantStore := tenant_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
-	tenantHandler := tenant_management.NewTenantHandler(tenantStore)
-	tenant_management.RegisterAdminTenantRoutes(adminAPI, tenantHandler, jwtCfg.SecretName, securityStore)
+	tenantHandler := tenant_management.NewTenantHandler(tenantStore, tenantStore)
+	tenant_management.RegisterRoutes(adminAPI, tenantHandler, jwtCfg.SecretName, securityStore)
+
 	projectStore := project_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 	projectHandler := project_management.NewProjectHandler(projectStore)
-	project_management.RegisterAdminProjectRoutes(adminAPI, projectHandler, jwtCfg.SecretName, securityStore)
+	project_management.RegisterRoutes(adminAPI, projectHandler, jwtCfg.SecretName, securityStore)
+
 	orgStore := organization_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 	orgHandler := organization_management.NewOrganizationHandler(orgStore)
-	organization_management.RegisterAdminOrganizationRoutes(adminAPI, orgHandler, jwtCfg.SecretName, securityStore)
+	organization_management.RegisterRoutes(adminAPI, orgHandler, jwtCfg.SecretName, securityStore)
+	
 	billingStore := billing_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 		paymentStore := &payment.PostgresStore{DB: ownerDBPool}
 	billingHandler := billing_management.NewBillingHandler(billingStore, paymentStore) 
 	billingHandler.Notify = securityStore
-	billing_management.RegisterAdminBillingRoutes(adminAPI, billingHandler, jwtCfg.SecretName, securityStore)
+	billing_management.RegisterRoutes(adminAPI, billingHandler, jwtCfg.SecretName, securityStore)
 
 	// Dunning worker setup
 

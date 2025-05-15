@@ -62,6 +62,9 @@ type SecurityHandler struct {
 	NotificationService         NotificationService
 	SecurityModuleConfigService SecurityModuleConfigService
 	UserService                 UserService
+	ConfigurationService        ConfigurationService
+	NotificationQueueService    NotificationQueueService
+	OwnerJWTSecretConfigService OwnerJWTSecretConfigService
 }
 
 type SecurityEvent struct {
@@ -99,13 +102,20 @@ type Session struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
+// SecurityAuditLog represents a security-related audit log entry
 type SecurityAuditLog struct {
-	ID        string    `json:"id"`
-	ActorID   string    `json:"actor_id"`
-	Action    string    `json:"action"`
-	TargetID  string    `json:"target_id"`
-	Details   string    `json:"details"`
-	CreatedAt time.Time `json:"created_at"`
+	ID         string                 `json:"id"`
+	UserID     string                 `json:"user_id"`
+	ActorID    string                 `json:"actor_id"`
+	Action     string                 `json:"action"`
+	Resource   string                 `json:"resource"`
+	ResourceID string                 `json:"resource_id"`
+	TargetID   string                 `json:"target_id"`
+	Details    string                 `json:"details"`
+	IP         string                 `json:"ip"`
+	UserAgent  string                 `json:"user_agent"`
+	CreatedAt  time.Time              `json:"created_at"`
+	Metadata   map[string]interface{} `json:"metadata,omitempty"`
 }
 
 type APIKey struct {
@@ -155,11 +165,19 @@ type SecurityAnalytics struct {
 	GeneratedAt time.Time `json:"generated_at"`
 }
 
+// Anomaly represents a security anomaly detected by the system
 type Anomaly struct {
-	ID         string    `json:"id"`
-	Type       string    `json:"type"`
-	Details    string    `json:"details"`
-	DetectedAt time.Time `json:"detected_at"`
+	ID          string                 `json:"id"`
+	TenantID    string                 `json:"tenant_id"`
+	Type        string                 `json:"type"`
+	Severity    string                 `json:"severity"` // high, medium, low
+	Description string                 `json:"description"`
+	Details     string                 `json:"details"`
+	UserID      string                 `json:"user_id,omitempty"`
+	DetectedAt  time.Time              `json:"detected_at"`
+	CreatedAt   time.Time              `json:"created_at"`
+	Status      string                 `json:"status"` // open, acknowledged, resolved
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
 type NotificationChannel string
@@ -338,10 +356,13 @@ func (c SAMLConfigDB) Validate() error {
 
 // MFAConfig holds MFA settings for a tenant
 type MFAConfig struct {
-	TenantID  string   `json:"tenant_id"`
-	Enabled   bool     `json:"enabled"`
-	Required  bool     `json:"required"`
-	Providers []string `json:"providers"`
+	TenantID          string   `json:"tenant_id"`
+	Enabled           bool     `json:"enabled"`
+	RequireMFA        bool     `json:"require_mfa"`
+	AllowedMethods    []string `json:"allowed_methods"`
+	MFATimeoutSeconds int      `json:"mfa_timeout_seconds"`
+	Required          bool     `json:"required"`
+	Providers         []string `json:"providers"`
 }
 
 func (c MFAConfig) Validate() error {
@@ -470,4 +491,12 @@ func (c AuthTypeConfigDB) Validate() error {
 		}
 	}
 	return nil
+}
+
+// UserMFAStatus represents a user's MFA configuration
+type UserMFAStatus struct {
+	UserID      string    `json:"user_id"`
+	Enabled     bool      `json:"enabled"`
+	Methods     []string  `json:"methods,omitempty"`
+	LastUpdated time.Time `json:"last_updated"`
 }

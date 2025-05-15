@@ -11,21 +11,25 @@ import (
 )
 
 // TenantStatus defines valid lifecycle states for a tenant
-// Valid: pending, active, suspended, deleted
+// Valid values: pending, active, suspended, deleted
 type TenantStatus string
 
 const (
-	TenantStatusPending   TenantStatus = "pending"
-	TenantStatusActive    TenantStatus = "active"
+	// TenantStatusPending indicates a tenant that is provisioning or awaiting approval
+	TenantStatusPending TenantStatus = "pending"
+	// TenantStatusActive indicates a tenant that is fully operational
+	TenantStatusActive TenantStatus = "active"
+	// TenantStatusSuspended indicates a tenant that is temporarily disabled
 	TenantStatusSuspended TenantStatus = "suspended"
-	TenantStatusDeleted   TenantStatus = "deleted"
+	// TenantStatusDeleted indicates a tenant that is marked for deletion
+	TenantStatusDeleted TenantStatus = "deleted"
 )
 
-// Tenant represents a SaaS tenant/org
-// All fields are required for production
-// Settings is a JSON blob for org settings/policies
-// CreatedAt/UpdatedAt are UTC
-// ID is UUID
+// Tenant represents a SaaS tenant/organization
+// All fields are required for production environments
+// Settings is stored as a JSON blob for tenant-specific settings and policies
+// CreatedAt/UpdatedAt timestamps are in UTC
+// ID is a UUID string
 // Name is unique per tenant
 type Tenant struct {
 	ID        string       `json:"id" db:"id"`
@@ -36,37 +40,63 @@ type Tenant struct {
 	UpdatedAt time.Time    `json:"updated_at" db:"updated_at"`
 }
 
-// TenantSettings is a map for settings JSON
-// Used for settings endpoints
+// TenantSettings is a map for tenant settings
+// Used for settings endpoints to handle dynamic configuration values
 type TenantSettings map[string]interface{}
 
-// TenantFilter for search, sort, pagination
+// TenantFilter defines parameters for searching, sorting, and paginating tenants
 // Used by list/search endpoints
 type TenantFilter struct {
-	Query   string
-	SortBy  string
+	// Query is the search term for filtering tenants by name
+	Query string
+	// SortBy specifies the field to sort results by
+	SortBy string
+	// SortDir specifies sort direction (asc/desc)
 	SortDir string
-	Limit   int
-	Offset  int
+	// Limit controls how many results to return
+	Limit int
+	// Offset controls pagination starting point
+	Offset int
 }
 
+// TenantAdminHandler handles HTTP requests for tenant administration
+// Implements all RESTful tenant management endpoints
 type TenantAdminHandler struct {
-	// TenantStore is optional for deployments that do not require tenant management.
-	TenantStore *PostgresStore // optional
-	// TenantSettingsStore is optional for deployments that do not require tenant settings management.
-	TenantSettingsStore *PostgresStore // optional
-	// AuditLogger is optional for deployments that do not require audit logging.
-	AuditLogger security_management.AuditLogger // optional
-	// RBACService is optional and only required if tenant management needs to delegate to RBAC.
-	RBACService rbac_management.RBACService // optional, may be nil
-	// UserHandler is optional and only required if tenant management needs to delegate to user management.
-	UserHandler *user_management.UserHandler // optional
-	// RateLimitService is optional for deployments that require rate limiting.
-	RateLimitService security_management.RateLimitService // optional
+	// TenantStore provides core tenant operations
+	// Required for all tenant management functionality
+	TenantStore TenantService
+
+	// TenantSettingsStore handles tenant settings management
+	// Can be the same instance as TenantStore
+	TenantSettingsStore TenantSettingsService
+
+	// AuditLogger records security-relevant tenant operations
+	// Optional for deployments that don't require audit logging
+	AuditLogger security_management.AuditLogger
+
+	// RBACService handles permission checks for tenant operations
+	// Optional for deployments that don't require RBAC
+	RBACService rbac_management.RBACService
+
+	// UserHandler handles delegated user operations
+	// Optional for deployments that don't need user management integration
+	UserHandler *user_management.UserHandler
+
+	// RateLimitService provides rate limiting for tenant operations
+	// Optional for deployments that don't require rate limiting
+	RateLimitService security_management.RateLimitService
 }
 
+// PostgresStore implements persistence layer for tenant operations
+// Provides implementation for TenantService, TenantSettingsService,
+// and TenantLifecycleService interfaces
 type PostgresStore struct {
-	DB                  *pgxpool.Pool
-	AuditLogger         security_management.AuditLogger
+	// DB is the PostgreSQL connection pool
+	DB *pgxpool.Pool
+
+	// AuditLogger records security-relevant database operations
+	AuditLogger security_management.AuditLogger
+
+	// ServerConfigService provides access to server configuration
 	ServerConfigService *server_config.Service
 }

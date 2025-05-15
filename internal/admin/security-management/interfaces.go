@@ -18,6 +18,7 @@ type MFAService interface {
 	DisableMFA(ctx context.Context, userID string) error
 	GenerateChallenge(ctx context.Context, userID string) (map[string]interface{}, error)
 	VerifyChallenge(ctx context.Context, userID, code string) error
+	GetUserMFAStatus(ctx context.Context, userID string) (UserMFAStatus, error)
 }
 
 type PasswordService interface {
@@ -82,11 +83,12 @@ type AuditLogger interface {
 type SecurityAnalyticsService interface {
 	GetSecurityAnalytics(ctx context.Context, tenantID string) (SecurityAnalytics, error)
 	ListAnomalies(ctx context.Context, tenantID string, page, pageSize int) ([]Anomaly, error)
+	DetectAnomalies(ctx context.Context, tenantID string) ([]Anomaly, error)
 }
 
 type NotificationService interface {
 	GetNotificationConfig(ctx context.Context, tenantID string) (NotificationConfig, error)
-	UpdateNotificationConfig(ctx context.Context, tenantID string, wconfig NotificationConfig) error
+	UpdateNotificationConfig(ctx context.Context, tenantID string, config NotificationConfig) error
 	SendNotification(ctx context.Context, tenantID string, channel NotificationChannel, to []string, event string, details map[string]interface{}, maxRetry int) error
 }
 
@@ -107,8 +109,8 @@ type SecurityEventWebhookService interface {
 
 type PasswordResetTokenService interface {
 	CreateToken(ctx context.Context, userID string, expiresIn time.Duration) (PasswordResetToken, error)
-	VerifyToken(ctx context.Context, token string) (PasswordResetToken, error)
-	UseToken(ctx context.Context, token string) error
+	VerifyToken(ctx context.Context, token string) (bool, error)
+	UseToken(ctx context.Context, token string, email string, password string) error
 }
 
 type RateLimitService interface {
@@ -125,4 +127,33 @@ type NotificationProvider interface {
 
 type OwnerJWTSecretConfigService interface {
 	GetOwnerJWTSecretConfig(ctx context.Context) (JWTSecretConfig, error)
+}
+
+// ConfigurationService handles various configuration types for tenants
+type ConfigurationService interface {
+	GetMFAConfig(ctx context.Context, tenantID string) (MFAConfig, error)
+	SetMFAConfig(ctx context.Context, tenantID string, config MFAConfig) error
+	GetPasswordPolicyConfig(ctx context.Context, tenantID string) (PasswordPolicyConfig, error)
+	SetPasswordPolicyConfig(ctx context.Context, tenantID string, config PasswordPolicyConfig) error
+	GetSessionConfig(ctx context.Context, tenantID string) (SessionConfig, error)
+	SetSessionConfig(ctx context.Context, tenantID string, config SessionConfig) error
+	GetNotificationChannelEnabledConfig(ctx context.Context, tenantID, channel, provider string) (NotificationChannelEnabledConfig, error)
+	SetNotificationChannelEnabledConfig(ctx context.Context, config NotificationChannelEnabledConfig) error
+	GetProviderConfig(ctx context.Context, tenantID, channel, provider string) (ProviderConfig, error)
+	SetProviderConfig(ctx context.Context, config ProviderConfig) error
+	GetOAuthConfig(ctx context.Context, tenantID string) (OAuthConfigDB, error)
+	SetOAuthConfig(ctx context.Context, tenantID string, config OAuthConfigDB) error
+	GetSAMLConfig(ctx context.Context, tenantID string) (SAMLConfigDB, error)
+	SetSAMLConfig(ctx context.Context, tenantID string, config SAMLConfigDB) error
+	GetAuthTypeConfig(ctx context.Context, tenantID string) (AuthTypeConfigDB, error)
+	SetAuthTypeConfig(ctx context.Context, tenantID string, config AuthTypeConfigDB) error
+	SetRateLimitConfig(ctx context.Context, config RateLimitConfig) error
+}
+
+// NotificationQueueService handles notification queueing and processing
+type NotificationQueueService interface {
+	AddToNotificationQueue(ctx context.Context, item NotificationQueueItem) error
+	GetPendingNotificationQueue(ctx context.Context, limit int) ([]NotificationQueueItem, error)
+	UpdateNotificationQueueItem(ctx context.Context, item NotificationQueueItem) error
+	ProcessNotificationQueue(ctx context.Context)
 }

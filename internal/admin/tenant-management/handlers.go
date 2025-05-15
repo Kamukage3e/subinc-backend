@@ -9,12 +9,15 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-func NewTenantHandler(store *PostgresStore) *TenantAdminHandler {
+// NewTenantHandler creates a new tenant handler instance
+func NewTenantHandler(tenantStore TenantService, tenantSettingsStore TenantSettingsService) *TenantAdminHandler {
 	return &TenantAdminHandler{
-		TenantStore: store,
+		TenantStore:         tenantStore,
+		TenantSettingsStore: tenantSettingsStore,
 	}
 }
 
+// Validate performs validation on tenant properties
 func (t *Tenant) Validate() error {
 	if t.Name == "" {
 		return errors.New("tenant name must not be empty")
@@ -25,6 +28,17 @@ func (t *Tenant) Validate() error {
 	return nil
 }
 
+// swagger:route POST /tenant-management/tenants tenant createTenant
+// summary: Create tenant
+// description: Creates a new tenant.
+// tags:
+//   - tenant
+//
+// responses:
+//
+//	201: Tenant
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *TenantAdminHandler) CreateTenant(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := contextutil.GetActorID(c)
@@ -54,6 +68,17 @@ func (h *TenantAdminHandler) CreateTenant(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(tenant)
 }
 
+// swagger:route GET /tenant-management/tenants/{id} tenant getTenant
+// summary: Get tenant
+// description: Retrieves a tenant by ID.
+// tags:
+//   - tenant
+//
+// responses:
+//
+//	200: Tenant
+//	400: ErrorResponse
+//	404: ErrorResponse
 func (h *TenantAdminHandler) GetTenant(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := contextutil.GetActorID(c)
@@ -71,19 +96,30 @@ func (h *TenantAdminHandler) GetTenant(c *fiber.Ctx) error {
 		logger.LogError("GetTenant: id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	tenants, err := h.TenantStore.ListTenants(c.Context())
+
+	tenant, err := h.TenantStore.GetTenant(c.Context(), id)
 	if err != nil {
-		logger.LogError("GetTenant: failed to list tenants", logger.ErrorField(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch tenants"})
-	}
-	for _, t := range tenants {
-		if tenant, ok := t.(Tenant); ok && tenant.ID == id {
-			return c.Status(fiber.StatusOK).JSON(tenant)
+		logger.LogError("GetTenant: failed", logger.ErrorField(err), logger.String("id", id))
+		if err.Error() == "tenant not found" {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "tenant not found"})
 		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get tenant"})
 	}
-	return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "tenant not found"})
+
+	return c.Status(fiber.StatusOK).JSON(tenant)
 }
 
+// swagger:route PUT /tenant-management/tenants/{id} tenant updateTenant
+// summary: Update tenant
+// description: Updates an existing tenant.
+// tags:
+//   - tenant
+//
+// responses:
+//
+//	200: Tenant
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *TenantAdminHandler) UpdateTenant(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := contextutil.GetActorID(c)
@@ -119,6 +155,17 @@ func (h *TenantAdminHandler) UpdateTenant(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(tenant)
 }
 
+// swagger:route DELETE /tenant-management/tenants/{id} tenant deleteTenant
+// summary: Delete tenant
+// description: Deletes a tenant by ID.
+// tags:
+//   - tenant
+//
+// responses:
+//
+//	204: EmptyResponse
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *TenantAdminHandler) DeleteTenant(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := contextutil.GetActorID(c)
@@ -144,6 +191,17 @@ func (h *TenantAdminHandler) DeleteTenant(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// swagger:route GET /tenant-management/tenants tenant listTenants
+// summary: List tenants
+// description: Lists tenants with optional filtering and pagination.
+// tags:
+//   - tenant
+//
+// responses:
+//
+//	200: TenantListResponse
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *TenantAdminHandler) ListTenants(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := contextutil.GetActorID(c)
@@ -171,6 +229,18 @@ func (h *TenantAdminHandler) ListTenants(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"tenants": tenants, "total": total})
 }
 
+// swagger:route GET /tenant-management/tenants/{id}/settings tenant getTenantSettings
+// summary: Get tenant settings
+// description: Retrieves settings for a tenant.
+// tags:
+//   - tenant
+//   - settings
+//
+// responses:
+//
+//	200: TenantSettings
+//	400: ErrorResponse
+//	404: ErrorResponse
 func (h *TenantAdminHandler) GetTenantSettings(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := contextutil.GetActorID(c)
@@ -196,6 +266,18 @@ func (h *TenantAdminHandler) GetTenantSettings(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(settings)
 }
 
+// swagger:route PUT /tenant-management/tenants/{id}/settings tenant updateTenantSettings
+// summary: Update tenant settings
+// description: Updates settings for a tenant.
+// tags:
+//   - tenant
+//   - settings
+//
+// responses:
+//
+//	200: TenantSettings
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *TenantAdminHandler) UpdateTenantSettings(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := contextutil.GetActorID(c)
@@ -232,6 +314,7 @@ func (h *TenantAdminHandler) UpdateTenantSettings(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(settings)
 }
 
+// validateTenantSettings validates tenant settings for proper format and values
 func validateTenantSettings(settings map[string]interface{}) error {
 	// Add field-specific validation here
 	if len(settings) == 0 {
@@ -242,32 +325,79 @@ func validateTenantSettings(settings map[string]interface{}) error {
 
 // --- Tenant Lifecycle State Handlers ---
 
+// swagger:route PUT /tenant-management/tenants/{id}/status tenant setTenantStatus
+// summary: Set tenant status
+// description: Sets the lifecycle status for a tenant.
+// tags:
+//   - tenant
+//   - lifecycle
+//
+// responses:
+//
+//	204: EmptyResponse
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *TenantAdminHandler) SetTenantStatus(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := contextutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant_lifecycle", "update")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
 	}
+
 	var input struct {
 		Status TenantStatus `json:"status"`
 	}
+
 	if err := c.BodyParser(&input); err != nil || input.Status == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "status required"})
 	}
+
 	if err := h.TenantStore.SetTenantStatus(c.Context(), id, input.Status); err != nil {
+		logger.LogError("SetTenantStatus: failed", logger.ErrorField(err), logger.String("tenant_id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// swagger:route GET /tenant-management/tenants/{id}/status tenant getTenantStatus
+// summary: Get tenant status
+// description: Gets the lifecycle status for a tenant.
+// tags:
+//   - tenant
+//   - lifecycle
+//
+// responses:
+//
+//	200: TenantStatusResponse
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *TenantAdminHandler) GetTenantStatus(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := contextutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant_lifecycle", "read")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
 	}
+
 	status, err := h.TenantStore.GetTenantStatus(c.Context(), id)
 	if err != nil {
 		logger.LogError("GetTenantStatus: failed", logger.ErrorField(err), logger.String("tenant_id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+
 	return c.JSON(fiber.Map{"tenant_id": id, "status": status})
 }
