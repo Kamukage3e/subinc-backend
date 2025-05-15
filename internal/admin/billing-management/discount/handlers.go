@@ -5,8 +5,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	account "github.com/subinc/subinc-backend/internal/admin/billing-management/account"
-	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
-	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -16,7 +14,6 @@ func NewDiscountHandler(
 	couponService CouponService,
 	creditService CreditService,
 	accountService account.AccountService,
-	rbacService rbac_management.RBACService,
 	logger logger.Logger,
 ) *DiscountHandler {
 	return &DiscountHandler{
@@ -24,19 +21,11 @@ func NewDiscountHandler(
 		CouponService:   couponService,
 		CreditService:   creditService,
 		AccountService:  accountService,
-		RBACService:     rbacService,
 		Logger:          logger,
 	}
 }
 
 func (h *DiscountHandler) GetDiscount(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "billing_discount", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetDiscount: id required", logger.String("id", id))
@@ -51,13 +40,6 @@ func (h *DiscountHandler) GetDiscount(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) GetDiscountByCode(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "billing_discount", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	code := c.Params("code")
 	if code == "" {
 		logger.LogError("GetDiscountByCode: code required", logger.String("code", code))
@@ -72,13 +54,6 @@ func (h *DiscountHandler) GetDiscountByCode(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) ListDiscounts(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "billing_discount", "list")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	activeOnly := c.QueryBool("active_only", false)
 	page := c.QueryInt("page", 1)
 	pageSize := c.QueryInt("page_size", 100)
@@ -97,13 +72,6 @@ func (h *DiscountHandler) ListDiscounts(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) CreateDiscount(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "discount", "create")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input Discount
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateDiscount: invalid input", logger.ErrorField(err))
@@ -129,13 +97,6 @@ func (h *DiscountHandler) CreateDiscount(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) UpdateDiscount(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "discount", "update")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("UpdateDiscount: id required")
@@ -166,13 +127,6 @@ func (h *DiscountHandler) UpdateDiscount(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) DeleteDiscount(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "discount", "delete")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("DeleteDiscount: id required", logger.String("id", id))
@@ -192,13 +146,6 @@ func (h *DiscountHandler) DeleteDiscount(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) CreateCoupon(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "billing_coupon", "create")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input Coupon
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateCoupon: invalid input", logger.ErrorField(err))
@@ -224,13 +171,6 @@ func (h *DiscountHandler) CreateCoupon(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) UpdateCoupon(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "billing_coupon", "update")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("UpdateCoupon: id required", logger.String("id", id))
@@ -266,13 +206,6 @@ func (h *DiscountHandler) UpdateCoupon(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) DeleteCoupon(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "billing_coupon", "delete")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("DeleteCoupon: id required", logger.String("id", id))
@@ -293,13 +226,6 @@ func (h *DiscountHandler) DeleteCoupon(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) GetCoupon(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "billing_coupon", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetCoupon: id required", logger.String("id", id))
@@ -314,13 +240,6 @@ func (h *DiscountHandler) GetCoupon(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) GetCouponByCode(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "billing_coupon", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	code := c.Params("code")
 	if code == "" {
 		logger.LogError("GetCouponByCode: code required", logger.String("code", code))
@@ -335,13 +254,6 @@ func (h *DiscountHandler) GetCouponByCode(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) ListCoupons(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "billing_coupon", "list")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	discountID := c.Query("discount_id")
 	isActive := c.QueryBool("is_active", false)
 	page := c.QueryInt("page", 1)
@@ -361,13 +273,6 @@ func (h *DiscountHandler) ListCoupons(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) CreateCredit(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "credit", "create")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input Credit
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateCredit: invalid input", logger.ErrorField(err))
@@ -416,13 +321,6 @@ func (h *DiscountHandler) CreateCredit(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) UpdateCredit(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "credit", "update")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("UpdateCredit: id required")
@@ -453,13 +351,6 @@ func (h *DiscountHandler) UpdateCredit(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) PatchCredit(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "credit", "patch")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("PatchCredit: id required")
@@ -487,13 +378,6 @@ func (h *DiscountHandler) PatchCredit(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) DeleteCredit(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "credit", "delete")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("DeleteCredit: id required", logger.String("id", id))
@@ -513,13 +397,6 @@ func (h *DiscountHandler) DeleteCredit(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) GetCredit(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "credit", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetCredit: id required", logger.String("id", id))
@@ -534,13 +411,6 @@ func (h *DiscountHandler) GetCredit(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) ListCredits(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "credit", "list")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	accountID := c.Query("account_id")
 	invoiceID := c.Query("invoice_id")
 	status := c.Query("status")
@@ -561,13 +431,6 @@ func (h *DiscountHandler) ListCredits(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) RedeemCoupon(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "coupon", "redeem")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("RedeemCoupon: id required", logger.String("id", id))
@@ -595,13 +458,6 @@ func (h *DiscountHandler) RedeemCoupon(c *fiber.Ctx) error {
 }
 
 func (h *DiscountHandler) ApplyCreditsToInvoice(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "credit", "apply")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})

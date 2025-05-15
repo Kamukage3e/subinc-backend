@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	user_management "github.com/subinc/subinc-backend/internal/admin/user-management"
@@ -15,7 +14,6 @@ type ProjectHandler struct {
 	ProjectSettingsService ProjectSettingsService
 	ProjectAuditLogService ProjectAuditLogService
 	SecurityAuditLogger    security_management.AuditLogger      // optional, may be nil
-	RBACService            rbac_management.RBACService          // optional, may be nil
 	RateLimitService       security_management.RateLimitService // for distributed rate limiting
 	UserService            user_management.UserService          // optional, may be nil
 	Store                  *PostgresStore

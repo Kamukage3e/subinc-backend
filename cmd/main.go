@@ -24,6 +24,7 @@ import (
 	user_management "github.com/subinc/subinc-backend/internal/admin/user-management"
 
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
+	"github.com/subinc/subinc-backend/pkg/rbac"
 	"github.com/subinc/subinc-backend/pkg/session"
 )
 
@@ -113,7 +114,7 @@ func main() {
 
 	ctx := context.Background()
 	serverConfigStore := server_config.NewStore(ownerDBPool, logger.NewProduction(logger.InfoLevel, "json", false, "owner", "prod"))
-	serverConfigService := server_config.NewService(serverConfigStore, 30*time.Second, &security_management.PostgresStore{DB: ownerDBPool}, nil)
+	serverConfigService := server_config.NewService(serverConfigStore, 30*time.Second, &security_management.PostgresStore{DB: ownerDBPool})
 
 	logCfg, err := serverConfigService.GetOwnerLoggingConfig(ctx)
 	if err != nil {
@@ -144,8 +145,8 @@ func main() {
 	store := &rbac_management.PostgresStore{DB: ownerDBPool, AuditLogger: securityStore}
 	rbacHandler := rbac_management.NewRBACHandler(store)
 	rbac_management.RegisterAdminRBACRoutes(adminAPI, rbacHandler, jwtCfg.SecretName, securityStore)
-	serverConfigHandler := server_config.NewHandler(serverConfigService, logr)
-	server_config.RegisterAdminServerConfigRoutes(adminAPI, serverConfigHandler, jwtCfg.SecretName, securityStore)
+
+	// Initialize RBAC configurator for centralized RBAC control
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "localhost:6379"
@@ -161,6 +162,21 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create Redis session manager: %v", err)
 	}
+	rbacService := store // Implements RBACService interface
+	rbacConfigurator := rbac.InitializeRBAC(rbacService, redisSessionManager, serverConfigService, 30*time.Second)
+
+	// Setup common bypass patterns (login, health checks, etc.)
+	if err := rbac.SetupCommonBypassPatterns(rbacConfigurator); err != nil {
+		log.Printf("Warning: Failed to setup common RBAC bypass patterns: %v", err)
+	}
+
+	// Apply RBAC middleware to protected API groups
+	protectedAPI := adminAPI.Group("/", rbacConfigurator.Middleware())
+
+	// Continue with regular route registration, but use protectedAPI for routes that should be RBAC-protected
+	serverConfigHandler := server_config.NewHandler(serverConfigService, logr)
+	server_config.RegisterAdminServerConfigRoutes(protectedAPI, serverConfigHandler, jwtCfg.SecretName, securityStore)
+
 	redisSessionAdapter := session.NewRedisSessionAdapter(redisSessionManager)
 	securityHandler := &security_management.SecurityHandler{
 		Store:                       securityStore,
@@ -182,25 +198,25 @@ func main() {
 
 	userStore := user_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 	userHandler := user_management.NewUserHandler(userStore)
-	user_management.RegisterRoutes(adminAPI, userHandler, jwtCfg.SecretName, securityStore)
+	user_management.RegisterRoutes(protectedAPI, userHandler, jwtCfg.SecretName, securityStore)
 
 	tenantStore := tenant_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 	tenantHandler := tenant_management.NewTenantHandler(tenantStore, tenantStore)
-	tenant_management.RegisterRoutes(adminAPI, tenantHandler, jwtCfg.SecretName, securityStore)
+	tenant_management.RegisterRoutes(protectedAPI, tenantHandler, jwtCfg.SecretName, securityStore)
 
 	projectStore := project_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 	projectHandler := project_management.NewProjectHandler(projectStore)
-	project_management.RegisterRoutes(adminAPI, projectHandler, jwtCfg.SecretName, securityStore)
+	project_management.RegisterRoutes(protectedAPI, projectHandler, jwtCfg.SecretName, securityStore)
 
 	orgStore := organization_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
 	orgHandler := organization_management.NewOrganizationHandler(orgStore)
-	organization_management.RegisterRoutes(adminAPI, orgHandler, jwtCfg.SecretName, securityStore)
-	
+	organization_management.RegisterRoutes(protectedAPI, orgHandler, jwtCfg.SecretName, securityStore)
+
 	billingStore := billing_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
-		paymentStore := &payment.PostgresStore{DB: ownerDBPool}
-	billingHandler := billing_management.NewBillingHandler(billingStore, paymentStore) 
+	paymentStore := &payment.PostgresStore{DB: ownerDBPool}
+	billingHandler := billing_management.NewBillingHandler(billingStore, paymentStore)
 	billingHandler.Notify = securityStore
-	billing_management.RegisterRoutes(adminAPI, billingHandler, jwtCfg.SecretName, securityStore)
+	billing_management.RegisterRoutes(protectedAPI, billingHandler, jwtCfg.SecretName, securityStore)
 
 	// Dunning worker setup
 

@@ -35,7 +35,7 @@ func (s *Store) Get(ctx context.Context, key string) (ServerConfig, error) {
 			}, nil
 		}
 		s.log.Error("server_config get failed", logger.ErrorField(err), logger.String("key", key))
-		return ServerConfig{}, errors.New("config not found")
+		return ServerConfig{}, ErrConfigNotFound
 	}
 	return cfg, nil
 }

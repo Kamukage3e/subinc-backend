@@ -225,13 +225,6 @@ func (h *SecurityHandler) EnableMFA(c *fiber.Ctx) error {
 	if err != nil || !cfg.MFAEnabled {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "MFA disabled"})
 	}
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "mfa", "enable")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 
 	userID := c.Params("user_id")
 	if userID == "" {
@@ -265,13 +258,6 @@ func (h *SecurityHandler) DisableMFA(c *fiber.Ctx) error {
 	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
 	if err != nil || !cfg.MFAEnabled {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "MFA disabled"})
-	}
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "mfa", "disable")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
 	}
 
 	userID := c.Params("user_id")
@@ -467,15 +453,6 @@ func (h *SecurityHandler) DeleteUserSession(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) RevokeUserSession(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "session", "revoke")
-		if err != nil || !permitted {
-			logger.LogError("RevokeUserSession: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-
 	userID := c.Params("user_id")
 	if userID == "" {
 		logger.LogError("RevokeUserSession: missing user_id parameter")
@@ -519,14 +496,6 @@ func (h *SecurityHandler) ListUserAPIKeys(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) CreateUserAPIKey(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "api_key", "create")
-		if err != nil || !permitted {
-			logger.LogError("CreateUserAPIKey: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 
 	userID := c.Params("user_id")
 	if userID == "" {
@@ -551,14 +520,6 @@ func (h *SecurityHandler) CreateUserAPIKey(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) RevokeUserAPIKey(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "api_key", "revoke")
-		if err != nil || !permitted {
-			logger.LogError("RevokeUserAPIKey: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 
 	userID := c.Params("user_id")
 	if userID == "" {
@@ -602,13 +563,6 @@ func (h *SecurityHandler) ListUserDevices(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) RevokeUserDevice(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "device", "revoke")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 
 	userID := c.Params("user_id")
 	if userID == "" {
@@ -656,14 +610,6 @@ func (h *SecurityHandler) TrustDevice(c *fiber.Ctx) error {
 
 func (h *SecurityHandler) ListBreaches(c *fiber.Ctx) error {
 	// Permission check
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "breach", "read")
-		if err != nil || !permitted {
-			logger.LogError("RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 
 	// Pagination parameters
 	page := c.QueryInt("page", 1)
@@ -727,15 +673,6 @@ func (h *SecurityHandler) ListBreaches(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) GetBreach(c *fiber.Ctx) error {
-	// Permission check
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "breach", "read")
-		if err != nil || !permitted {
-			logger.LogError("RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 
 	breachID := c.Params("breach_id")
 	if breachID == "" {
@@ -793,14 +730,6 @@ func (h *SecurityHandler) ListSecurityPolicies(c *fiber.Ctx) error {
 
 func (h *SecurityHandler) CreateSecurityPolicy(c *fiber.Ctx) error {
 	// Permission check
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "security_policy", "create")
-		if err != nil || !permitted {
-			logger.LogError("CreateSecurityPolicy: RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 
 	var policy SecurityPolicy
 	if err := c.BodyParser(&policy); err != nil {
@@ -832,15 +761,6 @@ func (h *SecurityHandler) CreateSecurityPolicy(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) UpdateSecurityPolicy(c *fiber.Ctx) error {
-	// Permission check
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "security_policy", "update")
-		if err != nil || !permitted {
-			logger.LogError("UpdateSecurityPolicy: RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 
 	policyID := c.Params("id")
 	if policyID == "" {
@@ -875,15 +795,6 @@ func (h *SecurityHandler) UpdateSecurityPolicy(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) DeleteSecurityPolicy(c *fiber.Ctx) error {
-	// Permission check
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "security_policy", "delete")
-		if err != nil || !permitted {
-			logger.LogError("DeleteSecurityPolicy: RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 
 	policyID := c.Params("id")
 	if policyID == "" {
@@ -942,15 +853,6 @@ func (h *SecurityHandler) DeleteSecurityPolicy(c *fiber.Ctx) error {
 // --- Security Analytics Handlers ---
 
 func (h *SecurityHandler) GetSecurityAnalytics(c *fiber.Ctx) error {
-	// Permission check
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "security_analytics", "read")
-		if err != nil || !permitted {
-			logger.LogError("GetSecurityAnalytics: RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 
 	tenantID := c.Params("tenant_id")
 	if tenantID == "" {
@@ -972,15 +874,6 @@ func (h *SecurityHandler) GetSecurityAnalytics(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) ListAnomalies(c *fiber.Ctx) error {
-	// Permission check
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "security_analytics", "read")
-		if err != nil || !permitted {
-			logger.LogError("ListAnomalies: RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 
 	tenantID := c.Params("tenant_id")
 	if tenantID == "" {
@@ -1054,15 +947,6 @@ func (h *SecurityHandler) ListAnomalies(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) GetAnomaly(c *fiber.Ctx) error {
-	// Permission check
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "security_analytics", "read")
-		if err != nil || !permitted {
-			logger.LogError("GetAnomaly: RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 
 	tenantID := c.Params("tenant_id")
 	if tenantID == "" {
@@ -2578,15 +2462,6 @@ func (h *SecurityHandler) SetSessionConfig(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) ListSecurityAuditLogs(c *fiber.Ctx) error {
-	// Permission check
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "audit", "read")
-		if err != nil || !permitted {
-			logger.LogError("RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 
 	// Pagination parameters
 	page := c.QueryInt("page", 1)
@@ -2775,15 +2650,6 @@ func (h *SecurityHandler) ResetUserPassword(c *fiber.Ctx) error {
 }
 
 func (h *SecurityHandler) GetSecurityAuditLog(c *fiber.Ctx) error {
-	// Permission check
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "audit", "read")
-		if err != nil || !permitted {
-			logger.LogError("RBAC permission denied", logger.ErrorField(err), logger.String("actor", actorID))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 
 	logID := c.Params("log_id")
 	if logID == "" {

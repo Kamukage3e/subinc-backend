@@ -28,13 +28,6 @@ type PostgresStore struct {
 	ServerConfigService ServerConfigService
 }
 
-// Define RBACService interface locally to avoid import cycle
-// This must match the interface in handlers.go and rbac-management
-
-type RBACService interface {
-	CheckPermission(ctx interface{}, actorID, resource, action string) (bool, error)
-}
-
 // Define a minimal UserService interface locally to avoid import cycle
 // Only the method(s) needed for password reset notification are included
 
@@ -56,7 +49,6 @@ type SecurityHandler struct {
 	DeviceService               DeviceService
 	BreachService               BreachService
 	SecurityPolicyService       SecurityPolicyService
-	RBACService                 RBACService
 	Store                       *PostgresStore
 	SecurityAnalyticsService    SecurityAnalyticsService
 	NotificationService         NotificationService

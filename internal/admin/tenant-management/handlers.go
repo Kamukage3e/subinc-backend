@@ -5,7 +5,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/subinc/subinc-backend/internal/pkg/contextutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -40,13 +39,6 @@ func (t *Tenant) Validate() error {
 //	400: ErrorResponse
 //	422: ErrorResponse
 func (h *TenantAdminHandler) CreateTenant(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant", "create")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	if h.TenantStore == nil {
 		logger.LogError("CreateTenant: store not configured")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "tenant store not configured"})
@@ -80,13 +72,6 @@ func (h *TenantAdminHandler) CreateTenant(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	404: ErrorResponse
 func (h *TenantAdminHandler) GetTenant(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	if h.TenantStore == nil {
 		logger.LogError("GetTenant: store not configured")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "tenant store not configured"})
@@ -121,13 +106,6 @@ func (h *TenantAdminHandler) GetTenant(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	422: ErrorResponse
 func (h *TenantAdminHandler) UpdateTenant(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant", "update")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	if h.TenantStore == nil {
 		logger.LogError("UpdateTenant: store not configured")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "tenant store not configured"})
@@ -167,13 +145,6 @@ func (h *TenantAdminHandler) UpdateTenant(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	422: ErrorResponse
 func (h *TenantAdminHandler) DeleteTenant(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant", "delete")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	if h.TenantStore == nil {
 		logger.LogError("DeleteTenant: store not configured")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "tenant store not configured"})
@@ -203,13 +174,6 @@ func (h *TenantAdminHandler) DeleteTenant(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	422: ErrorResponse
 func (h *TenantAdminHandler) ListTenants(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant", "list")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	if h.TenantStore == nil {
 		logger.LogError("ListTenants: store not configured")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "tenant store not configured"})
@@ -242,13 +206,6 @@ func (h *TenantAdminHandler) ListTenants(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	404: ErrorResponse
 func (h *TenantAdminHandler) GetTenantSettings(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant_settings", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	if h.TenantSettingsStore == nil {
 		logger.LogError("GetTenantSettings: store not configured")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "settings store not configured"})
@@ -279,13 +236,6 @@ func (h *TenantAdminHandler) GetTenantSettings(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	422: ErrorResponse
 func (h *TenantAdminHandler) UpdateTenantSettings(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant_settings", "update")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	if h.TenantSettingsStore == nil {
 		logger.LogError("UpdateTenantSettings: store not configured")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "settings store not configured"})
@@ -338,14 +288,6 @@ func validateTenantSettings(settings map[string]interface{}) error {
 //	400: ErrorResponse
 //	422: ErrorResponse
 func (h *TenantAdminHandler) SetTenantStatus(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant_lifecycle", "update")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
@@ -380,14 +322,6 @@ func (h *TenantAdminHandler) SetTenantStatus(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	422: ErrorResponse
 func (h *TenantAdminHandler) GetTenantStatus(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant_lifecycle", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})

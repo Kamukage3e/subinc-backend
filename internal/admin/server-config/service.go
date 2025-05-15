@@ -7,8 +7,12 @@ import (
 	"sync"
 	"time"
 
-	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+)
+
+// Common errors
+var (
+	ErrConfigNotFound = errors.New("config not found")
 )
 
 // Service provides runtime CRUD, in-memory cache, and hot-reload for server config.
@@ -19,17 +23,15 @@ type Service struct {
 	refresh     time.Duration
 	stopCh      chan struct{}
 	AuditLogger security_management.AuditLogger
-	RBACService rbac_management.RBACService
 }
 
-func NewService(store *Store, refresh time.Duration, auditLogger security_management.AuditLogger, rbac rbac_management.RBACService) *Service {
+func NewService(store *Store, refresh time.Duration, auditLogger security_management.AuditLogger) *Service {
 	s := &Service{
 		store:       store,
 		cache:       make(map[string]ServerConfig),
 		refresh:     refresh,
 		stopCh:      make(chan struct{}),
 		AuditLogger: auditLogger,
-		RBACService: rbac,
 	}
 	s.reload(context.Background())
 	go s.autoReload()
@@ -45,6 +47,9 @@ func (s *Service) Get(ctx context.Context, key string) (ServerConfig, error) {
 	}
 	cfg, err := s.store.Get(ctx, key)
 	if err != nil {
+		if err.Error() == "config not found" {
+			return ServerConfig{}, ErrConfigNotFound
+		}
 		return ServerConfig{}, err
 	}
 	s.mu.Lock()
@@ -868,4 +873,55 @@ func (s *Service) SetOwnerGraphQLConfig(ctx context.Context, gqlCfg GraphQLConfi
 		return ServerConfig{}, err
 	}
 	return s.Set(ctx, "owner_admin_graphql_config", string(b), updatedBy)
+}
+
+// GetOwnerRBACConfig returns the current owner-admin RBAC config from server_config (runtime, hot-reloadable)
+func (s *Service) GetOwnerRBACConfig(ctx context.Context) (RBACConfig, error) {
+	cfg, err := s.Get(ctx, "owner_admin_rbac_config")
+	if err != nil && err != ErrConfigNotFound {
+		return RBACConfig{}, err
+	}
+
+	if err == ErrConfigNotFound || cfg.Value == "" {
+		// Return default config if not found
+		return RBACConfig{
+			Enabled:             false,
+			DefaultDenyUnmapped: false,
+			BypassPatterns: []string{
+				`^/health$`,
+				`^/metrics$`,
+				`^/api/v1/auth/login$`,
+				`^/api/v1/auth/logout$`,
+				`^/api/v1/auth/register$`,
+				`^/api/v1/auth/verify-email$`,
+				`^/api/v1/auth/forgot-password$`,
+				`^/api/v1/auth/reset-password$`,
+				`^/api/v1/auth/refresh-token$`,
+				`^/api/v1/bootstrap/`,
+				`^/swagger\.`,
+				`^/docs/`,
+				`^/static/`,
+			},
+			RoutePermissions: []RoutePermission{},
+			LogUnauthorized:  true,
+			LogForbidden:     true,
+		}, nil
+	}
+
+	var rbacCfg RBACConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &rbacCfg); err != nil {
+		return RBACConfig{}, err
+	}
+
+	return rbacCfg, nil
+}
+
+// SetOwnerRBACConfig sets the owner-admin RBAC config in server_config (runtime, hot-reloadable)
+func (s *Service) SetOwnerRBACConfig(ctx context.Context, rbacCfg RBACConfig, updatedBy string) (ServerConfig, error) {
+	val, err := json.Marshal(rbacCfg)
+	if err != nil {
+		return ServerConfig{}, err
+	}
+
+	return s.Set(ctx, "owner_admin_rbac_config", string(val), updatedBy)
 }

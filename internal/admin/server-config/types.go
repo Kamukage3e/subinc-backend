@@ -59,6 +59,26 @@ type LoggingConfig struct {
 	Env     string `json:"env"`
 }
 
+// RBACConfig represents the owner-admin RBAC config, stored as JSON in server_config
+// This enables runtime, DB-backed, hot-reloadable RBAC config for owner-admin
+// Key: "owner_admin_rbac_config"
+type RBACConfig struct {
+	Enabled             bool              `json:"enabled"`
+	DefaultDenyUnmapped bool              `json:"default_deny_unmapped"`
+	BypassPatterns      []string          `json:"bypass_patterns"`
+	RoutePermissions    []RoutePermission `json:"route_permissions"`
+	LogUnauthorized     bool              `json:"log_unauthorized"`
+	LogForbidden        bool              `json:"log_forbidden"`
+}
+
+// RoutePermission defines a mapping between an API route and RBAC permissions
+type RoutePermission struct {
+	Method   string `json:"method"`
+	Path     string `json:"path"`
+	Resource string `json:"resource"`
+	Action   string `json:"action"`
+}
+
 // JWTSecretConfig represents the owner-admin JWT secret config, stored as JSON in server_config
 // This enables runtime, DB-backed, hot-reloadable JWT secret config for owner-admin
 // Key: "owner_admin_jwt_secret_config"

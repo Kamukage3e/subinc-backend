@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	user_management "github.com/subinc/subinc-backend/internal/admin/user-management"
@@ -73,10 +72,6 @@ type TenantAdminHandler struct {
 	// AuditLogger records security-relevant tenant operations
 	// Optional for deployments that don't require audit logging
 	AuditLogger security_management.AuditLogger
-
-	// RBACService handles permission checks for tenant operations
-	// Optional for deployments that don't require RBAC
-	RBACService rbac_management.RBACService
 
 	// UserHandler handles delegated user operations
 	// Optional for deployments that don't need user management integration

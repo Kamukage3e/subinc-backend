@@ -6,6 +6,7 @@ import (
 
 	"fmt"
 	"net/smtp"
+	"regexp"
 	"time"
 
 	"github.com/subinc/subinc-backend/internal/pkg/providercheck"
@@ -48,17 +49,7 @@ func (h *Handler) GetConfig(c *fiber.Ctx) error {
 }
 
 func (h *Handler) SetConfig(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set")
-		if err != nil || !permitted {
-			h.log.Error("SetConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+
 	var input struct {
 		Key   string `json:"key"`
 		Value string `json:"value"`
@@ -141,17 +132,6 @@ func (h *Handler) GetMigrationStatus(c *fiber.Ctx) error {
 }
 
 func (h *Handler) SetMigrationStatus(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "migration_status", "set")
-		if err != nil || !permitted {
-			h.log.Error("SetMigrationStatus: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input MigrationStatus
 	if err := c.BodyParser(&input); err != nil || input.Name == "" {
 		h.log.Error("migration status set failed", logger.ErrorField(err), logger.String("name", input.Name))
@@ -182,17 +162,6 @@ func (h *Handler) GetOwnerDBConfig(c *fiber.Ctx) error {
 
 // SetOwnerDBConfig sets the owner-admin DB config (runtime, hot-reloadable)
 func (h *Handler) SetOwnerDBConfig(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set_owner_db_config")
-		if err != nil || !permitted {
-			h.log.Error("SetOwnerDBConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input OwnerDBConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_owner_db_config failed", logger.ErrorField(err))
@@ -233,17 +202,7 @@ func (h *Handler) GetOwnerLoggingConfig(c *fiber.Ctx) error {
 
 // SetOwnerLoggingConfig sets the owner-admin logging config (runtime, hot-reloadable)
 func (h *Handler) SetOwnerLoggingConfig(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set_owner_logging_config")
-		if err != nil || !permitted {
-			h.log.Error("SetOwnerLoggingConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+
 	var input LoggingConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_owner_logging_config failed", logger.ErrorField(err))
@@ -273,17 +232,7 @@ func (h *Handler) GetOwnerJWTSecretConfig(c *fiber.Ctx) error {
 
 // SetOwnerJWTSecretConfig sets the owner-admin JWT secret config (runtime, hot-reloadable)
 func (h *Handler) SetOwnerJWTSecretConfig(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set_owner_jwt_secret_config")
-		if err != nil || !permitted {
-			h.log.Error("SetOwnerJWTSecretConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+
 	var input JWTSecretConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_owner_jwt_secret_config failed", logger.ErrorField(err))
@@ -330,17 +279,6 @@ func (h *Handler) GetOwnerOAuthConfig(c *fiber.Ctx) error {
 
 // SetOwnerOAuthConfig sets the owner-admin OAuth config (runtime, hot-reloadable)
 func (h *Handler) SetOwnerOAuthConfig(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set_owner_oauth_config")
-		if err != nil || !permitted {
-			h.log.Error("SetOwnerOAuthConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input OAuthConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_owner_oauth_config failed", logger.ErrorField(err))
@@ -390,17 +328,6 @@ func (h *Handler) GetOwnerSAMLConfig(c *fiber.Ctx) error {
 
 // SetOwnerSAMLConfig sets the owner-admin SAML config (runtime, hot-reloadable)
 func (h *Handler) SetOwnerSAMLConfig(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set_owner_saml_config")
-		if err != nil || !permitted {
-			h.log.Error("SetOwnerSAMLConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input SAMLConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_owner_saml_config failed", logger.ErrorField(err))
@@ -447,17 +374,6 @@ func (h *Handler) GetOwnerRedisConfig(c *fiber.Ctx) error {
 
 // SetOwnerRedisConfig sets the owner-admin Redis config (runtime, hot-reloadable)
 func (h *Handler) SetOwnerRedisConfig(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set_owner_redis_config")
-		if err != nil || !permitted {
-			h.log.Error("SetOwnerRedisConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input RedisConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_owner_redis_config failed", logger.ErrorField(err))
@@ -504,17 +420,6 @@ func (h *Handler) GetOwnerAWSConfig(c *fiber.Ctx) error {
 
 // SetOwnerAWSConfig sets the owner-admin AWS config (runtime, hot-reloadable)
 func (h *Handler) SetOwnerAWSConfig(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set_owner_aws_config")
-		if err != nil || !permitted {
-			h.log.Error("SetOwnerAWSConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input AWSConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_owner_aws_config failed", logger.ErrorField(err))
@@ -563,17 +468,6 @@ func (h *Handler) GetOwnerPaymentProviderConfig(c *fiber.Ctx) error {
 
 // SetOwnerPaymentProviderConfig sets the owner-admin payment provider config (runtime, hot-reloadable)
 func (h *Handler) SetOwnerPaymentProviderConfig(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set_owner_payment_provider_config")
-		if err != nil || !permitted {
-			h.log.Error("SetOwnerPaymentProviderConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input PaymentProviderConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_owner_payment_provider_config failed", logger.ErrorField(err))
@@ -627,17 +521,6 @@ func (h *Handler) GetOwnerOpenAIConfig(c *fiber.Ctx) error {
 
 // SetOwnerOpenAIConfig sets the owner-admin OpenAI config (runtime, hot-reloadable)
 func (h *Handler) SetOwnerOpenAIConfig(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set_owner_openai_config")
-		if err != nil || !permitted {
-			h.log.Error("SetOwnerOpenAIConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input OpenAIConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_owner_openai_config failed", logger.ErrorField(err))
@@ -685,17 +568,6 @@ func (h *Handler) GetOwnerAdminUserConfig(c *fiber.Ctx) error {
 
 // SetOwnerAdminUserConfig sets the owner-admin initial admin credentials (runtime, hot-reloadable)
 func (h *Handler) SetOwnerAdminUserConfig(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set_owner_admin_user_config")
-		if err != nil || !permitted {
-			h.log.Error("SetOwnerAdminUserConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input AdminUserConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_owner_admin_user_config failed", logger.ErrorField(err))
@@ -725,17 +597,6 @@ func (h *Handler) GetOwnerHashIDConfig(c *fiber.Ctx) error {
 
 // SetOwnerHashIDConfig sets the owner-admin hashid salt (runtime, hot-reloadable)
 func (h *Handler) SetOwnerHashIDConfig(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set_owner_hashid_config")
-		if err != nil || !permitted {
-			h.log.Error("SetOwnerHashIDConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input HashIDConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_owner_hashid_config failed", logger.ErrorField(err))
@@ -765,17 +626,6 @@ func (h *Handler) GetOwnerCORSConfig(c *fiber.Ctx) error {
 
 // SetOwnerCORSConfig sets the owner-admin CORS config (runtime, hot-reloadable)
 func (h *Handler) SetOwnerCORSConfig(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set_owner_cors_config")
-		if err != nil || !permitted {
-			h.log.Error("SetOwnerCORSConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input CORSConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_owner_cors_config failed", logger.ErrorField(err))
@@ -805,17 +655,6 @@ func (h *Handler) GetOwnerBillingConfig(c *fiber.Ctx) error {
 
 // SetOwnerBillingConfig sets the owner-admin billing config (runtime, hot-reloadable)
 func (h *Handler) SetOwnerBillingConfig(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set_owner_billing_config")
-		if err != nil || !permitted {
-			h.log.Error("SetOwnerBillingConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input BillingConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_owner_billing_config failed", logger.ErrorField(err))
@@ -845,17 +684,6 @@ func (h *Handler) GetOwnerWebhookConfig(c *fiber.Ctx) error {
 
 // SetOwnerWebhookConfig sets the owner-admin webhook config (runtime, hot-reloadable)
 func (h *Handler) SetOwnerWebhookConfig(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set_owner_webhook_config")
-		if err != nil || !permitted {
-			h.log.Error("SetOwnerWebhookConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input WebhookConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_owner_webhook_config failed", logger.ErrorField(err))
@@ -902,17 +730,6 @@ func (h *Handler) GetOwnerSessionConfig(c *fiber.Ctx) error {
 
 // SetOwnerSessionConfig sets the owner-admin session config (runtime, hot-reloadable)
 func (h *Handler) SetOwnerSessionConfig(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set_owner_session_config")
-		if err != nil || !permitted {
-			h.log.Error("SetOwnerSessionConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input SessionConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_owner_session_config failed", logger.ErrorField(err))
@@ -949,17 +766,6 @@ func (h *Handler) SetClientDBConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
-	}
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_db_config")
-		if err != nil || !permitted {
-			h.log.Error("SetClientDBConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
 	}
 	var input ClientDBConfig
 	if err := c.BodyParser(&input); err != nil {
@@ -1008,17 +814,6 @@ func (h *Handler) SetClientRedisConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
-	}
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_redis_config")
-		if err != nil || !permitted {
-			h.log.Error("SetClientRedisConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
 	}
 	var input ClientRedisConfig
 	if err := c.BodyParser(&input); err != nil {
@@ -1073,17 +868,6 @@ func (h *Handler) SetClientAWSConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
-	}
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_aws_config")
-		if err != nil || !permitted {
-			h.log.Error("SetClientAWSConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
 	}
 	var input ClientAWSConfig
 	if err := c.BodyParser(&input); err != nil {
@@ -1140,17 +924,6 @@ func (h *Handler) SetClientSMTPConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
-	}
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_smtp_config")
-		if err != nil || !permitted {
-			h.log.Error("SetClientSMTPConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
 	}
 	var input ClientSMTPConfig
 	if err := c.BodyParser(&input); err != nil {
@@ -1218,17 +991,6 @@ func (h *Handler) SetClientPaymentProviderConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
-	}
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_payment_provider_config")
-		if err != nil || !permitted {
-			h.log.Error("SetClientPaymentProviderConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
 	}
 	var input ClientPaymentProviderConfig
 	if err := c.BodyParser(&input); err != nil {
@@ -1300,17 +1062,6 @@ func (h *Handler) SetClientJWTSecretConfig(c *fiber.Ctx) error {
 	if tenantID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
 	}
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_jwt_secret_config")
-		if err != nil || !permitted {
-			h.log.Error("SetClientJWTSecretConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input ClientJWTSecretConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_client_jwt_secret_config failed", logger.ErrorField(err))
@@ -1364,17 +1115,6 @@ func (h *Handler) SetClientOAuthConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
-	}
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_oauth_config")
-		if err != nil || !permitted {
-			h.log.Error("SetClientOAuthConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
 	}
 	var input ClientOAuthConfig
 	if err := c.BodyParser(&input); err != nil {
@@ -1433,17 +1173,6 @@ func (h *Handler) SetClientSAMLConfig(c *fiber.Ctx) error {
 	if tenantID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
 	}
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_saml_config")
-		if err != nil || !permitted {
-			h.log.Error("SetClientSAMLConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input ClientSAMLConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_client_saml_config failed", logger.ErrorField(err))
@@ -1497,17 +1226,6 @@ func (h *Handler) SetClientOpenAIConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
-	}
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_openai_config")
-		if err != nil || !permitted {
-			h.log.Error("SetClientOpenAIConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
 	}
 	var input ClientOpenAIConfig
 	if err := c.BodyParser(&input); err != nil {
@@ -1564,17 +1282,6 @@ func (h *Handler) SetClientWebhookConfig(c *fiber.Ctx) error {
 	if tenantID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
 	}
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "client_config", "set_client_webhook_config")
-		if err != nil || !permitted {
-			h.log.Error("SetClientWebhookConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input ClientWebhookConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_client_webhook_config failed", logger.ErrorField(err))
@@ -1621,17 +1328,6 @@ func (h *Handler) GetOwnerSMTPConfig(c *fiber.Ctx) error {
 
 // SetOwnerSMTPConfig sets the owner-admin SMTP config (runtime, hot-reloadable)
 func (h *Handler) SetOwnerSMTPConfig(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set_owner_smtp_config")
-		if err != nil || !permitted {
-			h.log.Error("SetOwnerSMTPConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input OwnerSMTPConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("set_owner_smtp_config failed", logger.ErrorField(err))
@@ -1699,17 +1395,6 @@ func (h *Handler) GetOwnerGraphQLConfig(c *fiber.Ctx) error {
 }
 
 func (h *Handler) SetOwnerGraphQLConfig(c *fiber.Ctx) error {
-	if h.Service.RBACService != nil {
-		actorID := c.Locals("actor_id")
-		if actorID == nil {
-			actorID = "system"
-		}
-		permitted, err := h.Service.RBACService.CheckPermission(c.Context(), actorID.(string), "server_config", "set")
-		if err != nil || !permitted {
-			h.log.Error("SetOwnerGraphQLConfig: permission denied", logger.ErrorField(err), logger.String("actor_id", actorID.(string)))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input GraphQLConfig
 	if err := c.BodyParser(&input); err != nil {
 		h.log.Error("server_config set GraphQL failed", logger.ErrorField(err))
@@ -1726,4 +1411,46 @@ func (h *Handler) SetOwnerGraphQLConfig(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(cfg)
+}
+
+// GetOwnerRBACConfig handles GET /owner-rbac-config
+func (h *Handler) GetOwnerRBACConfig(c *fiber.Ctx) error {
+	cfg, err := h.Service.GetOwnerRBACConfig(c.Context())
+	if err != nil {
+		h.log.Error("GetOwnerRBACConfig failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get RBAC config"})
+	}
+	return c.JSON(cfg)
+}
+
+// SetOwnerRBACConfig handles POST /owner-rbac-config
+func (h *Handler) SetOwnerRBACConfig(c *fiber.Ctx) error {
+	var cfg RBACConfig
+	if err := c.BodyParser(&cfg); err != nil {
+		h.log.Error("SetOwnerRBACConfig: parse failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid RBAC config format"})
+	}
+
+	// Validate the configuration
+	// Compile bypass patterns to ensure they're valid regexes
+	for _, pattern := range cfg.BypassPatterns {
+		if _, err := regexp.Compile(pattern); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("Invalid bypass pattern '%s': %v", pattern, err),
+			})
+		}
+	}
+
+	updatedBy := c.Get("X-User-ID", "system")
+	if updatedBy == "" {
+		updatedBy = "unknown"
+	}
+
+	result, err := h.Service.SetOwnerRBACConfig(c.Context(), cfg, updatedBy)
+	if err != nil {
+		h.log.Error("SetOwnerRBACConfig failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to set RBAC config"})
+	}
+
+	return c.JSON(result)
 }

@@ -17,10 +17,8 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
-	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -30,8 +28,6 @@ func NewPaymentHandler(
 	refundService RefundService,
 	manualRefundService ManualRefundService,
 	paymentMethodService PaymentMethodService,
-
-	rbacService rbac_management.RBACService,
 	rateLimitService security_management.RateLimitService,
 	configService *server_config.Service,
 	logger logger.Logger,
@@ -43,7 +39,6 @@ func NewPaymentHandler(
 		RefundService:        refundService,
 		PaymentMethodService: paymentMethodService,
 		ManualRefundService:  manualRefundService,
-		RBACService:          rbacService,
 		RateLimitService:     rateLimitService,
 		ConfigService:        configService,
 		Logger:               logger,
@@ -54,39 +49,21 @@ func NewPaymentHandler(
 
 // CreatePayment handles payment creation
 func (h *PaymentHandler) CreatePayment(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment", "create")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-
 	var input Payment
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreatePayment: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-
 	payment, err := h.PaymentService.CreatePayment(input)
 	if err != nil {
 		logger.LogError("CreatePayment: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create payment"})
 	}
-
 	return c.Status(fiber.StatusCreated).JSON(payment)
 }
 
 // RefundPayment handles payment refund
 func (h *PaymentHandler) RefundPayment(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment", "refund")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
@@ -107,13 +84,6 @@ func (h *PaymentHandler) RefundPayment(c *fiber.Ctx) error {
 
 // GetPaymentStatus handles payment status retrieval
 func (h *PaymentHandler) GetPaymentStatus(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
@@ -128,13 +98,6 @@ func (h *PaymentHandler) GetPaymentStatus(c *fiber.Ctx) error {
 
 // UpdatePayment handles payment update
 func (h *PaymentHandler) UpdatePayment(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment", "update")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
@@ -155,13 +118,6 @@ func (h *PaymentHandler) UpdatePayment(c *fiber.Ctx) error {
 
 // GetPayment handles payment retrieval
 func (h *PaymentHandler) GetPayment(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
@@ -176,13 +132,6 @@ func (h *PaymentHandler) GetPayment(c *fiber.Ctx) error {
 
 // ListPayments handles payment listing
 func (h *PaymentHandler) ListPayments(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment", "list")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	invoiceID := c.Query("invoice_id")
 	page := c.QueryInt("page", 1)
 	pageSize := c.QueryInt("page_size", 20)
@@ -196,14 +145,6 @@ func (h *PaymentHandler) ListPayments(c *fiber.Ctx) error {
 
 // CreatePaymentMethod handles payment method creation
 func (h *PaymentHandler) CreatePaymentMethod(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment_method", "create")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-
 	var input struct {
 		PaymentMethod PaymentMethod     `json:"payment_method"`
 		PaymentData   map[string]string `json:"payment_data"`
@@ -225,13 +166,6 @@ func (h *PaymentHandler) CreatePaymentMethod(c *fiber.Ctx) error {
 
 // UpdatePaymentMethod handles payment method update
 func (h *PaymentHandler) UpdatePaymentMethod(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment_method", "update")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
@@ -252,13 +186,6 @@ func (h *PaymentHandler) UpdatePaymentMethod(c *fiber.Ctx) error {
 
 // PatchPaymentMethod handles payment method patching
 func (h *PaymentHandler) PatchPaymentMethod(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment_method", "patch")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
@@ -271,7 +198,8 @@ func (h *PaymentHandler) PatchPaymentMethod(c *fiber.Ctx) error {
 		logger.LogError("PatchPaymentMethod: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	if err := h.PaymentMethodService.PatchPaymentMethod(id, input.SetDefault, input.Status); err != nil {
+	err := h.PaymentMethodService.PatchPaymentMethod(id, input.SetDefault, input.Status)
+	if err != nil {
 		logger.LogError("PatchPaymentMethod: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to patch payment method"})
 	}
@@ -280,13 +208,6 @@ func (h *PaymentHandler) PatchPaymentMethod(c *fiber.Ctx) error {
 
 // DeletePaymentMethod handles payment method deletion
 func (h *PaymentHandler) DeletePaymentMethod(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment_method", "delete")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
@@ -300,13 +221,6 @@ func (h *PaymentHandler) DeletePaymentMethod(c *fiber.Ctx) error {
 
 // GetPaymentMethod handles payment method retrieval
 func (h *PaymentHandler) GetPaymentMethod(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment_method", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
@@ -321,14 +235,6 @@ func (h *PaymentHandler) GetPaymentMethod(c *fiber.Ctx) error {
 
 // ListPaymentMethods handles payment method listing
 func (h *PaymentHandler) ListPaymentMethods(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "payment_method", "list")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-
 	accountID := c.Query("account_id")
 	status := c.Query("status")
 	page, _ := strconv.Atoi(c.Query("page", "1"))
@@ -345,14 +251,6 @@ func (h *PaymentHandler) ListPaymentMethods(c *fiber.Ctx) error {
 
 // CreateRefund handles refund creation
 func (h *PaymentHandler) CreateRefund(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "refund", "create")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-
 	var input Refund
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateRefund: invalid input", logger.ErrorField(err))
@@ -370,13 +268,6 @@ func (h *PaymentHandler) CreateRefund(c *fiber.Ctx) error {
 
 // UpdateRefund handles refund update
 func (h *PaymentHandler) UpdateRefund(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "refund", "update")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
@@ -390,13 +281,6 @@ func (h *PaymentHandler) UpdateRefund(c *fiber.Ctx) error {
 
 // DeleteRefund handles refund deletion
 func (h *PaymentHandler) DeleteRefund(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "refund", "delete")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
@@ -410,13 +294,6 @@ func (h *PaymentHandler) DeleteRefund(c *fiber.Ctx) error {
 
 // GetRefund handles refund retrieval
 func (h *PaymentHandler) GetRefund(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "refund", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
@@ -431,14 +308,6 @@ func (h *PaymentHandler) GetRefund(c *fiber.Ctx) error {
 
 // ListRefunds handles refund listing
 func (h *PaymentHandler) ListRefunds(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "refund", "list")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-
 	paymentID := c.Query("payment_id")
 	invoiceID := c.Query("invoice_id")
 	status := c.Query("status")
@@ -1199,13 +1068,6 @@ func (s *StripeProvider) GetPaymentStatus(ctx context.Context, paymentID string)
 }
 
 func (h *PaymentHandler) CreateDispute(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute", "create")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input Dispute
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateDispute: invalid input", logger.ErrorField(err))
@@ -1222,13 +1084,6 @@ func (h *PaymentHandler) CreateDispute(c *fiber.Ctx) error {
 }
 
 func (h *PaymentHandler) ListDisputes(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute", "list")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	tenantID := c.Query("tenant_id")
 	paymentID := c.Query("payment_id")
 	status := DisputeStatus(c.Query("status"))
@@ -1246,13 +1101,6 @@ func (h *PaymentHandler) ListDisputes(c *fiber.Ctx) error {
 }
 
 func (h *PaymentHandler) GetDispute(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
@@ -1266,13 +1114,6 @@ func (h *PaymentHandler) GetDispute(c *fiber.Ctx) error {
 }
 
 func (h *PaymentHandler) UpdateDispute(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute", "update")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
@@ -1293,13 +1134,6 @@ func (h *PaymentHandler) UpdateDispute(c *fiber.Ctx) error {
 }
 
 func (h *PaymentHandler) DeleteDispute(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute", "delete")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
@@ -1316,13 +1150,6 @@ func (h *PaymentHandler) DeleteDispute(c *fiber.Ctx) error {
 }
 
 func (h *PaymentHandler) CreateEvidence(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute_evidence", "create")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	disputeID := c.Params("id")
 	if disputeID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "dispute_id required"})
@@ -1341,13 +1168,6 @@ func (h *PaymentHandler) CreateEvidence(c *fiber.Ctx) error {
 }
 
 func (h *PaymentHandler) ListEvidence(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute_evidence", "list")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	disputeID := c.Params("id")
 	tenantID := c.Query("tenant_id")
 	page := c.QueryInt("page", 1)
@@ -1364,13 +1184,6 @@ func (h *PaymentHandler) ListEvidence(c *fiber.Ctx) error {
 }
 
 func (h *PaymentHandler) GetEvidence(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute_evidence", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	evidenceID := c.Params("evidence_id")
 	if evidenceID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "evidence_id required"})
@@ -1384,13 +1197,6 @@ func (h *PaymentHandler) GetEvidence(c *fiber.Ctx) error {
 }
 
 func (h *PaymentHandler) UpdateEvidence(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute_evidence", "update")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	evidenceID := c.Params("evidence_id")
 	if evidenceID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "evidence_id required"})
@@ -1411,13 +1217,6 @@ func (h *PaymentHandler) UpdateEvidence(c *fiber.Ctx) error {
 }
 
 func (h *PaymentHandler) DeleteEvidence(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute_evidence", "delete")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	evidenceID := c.Params("evidence_id")
 	if evidenceID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "evidence_id required"})

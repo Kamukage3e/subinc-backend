@@ -5,18 +5,16 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 )
 
+// AccountHandler handles account endpoints
 type AccountHandler struct {
 	AccountService      AccountService
-	RBACService         rbac_management.RBACService
-	ServerConfigService server_config.Service
-	Store               PostgresStore
 	NotificationService security_management.NotificationService
 }
+
 type Account struct {
 	ID        string    `json:"id"`
 	TenantID  string    `json:"tenant_id"`

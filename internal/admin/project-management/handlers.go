@@ -27,13 +27,7 @@ func (p *Project) Validate() error {
 }
 
 func (h *ProjectHandler) CreateProject(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "create")
-		if err != nil || !permitted {
-			logger.LogError("RBAC permission denied", logger.ErrorField(err))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+
 	var input Project
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateProject: invalid input", logger.ErrorField(err))
@@ -53,13 +47,7 @@ func (h *ProjectHandler) CreateProject(c *fiber.Ctx) error {
 }
 
 func (h *ProjectHandler) UpdateProject(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "update")
-		if err != nil || !permitted {
-			logger.LogError("RBAC permission denied", logger.ErrorField(err))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("UpdateProject: id required")
@@ -85,13 +73,7 @@ func (h *ProjectHandler) UpdateProject(c *fiber.Ctx) error {
 }
 
 func (h *ProjectHandler) DeleteProject(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "delete")
-		if err != nil || !permitted {
-			logger.LogError("RBAC permission denied", logger.ErrorField(err))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("DeleteProject: id required")
@@ -106,13 +88,7 @@ func (h *ProjectHandler) DeleteProject(c *fiber.Ctx) error {
 }
 
 func (h *ProjectHandler) GetProject(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "read")
-		if err != nil || !permitted {
-			logger.LogError("RBAC permission denied", logger.ErrorField(err))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetProject: id required")
@@ -127,13 +103,7 @@ func (h *ProjectHandler) GetProject(c *fiber.Ctx) error {
 }
 
 func (h *ProjectHandler) ListProjects(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "list")
-		if err != nil || !permitted {
-			logger.LogError("RBAC permission denied", logger.ErrorField(err))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+
 	orgID := c.Query("org_id")
 	if orgID == "" {
 		logger.LogError("ListProjects: org_id required")
@@ -150,13 +120,7 @@ func (h *ProjectHandler) ListProjects(c *fiber.Ctx) error {
 }
 
 func (h *ProjectHandler) GetSettings(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "read")
-		if err != nil || !permitted {
-			logger.LogError("RBAC permission denied", logger.ErrorField(err))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetSettings: project_id required")
@@ -171,13 +135,7 @@ func (h *ProjectHandler) GetSettings(c *fiber.Ctx) error {
 }
 
 func (h *ProjectHandler) UpdateSettings(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), getActorID(c), "project", "update")
-		if err != nil || !permitted {
-			logger.LogError("RBAC permission denied", logger.ErrorField(err))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("UpdateSettings: project_id required")

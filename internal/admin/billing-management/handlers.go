@@ -78,13 +78,6 @@ func NewBillingHandler(store *PostgresStore, paymentStore payment.StoreInterface
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) CreateWebhookEvent(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "webhook_event", "create")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input WebhookEvent
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
@@ -99,7 +92,6 @@ func (h *BillingAdminHandler) CreateWebhookEvent(c *fiber.Ctx) error {
 		}
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
 	}
-
 	return c.Status(fiber.StatusCreated).JSON(event)
 }
 
@@ -151,16 +143,8 @@ func (h *BillingAdminHandler) CreateWebhookEvent(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) UpdateWebhookEvent(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "webhook_event", "update")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
-		logger.LogError("UpdateWebhookEvent: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
 	var input WebhookEvent
@@ -170,7 +154,6 @@ func (h *BillingAdminHandler) UpdateWebhookEvent(c *fiber.Ctx) error {
 	input.ID = id
 	event, err := h.WebhookEventService.UpdateWebhookEvent(input)
 	if err != nil {
-		logger.LogError("UpdateWebhookEvent: failed", logger.ErrorField(err), logger.String("id", id))
 		errResp := fiber.Map{"error": err.Error()}
 		if apiErr, ok := err.(*Error); ok {
 			errResp["error"] = apiErr.Message
@@ -231,20 +214,11 @@ func (h *BillingAdminHandler) UpdateWebhookEvent(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) DeleteWebhookEvent(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "webhook_event", "delete")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
-		logger.LogError("DeleteWebhookEvent: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
 	if err := h.WebhookEventService.DeleteWebhookEvent(id); err != nil {
-		logger.LogError("DeleteWebhookEvent: failed", logger.ErrorField(err), logger.String("id", id))
 		errResp := fiber.Map{"error": err.Error()}
 		if apiErr, ok := err.(*Error); ok {
 			errResp["error"] = apiErr.Message
@@ -253,7 +227,6 @@ func (h *BillingAdminHandler) DeleteWebhookEvent(c *fiber.Ctx) error {
 		}
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
 	}
-
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -308,13 +281,6 @@ func (h *BillingAdminHandler) DeleteWebhookEvent(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) GetWebhookEvent(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "webhook_event", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetWebhookEvent: id required", logger.String("id", id))
@@ -385,13 +351,6 @@ func (h *BillingAdminHandler) GetWebhookEvent(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) ListWebhookEvents(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "webhook_event", "list")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	accountID := c.Query("account_id")
 	status := c.Query("status")
 	page := c.QueryInt("page", 1)
@@ -452,13 +411,6 @@ func (h *BillingAdminHandler) ListWebhookEvents(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) CreateInvoiceAdjustment(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "invoice_adjustment", "create")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input InvoiceAdjustment
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateInvoiceAdjustment: invalid input", logger.ErrorField(err))
@@ -537,13 +489,6 @@ func (h *BillingAdminHandler) CreateInvoiceAdjustment(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) UpdateInvoiceAdjustment(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "invoice_adjustment", "update")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("UpdateInvoiceAdjustment: id required", logger.String("id", id))
@@ -618,13 +563,6 @@ func (h *BillingAdminHandler) UpdateInvoiceAdjustment(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) DeleteInvoiceAdjustment(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "invoice_adjustment", "delete")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("DeleteInvoiceAdjustment: id required", logger.String("id", id))
@@ -694,13 +632,6 @@ func (h *BillingAdminHandler) DeleteInvoiceAdjustment(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) GetInvoiceAdjustment(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "invoice_adjustment", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetInvoiceAdjustment: id required", logger.String("id", id))
@@ -769,13 +700,6 @@ func (h *BillingAdminHandler) GetInvoiceAdjustment(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) ListInvoiceAdjustments(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "invoice_adjustment", "list")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	invoiceID := c.Query("invoice_id")
 	page := c.QueryInt("page", 1)
 	pageSize := c.QueryInt("page_size", 100)
@@ -839,13 +763,6 @@ func (h *BillingAdminHandler) ListInvoiceAdjustments(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) CreateManualAdjustment(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "manual_adjustment", "create")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})
@@ -928,14 +845,6 @@ func (h *BillingAdminHandler) CreateManualAdjustment(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) GetInvoicePreview(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "invoice_preview", "get")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input struct {
 		ID string `json:"id"`
 	}
@@ -1007,13 +916,6 @@ func (h *BillingAdminHandler) GetInvoicePreview(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) ApplyCreditsToInvoice(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "credit", "apply")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})
@@ -1064,13 +966,6 @@ func (h *BillingAdminHandler) ApplyCreditsToInvoice(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) GetBillingConfig(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "billing_config", "get")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input struct{}
 	_ = c.BodyParser(&input) // Accepts empty body for consistency
 	cfg, err := h.InvoiceService.GetBillingConfig()
@@ -1134,13 +1029,6 @@ func (h *BillingAdminHandler) GetBillingConfig(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) SetBillingConfig(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "billing_config", "set")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input map[string]interface{}
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("SetBillingConfig: invalid input", logger.ErrorField(err))
@@ -1207,13 +1095,6 @@ func (h *BillingAdminHandler) SetBillingConfig(c *fiber.Ctx) error {
 //	  schema:
 //	    $ref: "#/definitions/ErrorResponse"
 func (h *BillingAdminHandler) CreateWebhookSubscription(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "webhook_subscription", "create")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input struct {
 		URL         string   `json:"url"`
 		Secret      string   `json:"secret"`
@@ -1291,13 +1172,6 @@ func (h *BillingAdminHandler) CreateWebhookSubscription(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) ListWebhookSubscriptions(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "webhook_subscription", "list")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	tenantID := c.Query("tenant_id")
 	page := c.QueryInt("page", 1)
 	pageSize := c.QueryInt("page_size", 100)
@@ -1351,13 +1225,6 @@ func (h *BillingAdminHandler) ListWebhookSubscriptions(c *fiber.Ctx) error {
 //	  schema:
 //	    $ref: "#/definitions/ErrorResponse"
 func (h *BillingAdminHandler) DeleteWebhookSubscription(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "webhook_subscription", "delete")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
@@ -1404,13 +1271,6 @@ func (h *BillingAdminHandler) DeleteWebhookSubscription(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) GetRevenueReport(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "revenue_report", "get")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input struct{}
 	_ = c.BodyParser(&input)
 	out, err := h.Store.GetRevenueReport(c.Context())
@@ -1453,13 +1313,6 @@ func (h *BillingAdminHandler) GetRevenueReport(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) GetARReport(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "ar_report", "get")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input struct{}
 	_ = c.BodyParser(&input)
 	out, err := h.Store.GetARReport(c.Context())
@@ -1502,13 +1355,6 @@ func (h *BillingAdminHandler) GetARReport(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) GetChurnReport(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "churn_report", "get")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input struct{}
 	_ = c.BodyParser(&input)
 	out, err := h.Store.GetChurnReport(c.Context())
@@ -1582,13 +1428,6 @@ func (h *BillingAdminHandler) GetChurnReport(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) CreateInvoiceWithFeesAndTax(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "invoice", "create")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})
@@ -1666,13 +1505,6 @@ func (h *BillingAdminHandler) CreateInvoiceWithFeesAndTax(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "invoice", "create")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input Invoice
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateInvoice: invalid input", logger.ErrorField(err))
@@ -1832,13 +1664,6 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) UpdateInvoice(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "invoice", "update")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("UpdateInvoice: id required", logger.String("id", id))
@@ -1919,13 +1744,6 @@ func (h *BillingAdminHandler) UpdateInvoice(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) GetInvoice(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "invoice", "get")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetInvoice: id required", logger.String("id", id))
@@ -1996,13 +1814,6 @@ func (h *BillingAdminHandler) GetInvoice(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) ListInvoices(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "invoice", "list")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	accountID := c.Query("account_id")
 	status := c.Query("status")
 	page := c.QueryInt("page", 1)
@@ -2065,13 +1876,6 @@ func (h *BillingAdminHandler) ListInvoices(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) CreateExchangeRate(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "exchange_rate", "create")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input ExchangeRate
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateExchangeRate: invalid input", logger.ErrorField(err))
@@ -2146,13 +1950,6 @@ func (h *BillingAdminHandler) CreateExchangeRate(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) UpdateExchangeRate(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "exchange_rate", "update")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input ExchangeRate
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateExchangeRate: invalid input", logger.ErrorField(err))
@@ -2227,13 +2024,6 @@ func (h *BillingAdminHandler) UpdateExchangeRate(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) DeleteExchangeRate(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "exchange_rate", "delete")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input struct {
 		BaseCurrency  string `json:"base_currency"`
 		QuoteCurrency string `json:"quote_currency"`
@@ -2303,13 +2093,6 @@ func (h *BillingAdminHandler) DeleteExchangeRate(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) GetExchangeRate(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "exchange_rate", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input struct {
 		BaseCurrency  string `json:"base_currency"`
 		QuoteCurrency string `json:"quote_currency"`
@@ -2366,13 +2149,6 @@ func (h *BillingAdminHandler) GetExchangeRate(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) ListExchangeRates(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "exchange_rate", "list")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	rates, err := h.Store.ListExchangeRates(c.Context())
 	if err != nil {
 		logger.LogError("ListExchangeRates: failed", logger.ErrorField(err))
@@ -2429,13 +2205,6 @@ func (h *BillingAdminHandler) ListExchangeRates(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) SetTenantCurrency(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant_currency", "set")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
 		logger.LogError("SetTenantCurrency: tenant_id required", logger.String("tenant_id", tenantID))
@@ -2496,13 +2265,6 @@ func (h *BillingAdminHandler) SetTenantCurrency(c *fiber.Ctx) error {
 //	      type: string
 //	      description: Unique request ID
 func (h *BillingAdminHandler) GetTenantCurrency(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant_currency", "get")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
 		logger.LogError("GetTenantCurrency: tenant_id required", logger.String("tenant_id", tenantID))
@@ -2617,13 +2379,6 @@ func generateInvoicePDF(pdfData map[string]interface{}) ([]byte, error) {
 
 // DownloadInvoicePDF returns the invoice PDF as an attachment. Only JSON body allowed.
 func (h *BillingAdminHandler) DownloadInvoicePDF(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "invoice", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})
@@ -2923,13 +2678,6 @@ func DunningWorker(store *PostgresStore, paymentStore payment.StoreInterface, ac
 }
 
 func (h *BillingAdminHandler) DeleteInvoice(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := commonutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "invoice", "delete")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("DeleteInvoice: id required", logger.String("id", id))

@@ -4,7 +4,7 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/subinc/subinc-backend/internal/pkg/contextutil"
+
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -26,16 +26,7 @@ func (o *Organization) Validate() error {
 }
 
 func (h *OrganizationHandler) CreateOrganization(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), contextutil.GetActorID(c), "organization", "create")
-		if err != nil {
-			logger.LogError("RBAC error", logger.ErrorField(err))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-		if !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+
 	var input Organization
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateOrganization: invalid input", logger.ErrorField(err))
@@ -55,16 +46,7 @@ func (h *OrganizationHandler) CreateOrganization(c *fiber.Ctx) error {
 }
 
 func (h *OrganizationHandler) UpdateOrganization(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), contextutil.GetActorID(c), "organization", "update")
-		if err != nil {
-			logger.LogError("RBAC error", logger.ErrorField(err))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-		if !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("UpdateOrganization: id required")
@@ -89,16 +71,7 @@ func (h *OrganizationHandler) UpdateOrganization(c *fiber.Ctx) error {
 }
 
 func (h *OrganizationHandler) DeleteOrganization(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), contextutil.GetActorID(c), "organization", "delete")
-		if err != nil {
-			logger.LogError("RBAC error", logger.ErrorField(err))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-		if !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("DeleteOrganization: id required", logger.String("id", id))
@@ -112,16 +85,7 @@ func (h *OrganizationHandler) DeleteOrganization(c *fiber.Ctx) error {
 }
 
 func (h *OrganizationHandler) GetOrganization(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), contextutil.GetActorID(c), "organization", "get")
-		if err != nil {
-			logger.LogError("RBAC error", logger.ErrorField(err))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-		if !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetOrganization: id required", logger.String("id", id))
@@ -136,16 +100,7 @@ func (h *OrganizationHandler) GetOrganization(c *fiber.Ctx) error {
 }
 
 func (h *OrganizationHandler) ListOrganizations(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), contextutil.GetActorID(c), "organization", "list")
-		if err != nil {
-			logger.LogError("RBAC error", logger.ErrorField(err))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-		if !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+
 	ownerID := c.Query("owner_id")
 	page := c.QueryInt("page", 1)
 	pageSize := c.QueryInt("page_size", 100)
@@ -158,16 +113,7 @@ func (h *OrganizationHandler) ListOrganizations(c *fiber.Ctx) error {
 }
 
 func (h *OrganizationHandler) GetSettings(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), contextutil.GetActorID(c), "organization", "get")
-		if err != nil {
-			logger.LogError("RBAC error", logger.ErrorField(err))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-		if !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+
 	orgID := c.Params("id")
 	if orgID == "" {
 		logger.LogError("GetSettings: org_id required", logger.String("org_id", orgID))
@@ -182,16 +128,7 @@ func (h *OrganizationHandler) GetSettings(c *fiber.Ctx) error {
 }
 
 func (h *OrganizationHandler) UpdateSettings(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		permitted, err := h.RBACService.CheckPermission(c.Context(), contextutil.GetActorID(c), "organization", "update")
-		if err != nil {
-			logger.LogError("RBAC error", logger.ErrorField(err))
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-		if !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+
 	orgID := c.Params("id")
 	if orgID == "" {
 		logger.LogError("UpdateSettings: org_id required", logger.String("org_id", orgID))

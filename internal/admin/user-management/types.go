@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 )
@@ -95,6 +94,5 @@ type ProjectInvite struct {
 
 type UserHandler struct {
 	Store            *PostgresStore
-	RBACService      rbac_management.RBACService          // optional, may be nil
 	RateLimitService security_management.RateLimitService // for distributed rate limiting
 }

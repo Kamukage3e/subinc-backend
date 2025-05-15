@@ -9,7 +9,6 @@ import (
 	discount "github.com/subinc/subinc-backend/internal/admin/billing-management/discount"
 	payment "github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
 	tax "github.com/subinc/subinc-backend/internal/admin/billing-management/tax"
-	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
@@ -30,7 +29,6 @@ type BillingAdminHandler struct {
 	Store                      *PostgresStore
 	PaymentStore               payment.StoreInterface
 	AuditLogger                BillingAuditLogger                      // use interface for audit logging
-	RBACService                rbac_management.RBACService             // optional, may be nil
 	RateLimitService           security_management.RateLimitService    // for distributed rate limiting
 	ConfigService              *server_config.Service                  // for fetching secrets, keys, and static configs from server-config
 	Logger                     logger.Logger                           // add logger for webhook and handler logging
@@ -292,4 +290,149 @@ type TenantCurrency struct {
 	TenantID  string    `json:"tenant_id"`
 	Currency  string    `json:"currency"` // ISO 4217, e.g. USD
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// BillingPermissions defines all permissions related to billing management
+// These constants should be used when creating RBAC permissions and roles
+const (
+	// Resources
+	ResourceBilling          = "billing"
+	ResourceInvoice          = "billing:invoice"
+	ResourcePaymentMethod    = "billing:payment_method"
+	ResourceSubscription     = "billing:subscription"
+	ResourcePlan             = "billing:plan"
+	ResourceDiscount         = "billing:discount"
+	ResourceCreditAdjustment = "billing:credit"
+	ResourceUsageReport      = "billing:usage_report"
+	ResourceTaxSettings      = "billing:tax_settings"
+
+	// Actions
+	ActionView          = "view"
+	ActionCreate        = "create"
+	ActionUpdate        = "update"
+	ActionDelete        = "delete"
+	ActionCancel        = "cancel"
+	ActionResume        = "resume"
+	ActionCharge        = "charge"
+	ActionRefund        = "refund"
+	ActionApply         = "apply"
+	ActionExport        = "export"
+	ActionApprove       = "approve"
+	ActionReject        = "reject"
+	ActionAdminOverride = "admin_override"
+
+	// Full permission strings (resource:action)
+	PermissionViewBilling   = ResourceBilling + ":" + ActionView
+	PermissionManageBilling = ResourceBilling + ":" + ActionUpdate
+
+	PermissionViewInvoices   = ResourceInvoice + ":" + ActionView
+	PermissionCreateInvoices = ResourceInvoice + ":" + ActionCreate
+	PermissionUpdateInvoices = ResourceInvoice + ":" + ActionUpdate
+	PermissionDeleteInvoices = ResourceInvoice + ":" + ActionDelete
+
+	PermissionViewPaymentMethods   = ResourcePaymentMethod + ":" + ActionView
+	PermissionCreatePaymentMethods = ResourcePaymentMethod + ":" + ActionCreate
+	PermissionUpdatePaymentMethods = ResourcePaymentMethod + ":" + ActionUpdate
+	PermissionDeletePaymentMethods = ResourcePaymentMethod + ":" + ActionDelete
+
+	PermissionViewSubscriptions   = ResourceSubscription + ":" + ActionView
+	PermissionCreateSubscriptions = ResourceSubscription + ":" + ActionCreate
+	PermissionUpdateSubscriptions = ResourceSubscription + ":" + ActionUpdate
+	PermissionCancelSubscriptions = ResourceSubscription + ":" + ActionCancel
+	PermissionResumeSubscriptions = ResourceSubscription + ":" + ActionResume
+
+	PermissionViewPlans   = ResourcePlan + ":" + ActionView
+	PermissionCreatePlans = ResourcePlan + ":" + ActionCreate
+	PermissionUpdatePlans = ResourcePlan + ":" + ActionUpdate
+	PermissionDeletePlans = ResourcePlan + ":" + ActionDelete
+
+	PermissionViewDiscounts   = ResourceDiscount + ":" + ActionView
+	PermissionCreateDiscounts = ResourceDiscount + ":" + ActionCreate
+	PermissionUpdateDiscounts = ResourceDiscount + ":" + ActionUpdate
+	PermissionDeleteDiscounts = ResourceDiscount + ":" + ActionDelete
+	PermissionApplyDiscounts  = ResourceDiscount + ":" + ActionApply
+
+	PermissionViewCreditAdjustments    = ResourceCreditAdjustment + ":" + ActionView
+	PermissionCreateCreditAdjustments  = ResourceCreditAdjustment + ":" + ActionCreate
+	PermissionApproveCreditAdjustments = ResourceCreditAdjustment + ":" + ActionApprove
+	PermissionRejectCreditAdjustments  = ResourceCreditAdjustment + ":" + ActionReject
+
+	PermissionViewUsageReports   = ResourceUsageReport + ":" + ActionView
+	PermissionExportUsageReports = ResourceUsageReport + ":" + ActionExport
+
+	PermissionViewTaxSettings   = ResourceTaxSettings + ":" + ActionView
+	PermissionUpdateTaxSettings = ResourceTaxSettings + ":" + ActionUpdate
+)
+
+// BillingRoles defines predefined roles for billing management
+var BillingRoles = map[string][]string{
+	"billing_viewer": {
+		PermissionViewBilling,
+		PermissionViewInvoices,
+		PermissionViewPaymentMethods,
+		PermissionViewSubscriptions,
+		PermissionViewPlans,
+		PermissionViewDiscounts,
+		PermissionViewCreditAdjustments,
+		PermissionViewUsageReports,
+		PermissionViewTaxSettings,
+	},
+	"billing_manager": {
+		PermissionViewBilling,
+		PermissionManageBilling,
+		PermissionViewInvoices,
+		PermissionCreateInvoices,
+		PermissionUpdateInvoices,
+		PermissionViewPaymentMethods,
+		PermissionCreatePaymentMethods,
+		PermissionUpdatePaymentMethods,
+		PermissionDeletePaymentMethods,
+		PermissionViewSubscriptions,
+		PermissionUpdateSubscriptions,
+		PermissionCancelSubscriptions,
+		PermissionResumeSubscriptions,
+		PermissionViewPlans,
+		PermissionViewDiscounts,
+		PermissionApplyDiscounts,
+		PermissionViewCreditAdjustments,
+		PermissionCreateCreditAdjustments,
+		PermissionViewUsageReports,
+		PermissionExportUsageReports,
+		PermissionViewTaxSettings,
+		PermissionUpdateTaxSettings,
+	},
+	"billing_admin": {
+		PermissionViewBilling,
+		PermissionManageBilling,
+		PermissionViewInvoices,
+		PermissionCreateInvoices,
+		PermissionUpdateInvoices,
+		PermissionDeleteInvoices,
+		PermissionViewPaymentMethods,
+		PermissionCreatePaymentMethods,
+		PermissionUpdatePaymentMethods,
+		PermissionDeletePaymentMethods,
+		PermissionViewSubscriptions,
+		PermissionCreateSubscriptions,
+		PermissionUpdateSubscriptions,
+		PermissionCancelSubscriptions,
+		PermissionResumeSubscriptions,
+		PermissionViewPlans,
+		PermissionCreatePlans,
+		PermissionUpdatePlans,
+		PermissionDeletePlans,
+		PermissionViewDiscounts,
+		PermissionCreateDiscounts,
+		PermissionUpdateDiscounts,
+		PermissionDeleteDiscounts,
+		PermissionApplyDiscounts,
+		PermissionViewCreditAdjustments,
+		PermissionCreateCreditAdjustments,
+		PermissionApproveCreditAdjustments,
+		PermissionRejectCreditAdjustments,
+		PermissionViewUsageReports,
+		PermissionExportUsageReports,
+		PermissionViewTaxSettings,
+		PermissionUpdateTaxSettings,
+	},
 }

@@ -6,7 +6,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	account "github.com/subinc/subinc-backend/internal/admin/billing-management/account"
-	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
@@ -17,7 +16,6 @@ type DiscountHandler struct {
 	CouponService   CouponService
 	CreditService   CreditService
 	AccountService  account.AccountService
-	RBACService     rbac_management.RBACService
 	Logger          logger.Logger
 }
 

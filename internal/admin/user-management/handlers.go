@@ -37,13 +37,7 @@ func getActorID(c *fiber.Ctx) string {
 //	400: ErrorResponse
 //	422: ErrorResponse
 func (h *UserHandler) CreateUser(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "user", "create")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+
 	var user User
 	if err := c.BodyParser(&user); err != nil {
 		logger.LogError("invalid user input", logger.ErrorField(err))

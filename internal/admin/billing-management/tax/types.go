@@ -6,15 +6,13 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 )
 
 type TaxHandler struct {
-	TaxInfoService     TaxInfoService
-	RBACService rbac_management.RBACService
-	Store PostgresStore
+	TaxInfoService TaxInfoService
+	Store          PostgresStore
 }
 
 type PostgresStore struct {
@@ -35,9 +33,6 @@ type TaxInfo struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
-
-
-
 
 // TaxPlugin defines a pluggable interface for tax/VAT calculation per region/country.
 type TaxPlugin interface {
@@ -94,7 +89,6 @@ var TaxPlugins = func() *TaxPluginRegistry {
 	return r
 }()
 
-
 func NewValidationError(field, msg string) *Error {
 	return &Error{
 		Code:    "VALIDATION_ERROR",
@@ -120,7 +114,6 @@ func (e *Error) Error() string {
 func (e *Error) Unwrap() error {
 	return e.Err
 }
-
 
 type Account struct {
 	ID        string    `json:"id"`
