@@ -192,12 +192,13 @@ func main() {
 	orgHandler := organization_management.NewOrganizationHandler(orgStore)
 	organization_management.RegisterAdminOrganizationRoutes(adminAPI, orgHandler, jwtCfg.SecretName, securityStore)
 	billingStore := billing_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
-	billingHandler := billing_management.NewBillingHandler(billingStore)
+		paymentStore := &payment.PostgresStore{DB: ownerDBPool}
+	billingHandler := billing_management.NewBillingHandler(billingStore, paymentStore) 
 	billingHandler.Notify = securityStore
 	billing_management.RegisterAdminBillingRoutes(adminAPI, billingHandler, jwtCfg.SecretName, securityStore)
 
 	// Dunning worker setup
-	paymentStore := &payment.PostgresStore{DB: ownerDBPool}
+
 	if os.Getenv("DUNNING_ENABLED") == "true" {
 		go func() {
 			ticker := time.NewTicker(1 * time.Hour)

@@ -1,0 +1,974 @@
+openapi: 3.0.0
+info:
+  title: Organization Management API
+  description: API documentation for Organization Management API
+  version: 1.0.0
+servers:
+  - url: /api/v1/admin
+paths:
+  /organizations/:
+    summary: /organizations/
+    description: Operations on /organizations/
+    get:
+      summary: List organizations
+      description: |-
+        Lists all Organizations.
+
+        Requires a request body.
+      operationId: ListOrganizations
+      tags:
+        - organization
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organizations:
+                    type: array
+                    items:
+                      type: object
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+                  total:
+                    type: integer
+              example:
+                organizations:
+                  - property1: value1
+                    property2: value2
+                  - property1: value1
+                    property2: value2
+                page: 30
+                page_size: 30
+                total: 42
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_401
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Unauthorized
+              example:
+                code: ERR_401
+                details: null
+                error: Unauthorized
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_404
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Not Found
+              example:
+                code: ERR_404
+                details: null
+                error: Not Found
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_500
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Internal Server Error
+              example:
+                code: ERR_500
+                details: null
+                error: Internal Server Error
+      security:
+        - bearerAuth: []
+    post:
+      summary: Create organizations
+      description: |-
+        Creates a new Organization.
+
+        Requires a request body.
+      operationId: CreateOrganization
+      tags:
+        - organization
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                property1: value1
+                property2: value2
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_401
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Unauthorized
+              example:
+                code: ERR_401
+                details: null
+                error: Unauthorized
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_404
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Not Found
+              example:
+                code: ERR_404
+                details: null
+                error: Not Found
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_500
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Internal Server Error
+              example:
+                code: ERR_500
+                details: null
+                error: Internal Server Error
+      security:
+        - bearerAuth: []
+  /organizations/{id}:
+    summary: /organizations/{id}
+    description: Operations on /organizations/{id}
+    get:
+      summary: Get organizations
+      description: |-
+        Retrieves Organization.
+
+        Required parameters: id.
+      operationId: GetOrganization
+      tags:
+        - organization
+      parameters:
+        - name: id
+          in: path
+          description: Unique identifier
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                property1: value1
+                property2: value2
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_401
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Unauthorized
+              example:
+                code: ERR_401
+                details: null
+                error: Unauthorized
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                type: object
+        "422":
+          description: Unprocessable Entity - Validation failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  details:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                        message:
+                          type: string
+                  error:
+                    type: string
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_500
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Internal Server Error
+              example:
+                code: ERR_500
+                details: null
+                error: Internal Server Error
+      security:
+        - bearerAuth: []
+    put:
+      summary: Update organizations
+      description: |-
+        Updates an existing Organization.
+
+        Required parameters: id.
+
+        Requires a request body.
+      operationId: UpdateOrganization
+      tags:
+        - organization
+      parameters:
+        - name: id
+          in: path
+          description: Unique identifier
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                property1: value1
+                property2: value2
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_401
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Unauthorized
+              example:
+                code: ERR_401
+                details: null
+                error: Unauthorized
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_404
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Not Found
+              example:
+                code: ERR_404
+                details: null
+                error: Not Found
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_500
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Internal Server Error
+              example:
+                code: ERR_500
+                details: null
+                error: Internal Server Error
+      security:
+        - bearerAuth: []
+    delete:
+      summary: Delete organizations
+      description: |-
+        Deletes an existing Organization.
+
+        Required parameters: id.
+      operationId: DeleteOrganization
+      tags:
+        - organization
+      parameters:
+        - name: id
+          in: path
+          description: Unique identifier
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted successfully
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_401
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Unauthorized
+              example:
+                code: ERR_401
+                details: null
+                error: Unauthorized
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_404
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Not Found
+              example:
+                code: ERR_404
+                details: null
+                error: Not Found
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_500
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Internal Server Error
+              example:
+                code: ERR_500
+                details: null
+                error: Internal Server Error
+      security:
+        - bearerAuth: []
+    parameters:
+      - name: id
+        in: path
+        description: id parameter
+        required: true
+        schema:
+          type: string
+  /organizations/{id}/settings:
+    summary: /organizations/{id}/settings
+    description: Operations on /organizations/{id}/settings
+    get:
+      summary: Get settings
+      description: |-
+        Retrieves Settings.
+
+        Required parameters: id.
+      operationId: GetSettings
+      tags:
+        - organization
+      parameters:
+        - name: id
+          in: path
+          description: Unique identifier
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                property1: value1
+                property2: value2
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_401
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Unauthorized
+              example:
+                code: ERR_401
+                details: null
+                error: Unauthorized
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Not Found - Resource doesn't exist
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_500
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Internal Server Error
+              example:
+                code: ERR_500
+                details: null
+                error: Internal Server Error
+      security:
+        - bearerAuth: []
+    put:
+      summary: Update settings
+      description: |-
+        Updates an existing Settings.
+
+        Required parameters: id.
+
+        Requires a request body.
+      operationId: UpdateSettings
+      tags:
+        - organization
+      parameters:
+        - name: id
+          in: path
+          description: Unique identifier
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                property1: value1
+                property2: value2
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_401
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Unauthorized
+              example:
+                code: ERR_401
+                details: null
+                error: Unauthorized
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_404
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Not Found
+              example:
+                code: ERR_404
+                details: null
+                error: Not Found
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                    example: ERR_500
+                  details:
+                    type: object
+                    description: Additional error details
+                    nullable: true
+                  error:
+                    type: string
+                    description: Error message
+                    example: Internal Server Error
+              example:
+                code: ERR_500
+                details: null
+                error: Internal Server Error
+      security:
+        - bearerAuth: []
+    parameters:
+      - name: id
+        in: path
+        description: id parameter
+        required: true
+        schema:
+          type: string
+components:
+  schemas:
+    OrgAuditLog:
+      type: object
+      properties:
+        action:
+          type: string
+        actor_id:
+          type: string
+          example: 5f9d7a7a8b8e8f0d1c3a1b2f
+        created_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:00:00Z"
+        details:
+          type: string
+        id:
+          type: string
+          example: 5f9d7a7a8b8e8f0d1c3a1b2f
+        org_id:
+          type: string
+          example: 5f9d7a7a8b8e8f0d1c3a1b2f
+        target_id:
+          type: string
+          example: 5f9d7a7a8b8e8f0d1c3a1b2f
+    OrgDomain:
+      type: object
+      properties:
+        created_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:00:00Z"
+        domain:
+          type: string
+        id:
+          type: string
+          example: 5f9d7a7a8b8e8f0d1c3a1b2f
+        org_id:
+          type: string
+          example: 5f9d7a7a8b8e8f0d1c3a1b2f
+        verified:
+          type: boolean
+    OrgSettings:
+      type: object
+      properties:
+        org_id:
+          type: string
+          example: 5f9d7a7a8b8e8f0d1c3a1b2f
+        settings:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:00:00Z"
+    Organization:
+      type: object
+      properties:
+        created_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:00:00Z"
+        id:
+          type: string
+          example: 5f9d7a7a8b8e8f0d1c3a1b2f
+        name:
+          type: string
+          example: John Doe
+        owner_id:
+          type: string
+          example: 5f9d7a7a8b8e8f0d1c3a1b2f
+        slug:
+          type: string
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+            - pending
+          example: active
+        updated_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:00:00Z"
+    OrganizationHandler:
+      type: object
+      properties:
+        OrgAuditLogger:
+          $ref: '#/components/schemas/OrgAuditLogger'
+        OrgSettingsService:
+          $ref: '#/components/schemas/OrgSettingsService'
+        OrganizationService:
+          $ref: '#/components/schemas/OrganizationService'
+        ProjectService:
+          type: object
+          description: optional, may be nil
+        RBACService:
+          type: object
+          description: optional, may be nil
+        RateLimitService:
+          type: object
+          description: for distributed rate limiting
+        Store:
+          nullable: true
+          $ref: '#/components/schemas/PostgresStore'
+        UserService:
+          type: object
+          description: optional, may be nil
+    PostgresStore:
+      type: object
+      properties:
+        AuditLogger:
+          type: object
+        DB:
+          type: object
+          nullable: true
+        ServerConfigService:
+          type: object
+          nullable: true
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            type: object
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            type: object
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            type: object
+    UnprocessableEntity:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            type: object
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+tags:
+  - name: organization
+    description: Operations related to Organization

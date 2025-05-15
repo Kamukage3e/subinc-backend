@@ -7,24 +7,23 @@ import (
 	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
 )
 
-func orgScopeExtractor(c *fiber.Ctx) (string, string) {
-	return "org", c.Get("X-Org-ID")
-}
-
-func RegisterAdminOrganizationRoutes(router fiber.Router, handler *OrganizationHandler, jwtSecretName string, auditLogger security_management.AuditLogger) {
-	org := router.Group(
-		"/organization-management",
+func RegisterRoutes(router fiber.Router, handler *OrganizationHandler, jwtSecretName string, auditLogger security_management.AuditLogger) {
+	route := router.Group(
+		"/organizations",
 		security_management.OIDCMiddleware(jwtSecretName),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, orgScopeExtractor),
 		auditmiddleware.AuditLoggerMiddleware(auditLogger),
 	)
-	// audit := auditmiddleware.AuditLoggerMiddleware(auditLogger)
-	org.Post("/organizations/create", handler.CreateOrganization)
-	org.Put("/organizations/update", handler.UpdateOrganization)	
-	org.Delete("/organizations/delete", handler.DeleteOrganization)
-	org.Get("/organizations/get", handler.GetOrganization)
-	org.Get("/organizations/list", handler.ListOrganizations)
 
-	org.Get("/settings/get", handler.GetSettings)
-	org.Put("/settings/update", handler.UpdateSettings)
+	route.Post("/", handler.CreateOrganization)
+	route.Get("/", handler.ListOrganizations)
+	route.Get("/:id", handler.GetOrganization)
+	route.Put("/:id", handler.UpdateOrganization)
+	route.Delete("/:id", handler.DeleteOrganization)
+	route.Get("/:id/settings", handler.GetSettings)
+	route.Put("/:id/settings", handler.UpdateSettings)
+}
+
+func orgScopeExtractor(c *fiber.Ctx) (string, string) {
+	return "org", c.Get("X-Org-ID")
 }

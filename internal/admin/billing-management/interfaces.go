@@ -15,6 +15,7 @@ type InvoiceService interface {
 	GetInvoicePreview(accountID string) (Invoice, error)
 	GetBillingConfig() (map[string]interface{}, error)
 	SetBillingConfig(input map[string]interface{}) error
+	DeleteInvoice(id string) error
 }
 
 type PaymentService interface {
@@ -70,7 +71,6 @@ type ManualAdjustmentService interface {
 
 // ManualRefundService handles manual refunds
 // All methods must be robust, user-friendly, and never leak sensitive info
-
 
 // AccountActionService handles account-level actions (e.g., suspend, activate, custom ops)
 // All methods must be robust, user-friendly, and never leak sensitive info

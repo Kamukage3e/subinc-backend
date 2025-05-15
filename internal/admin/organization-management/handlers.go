@@ -65,15 +65,17 @@ func (h *OrganizationHandler) UpdateOrganization(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("UpdateOrganization: id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
 	var input Organization
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateOrganization: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	if input.ID == "" {
-		logger.LogError("UpdateOrganization: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
-	}
+	input.ID = id
 	if err := input.Validate(); err != nil {
 		logger.LogError("UpdateOrganization: validation failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
@@ -83,7 +85,6 @@ func (h *OrganizationHandler) UpdateOrganization(c *fiber.Ctx) error {
 		logger.LogError("UpdateOrganization: failed", logger.ErrorField(err), logger.Any("input", input))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-
 	return c.JSON(org)
 }
 
@@ -98,18 +99,15 @@ func (h *OrganizationHandler) DeleteOrganization(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		ID string `json:"id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
-		logger.LogError("DeleteOrganization: id required", logger.String("id", input.ID))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("DeleteOrganization: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	if err := h.OrganizationService.DeleteOrganization(c.Context(), input.ID); err != nil {
-		logger.LogError("DeleteOrganization: failed", logger.ErrorField(err), logger.String("id", input.ID))
+	if err := h.OrganizationService.DeleteOrganization(c.Context(), id); err != nil {
+		logger.LogError("DeleteOrganization: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -124,19 +122,16 @@ func (h *OrganizationHandler) GetOrganization(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		ID string `json:"id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
-		logger.LogError("GetOrganization: id required", logger.String("id", input.ID))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("GetOrganization: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	org, err := h.OrganizationService.GetOrganization(c.Context(), input.ID)
+	org, err := h.OrganizationService.GetOrganization(c.Context(), id)
 	if err != nil {
-		logger.LogError("GetOrganization: not found", logger.ErrorField(err), logger.String("id", input.ID))
+		logger.LogError("GetOrganization: not found", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
-
 	return c.JSON(org)
 }
 
@@ -186,19 +181,16 @@ func (h *OrganizationHandler) GetSettings(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		OrgID string `json:"org_id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.OrgID == "" {
-		logger.LogError("GetSettings: org_id required", logger.String("org_id", input.OrgID))
+	orgID := c.Params("id")
+	if orgID == "" {
+		logger.LogError("GetSettings: org_id required", logger.String("org_id", orgID))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org_id required"})
 	}
-	settings, err := h.Store.GetSettings(c.Context(), input.OrgID)
+	settings, err := h.Store.GetSettings(c.Context(), orgID)
 	if err != nil {
-		logger.LogError("GetSettings: failed", logger.ErrorField(err), logger.String("org_id", input.OrgID))
+		logger.LogError("GetSettings: failed", logger.ErrorField(err), logger.String("org_id", orgID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-
 	return c.JSON(settings)
 }
 
@@ -213,23 +205,25 @@ func (h *OrganizationHandler) UpdateSettings(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
+	orgID := c.Params("id")
+	if orgID == "" {
+		logger.LogError("UpdateSettings: org_id required", logger.String("org_id", orgID))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org_id required"})
+	}
 	var input struct {
-		OrgID    string                 `json:"org_id"`
 		Settings map[string]interface{} `json:"settings"`
 	}
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateSettings: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	if input.OrgID == "" || input.Settings == nil {
-		logger.LogError("UpdateSettings: missing required fields", logger.String("org_id", input.OrgID))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org_id and settings required"})
+	if input.Settings == nil {
+		logger.LogError("UpdateSettings: missing required fields", logger.String("org_id", orgID))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "settings required"})
 	}
-	if err := h.Store.UpdateSettings(c.Context(), input.OrgID, input.Settings); err != nil {
-		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.String("org_id", input.OrgID))
+	if err := h.Store.UpdateSettings(c.Context(), orgID, input.Settings); err != nil {
+		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.String("org_id", orgID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-
-	// Optionally: test connection/feature if settings include credentials, return result
 	return c.JSON(fiber.Map{"ok": true})
 }

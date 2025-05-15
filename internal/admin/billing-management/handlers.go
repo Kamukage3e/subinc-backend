@@ -158,14 +158,19 @@ func (h *BillingAdminHandler) UpdateWebhookEvent(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input WebhookEvent
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
-		logger.LogError("UpdateWebhookEvent: id required", logger.String("id", input.ID))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("UpdateWebhookEvent: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
+	var input WebhookEvent
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	input.ID = id
 	event, err := h.WebhookEventService.UpdateWebhookEvent(input)
 	if err != nil {
-		logger.LogError("UpdateWebhookEvent: failed", logger.ErrorField(err), logger.String("id", input.ID))
+		logger.LogError("UpdateWebhookEvent: failed", logger.ErrorField(err), logger.String("id", id))
 		errResp := fiber.Map{"error": err.Error()}
 		if apiErr, ok := err.(*Error); ok {
 			errResp["error"] = apiErr.Message
@@ -233,15 +238,13 @@ func (h *BillingAdminHandler) DeleteWebhookEvent(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		ID string `json:"id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
-		logger.LogError("DeleteWebhookEvent: id required", logger.String("id", input.ID))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("DeleteWebhookEvent: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	if err := h.WebhookEventService.DeleteWebhookEvent(input.ID); err != nil {
-		logger.LogError("DeleteWebhookEvent: failed", logger.ErrorField(err), logger.String("id", input.ID))
+	if err := h.WebhookEventService.DeleteWebhookEvent(id); err != nil {
+		logger.LogError("DeleteWebhookEvent: failed", logger.ErrorField(err), logger.String("id", id))
 		errResp := fiber.Map{"error": err.Error()}
 		if apiErr, ok := err.(*Error); ok {
 			errResp["error"] = apiErr.Message
@@ -312,19 +315,16 @@ func (h *BillingAdminHandler) GetWebhookEvent(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		ID string `json:"id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
-		logger.LogError("GetWebhookEvent: id required", logger.String("id", input.ID))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("GetWebhookEvent: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	event, err := h.WebhookEventService.GetWebhookEvent(input.ID)
+	event, err := h.WebhookEventService.GetWebhookEvent(id)
 	if err != nil {
-		logger.LogError("GetWebhookEvent: not found", logger.ErrorField(err), logger.String("id", input.ID))
+		logger.LogError("GetWebhookEvent: not found", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
-
 	return c.JSON(event)
 }
 
@@ -392,25 +392,13 @@ func (h *BillingAdminHandler) ListWebhookEvents(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		AccountID string `json:"account_id"`
-		Status    string `json:"status"`
-		Page      int    `json:"page"`
-		PageSize  int    `json:"page_size"`
-	}
-	if err := c.BodyParser(&input); err != nil {
-		logger.LogError("ListWebhookEvents: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if input.Page == 0 {
-		input.Page = 1
-	}
-	if input.PageSize == 0 {
-		input.PageSize = 100
-	}
-	events, err := h.WebhookEventService.ListWebhookEvents(input.AccountID, input.Status, input.Page, input.PageSize)
+	accountID := c.Query("account_id")
+	status := c.Query("status")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 100)
+	events, err := h.WebhookEventService.ListWebhookEvents(accountID, status, page, pageSize)
 	if err != nil {
-		logger.LogError("ListWebhookEvents: failed", logger.ErrorField(err), logger.String("account_id", input.AccountID))
+		logger.LogError("ListWebhookEvents: failed", logger.ErrorField(err), logger.String("account_id", accountID))
 		errResp := fiber.Map{"error": err.Error()}
 		if apiErr, ok := err.(*Error); ok {
 			errResp["error"] = apiErr.Message
@@ -419,7 +407,7 @@ func (h *BillingAdminHandler) ListWebhookEvents(c *fiber.Ctx) error {
 		}
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
 	}
-	return c.JSON(fiber.Map{"webhook_events": events, "page": input.Page, "page_size": input.PageSize})
+	return c.JSON(fiber.Map{"webhook_events": events, "page": page, "page_size": pageSize})
 }
 
 // swagger:route POST /billing-management/invoice-adjustments/create billing invoiceAdjustmentCreate
@@ -562,14 +550,20 @@ func (h *BillingAdminHandler) UpdateInvoiceAdjustment(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input InvoiceAdjustment
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
-		logger.LogError("UpdateInvoiceAdjustment: id required", logger.String("id", input.ID))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("UpdateInvoiceAdjustment: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
+	var input InvoiceAdjustment
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("UpdateInvoiceAdjustment: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	input.ID = id
 	adj, err := h.InvoiceAdjustmentService.UpdateInvoiceAdjustment(input)
 	if err != nil {
-		logger.LogError("UpdateInvoiceAdjustment: failed", logger.ErrorField(err), logger.String("id", input.ID))
+		logger.LogError("UpdateInvoiceAdjustment: failed", logger.ErrorField(err), logger.String("id", id))
 		errResp := fiber.Map{"error": err.Error()}
 		if apiErr, ok := err.(*Error); ok {
 			errResp["error"] = apiErr.Message
@@ -637,15 +631,13 @@ func (h *BillingAdminHandler) DeleteInvoiceAdjustment(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		ID string `json:"id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
-		logger.LogError("DeleteInvoiceAdjustment: id required", logger.String("id", input.ID))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("DeleteInvoiceAdjustment: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	if err := h.InvoiceAdjustmentService.DeleteInvoiceAdjustment(input.ID); err != nil {
-		logger.LogError("DeleteInvoiceAdjustment: failed", logger.ErrorField(err), logger.String("id", input.ID))
+	if err := h.InvoiceAdjustmentService.DeleteInvoiceAdjustment(id); err != nil {
+		logger.LogError("DeleteInvoiceAdjustment: failed", logger.ErrorField(err), logger.String("id", id))
 		errResp := fiber.Map{"error": err.Error()}
 		if apiErr, ok := err.(*Error); ok {
 			errResp["error"] = apiErr.Message
@@ -654,7 +646,6 @@ func (h *BillingAdminHandler) DeleteInvoiceAdjustment(c *fiber.Ctx) error {
 		}
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
 	}
-
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -716,19 +707,16 @@ func (h *BillingAdminHandler) GetInvoiceAdjustment(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		ID string `json:"id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
-		logger.LogError("GetInvoiceAdjustment: id required", logger.String("id", input.ID))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("GetInvoiceAdjustment: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	adj, err := h.InvoiceAdjustmentService.GetInvoiceAdjustment(input.ID)
+	adj, err := h.InvoiceAdjustmentService.GetInvoiceAdjustment(id)
 	if err != nil {
-		logger.LogError("GetInvoiceAdjustment: not found", logger.ErrorField(err), logger.String("id", input.ID))
+		logger.LogError("GetInvoiceAdjustment: not found", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
-
 	return c.JSON(adj)
 }
 
@@ -794,24 +782,12 @@ func (h *BillingAdminHandler) ListInvoiceAdjustments(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		InvoiceID string `json:"invoice_id"`
-		Page      int    `json:"page"`
-		PageSize  int    `json:"page_size"`
-	}
-	if err := c.BodyParser(&input); err != nil {
-		logger.LogError("ListInvoiceAdjustments: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if input.Page == 0 {
-		input.Page = 1
-	}
-	if input.PageSize == 0 {
-		input.PageSize = 100
-	}
-	adjs, err := h.InvoiceAdjustmentService.ListInvoiceAdjustments(input.InvoiceID, input.Page, input.PageSize)
+	invoiceID := c.Query("invoice_id")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 100)
+	adjs, err := h.InvoiceAdjustmentService.ListInvoiceAdjustments(invoiceID, page, pageSize)
 	if err != nil {
-		logger.LogError("ListInvoiceAdjustments: failed", logger.ErrorField(err), logger.String("invoice_id", input.InvoiceID))
+		logger.LogError("ListInvoiceAdjustments: failed", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
 		errResp := fiber.Map{"error": err.Error()}
 		if apiErr, ok := err.(*Error); ok {
 			errResp["error"] = apiErr.Message
@@ -820,7 +796,7 @@ func (h *BillingAdminHandler) ListInvoiceAdjustments(c *fiber.Ctx) error {
 		}
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
 	}
-	return c.JSON(fiber.Map{"invoice_adjustments": adjs, "page": input.Page, "page_size": input.PageSize})
+	return c.JSON(fiber.Map{"invoice_adjustments": adjs, "page": page, "page_size": pageSize})
 }
 
 // swagger:route POST /billing-management/manual-adjustment/create billing manualAdjustmentCreate
@@ -1880,11 +1856,17 @@ func (h *BillingAdminHandler) UpdateInvoice(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("UpdateInvoice: id required", logger.String("id", id))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
 	var input Invoice
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateInvoice: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
+	input.ID = id
 	if err := input.Validate(); err != nil {
 		logger.LogError("UpdateInvoice: validation failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
@@ -1900,7 +1882,6 @@ func (h *BillingAdminHandler) UpdateInvoice(c *fiber.Ctx) error {
 		}
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
 	}
-
 	return c.JSON(invoice)
 }
 
@@ -1962,20 +1943,16 @@ func (h *BillingAdminHandler) GetInvoice(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		InvoiceID string `json:"invoice_id"`
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("GetInvoice: id required", logger.String("id", id))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	if err := c.BodyParser(&input); err != nil || input.InvoiceID == "" {
-		logger.LogError("GetInvoice: invoice_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})
-	}
-	invoice, err := h.InvoiceService.GetInvoice(input.InvoiceID)
+	invoice, err := h.InvoiceService.GetInvoice(id)
 	if err != nil {
-		logger.LogError("CreateInvoiceAdjustment: invoice not found", logger.ErrorField(err), logger.String("invoice_id", input.InvoiceID))
-		logger.LogError("GetInvoice: not found", logger.ErrorField(err))
+		logger.LogError("GetInvoice: not found", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
-
 	return c.JSON(invoice)
 }
 
@@ -2043,25 +2020,13 @@ func (h *BillingAdminHandler) ListInvoices(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		AccountID string `json:"account_id"`
-		Status    string `json:"status"`
-		Page      int    `json:"page"`
-		PageSize  int    `json:"page_size"`
-	}
-	if err := c.BodyParser(&input); err != nil {
-		logger.LogError("ListInvoices: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if input.Page == 0 {
-		input.Page = 1
-	}
-	if input.PageSize == 0 {
-		input.PageSize = 100
-	}
-	invoices, err := h.InvoiceService.ListInvoices(input.AccountID, input.Status, input.Page, input.PageSize)
+	accountID := c.Query("account_id")
+	status := c.Query("status")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 100)
+	invoices, err := h.InvoiceService.ListInvoices(accountID, status, page, pageSize)
 	if err != nil {
-		logger.LogError("ListInvoices: failed", logger.ErrorField(err), logger.String("account_id", input.AccountID), logger.String("status", input.Status))
+		logger.LogError("ListInvoices: failed", logger.ErrorField(err), logger.String("account_id", accountID), logger.String("status", status))
 		errResp := fiber.Map{"error": err.Error()}
 		if apiErr, ok := err.(*Error); ok {
 			errResp["error"] = apiErr.Message
@@ -2070,8 +2035,7 @@ func (h *BillingAdminHandler) ListInvoices(c *fiber.Ctx) error {
 		}
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
 	}
-
-	return c.JSON(fiber.Map{"invoices": invoices, "page": input.Page, "page_size": input.PageSize})
+	return c.JSON(fiber.Map{"invoices": invoices, "page": page, "page_size": pageSize})
 }
 
 // --- ExchangeRate Handlers ---
@@ -2987,4 +2951,28 @@ func DunningWorker(store *PostgresStore, paymentStore payment.StoreInterface, ac
 		}
 		time.Sleep(1 * time.Hour)
 	}
+}
+
+func (h *BillingAdminHandler) DeleteInvoice(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "invoice", "delete")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("DeleteInvoice: id required", logger.String("id", id))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+	err := h.InvoiceService.DeleteInvoice(id)
+	if err != nil {
+		if err.Error() == "no rows" || err.Error() == "invoice not found" {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "invoice not found"})
+		}
+		logger.LogError("DeleteInvoice: failed", logger.ErrorField(err), logger.String("id", id))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
 }
