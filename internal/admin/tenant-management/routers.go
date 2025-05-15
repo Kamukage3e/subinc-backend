@@ -11,22 +11,23 @@ func tenantScopeExtractor(c *fiber.Ctx) (string, string) {
 	return "tenant", c.Get("X-Tenant-ID")
 }
 
-func RegisterAdminTenantRoutes(router fiber.Router, handler *TenantAdminHandler, jwtSecret string, auditLogger security_management.AuditLogger) {
-	tenant := router.Group(
+func RegisterRoutes(router fiber.Router, handler *TenantAdminHandler, jwtSecret string, auditLogger security_management.AuditLogger) {
+	route := router.Group(
 		"/tenant-management",
 		security_management.OIDCMiddleware(jwtSecret),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, tenantScopeExtractor),
 		auditmiddleware.AuditLoggerMiddleware(auditLogger),
 	)
-	tenant.Post("/tenants/create", handler.CreateTenant)
-	tenant.Post("/tenants/update", handler.UpdateTenant)
-	tenant.Post("/tenants/delete", handler.DeleteTenant)
-	tenant.Post("/tenants/get", handler.GetTenant)
-	tenant.Post("/tenants/list", handler.ListTenants)
-
-	tenant.Post("/tenants/get-settings", handler.GetTenantSettings)
-	tenant.Post("/tenants/update-settings", handler.UpdateTenantSettings)
-
-	tenant.Post("/tenants/set-status", handler.SetTenantStatus)
-	tenant.Get("/tenants/get-status", handler.GetTenantStatus)
+	// Tenants CRUD
+	route.Post("/tenants", handler.CreateTenant)
+	route.Get("/tenants", handler.ListTenants)
+	route.Get("/tenants/:id", handler.GetTenant)
+	route.Put("/tenants/:id", handler.UpdateTenant)
+	route.Delete("/tenants/:id", handler.DeleteTenant)
+	// Settings
+	route.Get("/tenants/:id/settings", handler.GetTenantSettings)
+	route.Put("/tenants/:id/settings", handler.UpdateTenantSettings)
+	// Status
+	route.Get("/tenants/:id/status", handler.GetTenantStatus)
+	route.Put("/tenants/:id/status", handler.SetTenantStatus)
 }

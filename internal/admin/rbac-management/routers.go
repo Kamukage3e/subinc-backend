@@ -18,49 +18,73 @@ func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler, jwtSecre
 		auditmiddleware.AuditLoggerMiddleware(auditLogger),
 	)
 
-	rbac.Post("/roles/create", handler.CreateRole)
-	rbac.Put("/roles/update", handler.UpdateRole)
-	rbac.Delete("/roles/delete", handler.DeleteRole)
-	rbac.Get("/roles/get", handler.GetRole)
-	rbac.Get("/roles/list", handler.ListRoles)
+	rbac.Post("/roles", handler.CreateRole)
+	rbac.Get("/roles/:id", handler.GetRole)
+	rbac.Put("/roles/:id", handler.UpdateRole)
+	rbac.Delete("/roles/:id", handler.DeleteRole)
+	rbac.Get("/roles", handler.ListRoles)
 
-	rbac.Post("/permissions/create", handler.CreatePermission)
-	rbac.Put("/permissions/update", handler.UpdatePermission)
-	rbac.Delete("/permissions/delete", handler.DeletePermission)
-	rbac.Get("/permissions/get", handler.GetPermission)
-	rbac.Get("/permissions/list", handler.ListPermissions)
+	rbac.Post("/permissions", handler.CreatePermission)
+	rbac.Get("/permissions/:id", handler.GetPermission)
+	rbac.Put("/permissions/:id", handler.UpdatePermission)
+	rbac.Delete("/permissions/:id", handler.DeletePermission)
+	rbac.Get("/permissions", handler.ListPermissions)
 
-	rbac.Post("/role-bindings/create", handler.CreateRoleBinding)
-	rbac.Delete("/role-bindings/delete", handler.DeleteRoleBinding)
-	rbac.Get("/role-bindings/list", handler.ListRoleBindings)
+	rbac.Post("/role-bindings", handler.CreateRoleBinding)
+	rbac.Delete("/role-bindings/:id", handler.DeleteRoleBinding)
+	rbac.Get("/role-bindings", handler.ListRoleBindings)
 	rbac.Post("/role-bindings/bulk-assign", handler.BulkAssignRoleBindings)
-	rbac.Delete("/role-bindings/bulk-remove", handler.BulkRemoveRoleBindings)
-	rbac.Post("/roles/restore", handler.RestoreRole)
+	rbac.Post("/role-bindings/bulk-remove", handler.BulkRemoveRoleBindings)
+	rbac.Post("/roles/:id/restore", handler.RestoreRole)
 
-	rbac.Post("/policies/create", handler.CreatePolicy)
-	rbac.Put("/policies/update", handler.UpdatePolicy)
-	rbac.Delete("/policies/delete", handler.DeletePolicy)
-	rbac.Get("/policies/get", handler.GetPolicy)
-	rbac.Get("/policies/list", handler.ListPolicies)
-	rbac.Post("/policies/simulate", handler.SimulatePolicyWhatIf)
+	rbac.Post("/policies", handler.CreatePolicy)
+	rbac.Put("/policies/:id", handler.UpdatePolicy)
+	rbac.Delete("/policies/:id", handler.DeletePolicy)
+	rbac.Get("/policies/:id", handler.GetPolicy)
+	rbac.Get("/policies", handler.ListPolicies)
+	rbac.Post("/policies/simulate", handler.SimulatePolicy)
 	rbac.Post("/policies/import", handler.ImportPolicies)
 	rbac.Get("/policies/export", handler.ExportPolicies)
-	rbac.Post("/policies/restore", handler.RestorePolicy)
+	rbac.Post("/policies/:id/restore", handler.RestorePolicy)
 
-	rbac.Post("/api-permissions/create", handler.CreateAPIPermission)
-	rbac.Delete("/api-permissions/delete", handler.DeleteAPIPermission)
-	rbac.Get("/api-permissions/list", handler.ListAPIPermissions)
+	rbac.Post("/api-permissions", handler.CreateAPIPermission)
+	rbac.Delete("/api-permissions/:id", handler.DeleteAPIPermission)
+	rbac.Get("/api-permissions", handler.ListAPIPermissions)
 
-	rbac.Post("/resources/create", handler.CreateResource)
-	rbac.Put("/resources/update", handler.UpdateResource)
-	rbac.Delete("/resources/delete", handler.DeleteResource)
-	rbac.Get("/resources/get", handler.GetResource)
-	rbac.Get("/resources/list", handler.ListResources)
+	rbac.Post("/resources", handler.CreateResource)
+	rbac.Put("/resources/:id", handler.UpdateResource)
+	rbac.Delete("/resources/:id", handler.DeleteResource)
+	rbac.Get("/resources/:id", handler.GetResource)
+	rbac.Get("/resources", handler.ListResources)
 
-	rbac.Post("/delegations/delegate", handler.DelegateRoleWithExpiry)
-	rbac.Post("/delegations/revoke", handler.RevokeDelegatedRoleWithAudit)
+	rbac.Post("/delegations", handler.DelegateRoleWithExpiry)
+	rbac.Delete("/delegations/:id", handler.RevokeDelegatedRoleWithAudit)
+	rbac.Get("/delegations", handler.ListDelegatedRoles)
 
-	rbac.Post("/permission-templates/create", handler.CreatePermissionTemplate)
-	rbac.Get("/permission-templates/list", handler.ListPermissionTemplates)
-	rbac.Post("/permission-templates/apply", handler.ApplyPermissionTemplate)
+	rbac.Post("/permission-templates", handler.CreatePermissionTemplate)
+	rbac.Get("/permission-templates", handler.ListPermissionTemplates)
+	rbac.Post("/permission-templates/:id/apply", handler.ApplyPermissionTemplate)
+
+	// ABAC Policies
+	rbac.Post("/abac-policies", handler.CreateABACPolicy)
+	rbac.Put("/abac-policies/:id", handler.UpdateABACPolicy)
+	rbac.Delete("/abac-policies/:id", handler.DeleteABACPolicy)
+	rbac.Get("/abac-policies/:id", handler.GetABACPolicy)
+	rbac.Get("/abac-policies", handler.ListABACPolicies)
+	rbac.Post("/abac-policies/:id/evaluate", handler.EvaluateABAC)
+
+	// Policy Simulation
+	rbac.Post("/policies/:id/simulate", handler.SimulatePolicy)
+
+	// Policy Simulation What If
+	rbac.Post("/policies/:id/simulate-what-if", handler.SimulatePolicyWhatIf)
+
+	// Policy Import
+	rbac.Post("/policies/import", handler.ImportPolicies)
+
+	// Policy Export
+	rbac.Get("/policies/export", handler.ExportPolicies)
+
+	// Policy Restore
+	rbac.Post("/policies/:id/restore", handler.RestorePolicy)
 }

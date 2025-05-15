@@ -71,11 +71,17 @@ func (h *ProjectHandler) UpdateProject(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("UpdateProject: id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
 	var input Project
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateProject: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
+	input.ID = id
 	if err := input.Validate(); err != nil {
 		logger.LogError("UpdateProject: validation failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
@@ -106,15 +112,13 @@ func (h *ProjectHandler) DeleteProject(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		ID string `json:"id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
-		logger.LogError("DeleteProject: id required", logger.String("id", input.ID))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("DeleteProject: id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	if err := h.ProjectService.DeleteProject(c.Context(), input.ID); err != nil {
-		logger.LogError("DeleteProject: failed", logger.ErrorField(err), logger.String("id", input.ID))
+	if err := h.ProjectService.DeleteProject(c.Context(), id); err != nil {
+		logger.LogError("DeleteProject: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	if h.SecurityAuditLogger != nil {
@@ -122,7 +126,7 @@ func (h *ProjectHandler) DeleteProject(c *fiber.Ctx) error {
 			ID:        uuid.NewString(),
 			ActorID:   getActorID(c),
 			Action:    "delete_project",
-			TargetID:  input.ID,
+			TargetID:  id,
 			Details:   "Project deleted successfully",
 			CreatedAt: time.Now(),
 		})
@@ -138,16 +142,14 @@ func (h *ProjectHandler) GetProject(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		ID string `json:"id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
-		logger.LogError("GetProject: id required", logger.String("id", input.ID))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("GetProject: id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	proj, err := h.ProjectService.GetProject(c.Context(), input.ID)
+	proj, err := h.ProjectService.GetProject(c.Context(), id)
 	if err != nil {
-		logger.LogError("GetProject: not found", logger.ErrorField(err), logger.String("id", input.ID))
+		logger.LogError("GetProject: not found", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(proj)
@@ -161,27 +163,19 @@ func (h *ProjectHandler) ListProjects(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		OrgID    string `json:"org_id"`
-		Page     int    `json:"page"`
-		PageSize int    `json:"page_size"`
+	orgID := c.Query("org_id")
+	if orgID == "" {
+		logger.LogError("ListProjects: org_id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org_id required"})
 	}
-	if err := c.BodyParser(&input); err != nil {
-		logger.LogError("ListProjects: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if input.Page == 0 {
-		input.Page = 1
-	}
-	if input.PageSize == 0 {
-		input.PageSize = 100
-	}
-	projs, err := h.ProjectService.ListProjects(c.Context(), input.OrgID, input.Page, input.PageSize)
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 100)
+	projs, err := h.ProjectService.ListProjects(c.Context(), orgID, page, pageSize)
 	if err != nil {
-		logger.LogError("ListProjects: failed", logger.ErrorField(err), logger.String("org_id", input.OrgID))
+		logger.LogError("ListProjects: failed", logger.ErrorField(err), logger.String("org_id", orgID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"projects": projs, "page": input.Page, "page_size": input.PageSize})
+	return c.JSON(fiber.Map{"projects": projs, "page": page, "page_size": pageSize})
 }
 
 func (h *ProjectHandler) GetSettings(c *fiber.Ctx) error {
@@ -192,16 +186,14 @@ func (h *ProjectHandler) GetSettings(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		ProjectID string `json:"project_id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.ProjectID == "" {
-		logger.LogError("GetSettings: project_id required", logger.String("project_id", input.ProjectID))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("GetSettings: project_id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project_id required"})
 	}
-	settings, err := h.Store.GetSettings(c.Context(), input.ProjectID)
+	settings, err := h.Store.GetSettings(c.Context(), id)
 	if err != nil {
-		logger.LogError("GetSettings: failed", logger.ErrorField(err), logger.String("project_id", input.ProjectID))
+		logger.LogError("GetSettings: failed", logger.ErrorField(err), logger.String("project_id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(settings)
@@ -215,17 +207,21 @@ func (h *ProjectHandler) UpdateSettings(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("UpdateSettings: project_id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project_id required"})
+	}
 	var input struct {
-		ProjectID string                 `json:"project_id"`
-		Settings  map[string]interface{} `json:"settings"`
+		Settings map[string]interface{} `json:"settings"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.ProjectID == "" || input.Settings == nil {
-		logger.LogError("UpdateSettings: missing required fields", logger.String("project_id", input.ProjectID))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project_id and settings required"})
+	if err := c.BodyParser(&input); err != nil || input.Settings == nil {
+		logger.LogError("UpdateSettings: missing required fields", logger.String("project_id", id))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "settings required"})
 	}
-	err := h.Store.UpdateSettings(c.Context(), input.ProjectID, input.Settings)
+	err := h.Store.UpdateSettings(c.Context(), id, input.Settings)
 	if err != nil {
-		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.String("project_id", input.ProjectID))
+		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.String("project_id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	if h.SecurityAuditLogger != nil {
@@ -233,12 +229,11 @@ func (h *ProjectHandler) UpdateSettings(c *fiber.Ctx) error {
 			ID:        uuid.NewString(),
 			ActorID:   getActorID(c),
 			Action:    "update_settings",
-			TargetID:  input.ProjectID,
+			TargetID:  id,
 			Details:   "Settings updated successfully",
 			CreatedAt: time.Now(),
 		})
 	}
-	// Optionally: test connection/feature if settings include credentials, return result
 	return c.JSON(fiber.Map{"ok": true})
 }
 

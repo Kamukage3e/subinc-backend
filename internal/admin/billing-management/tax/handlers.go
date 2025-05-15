@@ -1,10 +1,9 @@
 package tax
 
 import (
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
-	"github.com/subinc/subinc-backend/internal/pkg/logger"	
+	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
 func (h *TaxHandler) SetTaxInfo(c *fiber.Ctx) error {
@@ -41,13 +40,11 @@ func (h *TaxHandler) GetTaxInfo(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		TenantID string `json:"tenant_id"`
+	tenantID := c.Params("tenant_id")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
 	}
-	if err := c.BodyParser(&input); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	out, err := h.TaxInfoService.GetTaxInfo(c.Context(), input.TenantID)
+	out, err := h.TaxInfoService.GetTaxInfo(c.Context(), tenantID)
 	if err != nil {
 		errResp := fiber.Map{"error": err.Error()}
 		if apiErr, ok := err.(*Error); ok {
@@ -57,10 +54,8 @@ func (h *TaxHandler) GetTaxInfo(c *fiber.Ctx) error {
 		}
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
 	}
-
 	return c.JSON(out)
 }
-
 
 // --- TaxPlugin Handlers ---
 
@@ -72,7 +67,7 @@ func (h *TaxHandler) ListTaxPlugins(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	plugins, err := h.TaxInfoService.ListTaxPlugins(c.Context())
+	plugins, err := h.Store.ListTaxPlugins(c.Context())
 	if err != nil {
 		logger.LogError("ListTaxPlugins: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
@@ -88,26 +83,47 @@ func (h *TaxHandler) SetTaxPluginConfig(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
+	tenantID := c.Params("tenant_id")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	}
 	var input struct {
-		TenantID   string `json:"tenant_id"`
 		PluginName string `json:"plugin_name"`
 	}
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("SetTaxPluginConfig: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	if input.TenantID == "" || input.PluginName == "" {
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tenant_id and plugin_name required"})
+	if input.PluginName == "" {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "plugin_name required"})
 	}
 	if _, ok := TaxPlugins.Lookup(input.PluginName); !ok {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "plugin not found"})
 	}
-	cfg, err := h.Store.SetTaxPluginConfig(c.Context(), input.TenantID, input.PluginName)
+	cfg, err := h.Store.SetTaxPluginConfig(c.Context(), tenantID, input.PluginName)
 	if err != nil {
-		logger.LogError("SetTaxPluginConfig: failed", logger.ErrorField(err), logger.Any("input", input))
+		logger.LogError("SetTaxPluginConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID), logger.String("plugin_name", input.PluginName))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(cfg)
 }
 
+func (h *TaxHandler) GetTaxPluginConfig(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tax_plugin", "get")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	tenantID := c.Params("tenant_id")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	}
+	cfg, err := h.Store.GetTaxPluginConfig(c.Context(), tenantID)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(cfg)
+}

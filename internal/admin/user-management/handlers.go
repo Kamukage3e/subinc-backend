@@ -77,20 +77,21 @@ func (h *UserHandler) CreateUser(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	422: ErrorResponse
 func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
-	var input struct {
-		ID string `json:"id"`
-		User
-	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
+	id := c.Params("id")
+	if id == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
 	}
-	if err := input.User.Validate(); err != nil {
+	var user User
+	if err := c.BodyParser(&user); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if err := user.Validate(); err != nil {
 		logger.LogError("UpdateUser: validation failed", logger.ErrorField(err))
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	input.User.ID = input.ID
-	input.User.UpdatedAt = NowUTC()
-	updated, err := h.Store.UpdateUser(c.Context(), input.User)
+	user.ID = id
+	user.UpdatedAt = NowUTC()
+	updated, err := h.Store.UpdateUser(c.Context(), user)
 	if err != nil {
 		logger.LogError("failed to update user", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update user"})
@@ -98,7 +99,7 @@ func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
 	return c.JSON(updated)
 }
 
-// swagger:route DELETE /user-management/users/delete user deleteUser
+// swagger:route DELETE /users/:id user deleteUser
 // ---
 // summary: Delete a user
 // description: Deletes a user by ID.
@@ -111,20 +112,18 @@ func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	422: ErrorResponse
 func (h *UserHandler) DeleteUser(c *fiber.Ctx) error {
-	var input struct {
-		ID string `json:"id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
+	id := c.Params("id")
+	if id == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
 	}
-	if err := h.Store.DeleteUser(c.Context(), input.ID); err != nil {
+	if err := h.Store.DeleteUser(c.Context(), id); err != nil {
 		logger.LogError("failed to delete user", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete user"})
 	}
 	return c.SendStatus(http.StatusNoContent)
 }
 
-// swagger:route GET /user-management/users/get user getUser
+// swagger:route GET /users/:id user getUser
 // ---
 // summary: Get a user
 // description: Retrieves a user by ID.
@@ -137,13 +136,11 @@ func (h *UserHandler) DeleteUser(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	404: ErrorResponse
 func (h *UserHandler) GetUser(c *fiber.Ctx) error {
-	var input struct {
-		ID string `json:"id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
+	id := c.Params("id")
+	if id == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
 	}
-	user, err := h.Store.GetUser(c.Context(), input.ID)
+	user, err := h.Store.GetUser(c.Context(), id)
 	if err != nil {
 		logger.LogError("failed to get user", logger.ErrorField(err))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "user not found"})
@@ -151,7 +148,7 @@ func (h *UserHandler) GetUser(c *fiber.Ctx) error {
 	return c.JSON(user)
 }
 
-// swagger:route GET /user-management/users/get-by-email user getUserByEmail
+// swagger:route GET /users/by-email user getUserByEmail
 // ---
 // summary: Get user by email
 // description: Retrieves a user by email address.
@@ -164,13 +161,11 @@ func (h *UserHandler) GetUser(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	404: ErrorResponse
 func (h *UserHandler) GetUserByEmail(c *fiber.Ctx) error {
-	var input struct {
-		Email string `json:"email"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.Email == "" {
+	email := c.Query("email")
+	if email == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing email"})
 	}
-	user, err := h.Store.GetUserByEmail(c.Context(), input.Email)
+	user, err := h.Store.GetUserByEmail(c.Context(), email)
 	if err != nil {
 		logger.LogError("failed to get user by email", logger.ErrorField(err))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "user not found"})
@@ -191,21 +186,10 @@ func (h *UserHandler) GetUserByEmail(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	422: ErrorResponse
 func (h *UserHandler) ListUsers(c *fiber.Ctx) error {
-	var input struct {
-		Status   string `json:"status"`
-		Page     int    `json:"page"`
-		PageSize int    `json:"page_size"`
-	}
-	if err := c.BodyParser(&input); err != nil {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if input.Page == 0 {
-		input.Page = 1
-	}
-	if input.PageSize == 0 {
-		input.PageSize = 50
-	}
-	users, err := h.Store.ListUsers(c.Context(), input.Status, input.Page, input.PageSize)
+	status := c.Query("status")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 50)
+	users, err := h.Store.ListUsers(c.Context(), status, page, pageSize)
 	if err != nil {
 		logger.LogError("failed to list users", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list users"})
@@ -256,16 +240,17 @@ func (h *UserHandler) CreateProfile(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	422: ErrorResponse
 func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
-	var input struct {
-		UserID string `json:"user_id"`
-		UserProfile
-	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
+	userID := c.Params("user_id")
+	if userID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
 	}
-	input.UserProfile.UserID = input.UserID
-	input.UserProfile.UpdatedAt = NowUTC()
-	updated, err := h.Store.UpdateProfile(c.Context(), input.UserProfile)
+	var profile UserProfile
+	if err := c.BodyParser(&profile); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	profile.UserID = userID
+	profile.UpdatedAt = NowUTC()
+	updated, err := h.Store.UpdateProfile(c.Context(), profile)
 	if err != nil {
 		logger.LogError("failed to update profile", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update profile"})
@@ -287,13 +272,11 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	404: ErrorResponse
 func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
-	var input struct {
-		UserID string `json:"user_id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
+	userID := c.Params("user_id")
+	if userID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
 	}
-	profile, err := h.Store.GetProfile(c.Context(), input.UserID)
+	profile, err := h.Store.GetProfile(c.Context(), userID)
 	if err != nil {
 		logger.LogError("failed to get profile", logger.ErrorField(err))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "profile not found"})
@@ -316,13 +299,11 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	404: ErrorResponse
 func (h *UserHandler) GetSettings(c *fiber.Ctx) error {
-	var input struct {
-		UserID string `json:"user_id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
+	userID := c.Params("user_id")
+	if userID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
 	}
-	settings, err := h.Store.GetSettings(c.Context(), input.UserID)
+	settings, err := h.Store.GetSettings(c.Context(), userID)
 	if err != nil {
 		logger.LogError("failed to get settings", logger.ErrorField(err))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "settings not found"})
@@ -344,18 +325,20 @@ func (h *UserHandler) GetSettings(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	422: ErrorResponse
 func (h *UserHandler) UpdateSettings(c *fiber.Ctx) error {
-	var input struct {
-		UserID   string                 `json:"user_id"`
-		Settings map[string]interface{} `json:"settings"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
+	userID := c.Params("user_id")
+	if userID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
 	}
-	if err := h.Store.UpdateSettings(c.Context(), input.UserID, input.Settings); err != nil {
+	var input struct {
+		Settings map[string]interface{} `json:"settings"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if err := h.Store.UpdateSettings(c.Context(), userID, input.Settings); err != nil {
 		logger.LogError("failed to update settings", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update settings"})
 	}
-	// Optionally: test connection/feature if settings include credentials, return result
 	return c.JSON(fiber.Map{"ok": true})
 }
 
@@ -376,23 +359,19 @@ func (h *UserHandler) UpdateSettings(c *fiber.Ctx) error {
 //	403: ErrorResponse
 //	422: ErrorResponse
 func (h *UserHandler) AddUserToOrg(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "org_member", "add")
-		if err != nil || !permitted {
-			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
+	orgID := c.Params("org_id")
+	userID := c.Params("user_id")
+	if orgID == "" || userID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "org_id and user_id required"})
 	}
 	var input struct {
-		OrgID     string `json:"org_id"`
-		UserID    string `json:"user_id"`
 		InvitedBy string `json:"invited_by"`
 		Role      string `json:"role"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.OrgID == "" || input.UserID == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "org_id and user_id required"})
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	err := h.Store.AddUserToOrg(c.Context(), input.OrgID, input.UserID, input.InvitedBy, input.Role)
+	err := h.Store.AddUserToOrg(c.Context(), orgID, userID, input.InvitedBy, input.Role)
 	if err != nil {
 		logger.LogError("AddUserToOrg failed", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to add user to org"})
@@ -415,21 +394,12 @@ func (h *UserHandler) AddUserToOrg(c *fiber.Ctx) error {
 //	403: ErrorResponse
 //	422: ErrorResponse
 func (h *UserHandler) RemoveUserFromOrg(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "org_member", "remove")
-		if err != nil || !permitted {
-			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-	var input struct {
-		OrgID  string `json:"org_id"`
-		UserID string `json:"user_id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.OrgID == "" || input.UserID == "" {
+	orgID := c.Params("org_id")
+	userID := c.Params("user_id")
+	if orgID == "" || userID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "org_id and user_id required"})
 	}
-	err := h.Store.RemoveUserFromOrg(c.Context(), input.OrgID, input.UserID)
+	err := h.Store.RemoveUserFromOrg(c.Context(), orgID, userID)
 	if err != nil {
 		logger.LogError("RemoveUserFromOrg failed", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to remove user from org"})
@@ -451,21 +421,13 @@ func (h *UserHandler) RemoveUserFromOrg(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	422: ErrorResponse
 func (h *UserHandler) ListOrgUsers(c *fiber.Ctx) error {
-	var input struct {
-		OrgID    string `json:"org_id"`
-		Page     int    `json:"page"`
-		PageSize int    `json:"page_size"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.OrgID == "" {
+	orgID := c.Params("org_id")
+	if orgID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "org_id required"})
 	}
-	if input.Page == 0 {
-		input.Page = 1
-	}
-	if input.PageSize == 0 {
-		input.PageSize = 50
-	}
-	users, err := h.Store.ListOrgUsers(c.Context(), input.OrgID, input.Page, input.PageSize)
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 50)
+	users, err := h.Store.ListOrgUsers(c.Context(), orgID, page, pageSize)
 	if err != nil {
 		logger.LogError("ListOrgUsers failed", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list org users"})
@@ -488,23 +450,19 @@ func (h *UserHandler) ListOrgUsers(c *fiber.Ctx) error {
 //	403: ErrorResponse
 //	422: ErrorResponse
 func (h *UserHandler) InviteUserToOrg(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "org_invite", "invite")
-		if err != nil || !permitted {
-			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
+	orgID := c.Params("org_id")
+	if orgID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "org_id required"})
 	}
 	var input struct {
-		OrgID     string `json:"org_id"`
 		Email     string `json:"email"`
 		InvitedBy string `json:"invited_by"`
 		Role      string `json:"role"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.OrgID == "" || input.Email == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "org_id and email required"})
+	if err := c.BodyParser(&input); err != nil || input.Email == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "email required"})
 	}
-	err := h.Store.InviteUserToOrg(c.Context(), input.OrgID, input.Email, input.InvitedBy, input.Role)
+	err := h.Store.InviteUserToOrg(c.Context(), orgID, input.Email, input.InvitedBy, input.Role)
 	if err != nil {
 		logger.LogError("InviteUserToOrg failed", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to invite user to org"})
@@ -527,23 +485,19 @@ func (h *UserHandler) InviteUserToOrg(c *fiber.Ctx) error {
 //	403: ErrorResponse
 //	422: ErrorResponse
 func (h *UserHandler) AddUserToProject(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "project_member", "add")
-		if err != nil || !permitted {
-			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
+	projectID := c.Params("project_id")
+	userID := c.Params("user_id")
+	if projectID == "" || userID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "project_id and user_id required"})
 	}
 	var input struct {
-		ProjectID string `json:"project_id"`
-		UserID    string `json:"user_id"`
 		InvitedBy string `json:"invited_by"`
 		Role      string `json:"role"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.ProjectID == "" || input.UserID == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "project_id and user_id required"})
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	err := h.Store.AddUserToProject(c.Context(), input.ProjectID, input.UserID, input.InvitedBy, input.Role)
+	err := h.Store.AddUserToProject(c.Context(), projectID, userID, input.InvitedBy, input.Role)
 	if err != nil {
 		logger.LogError("AddUserToProject failed", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to add user to project"})
@@ -566,21 +520,12 @@ func (h *UserHandler) AddUserToProject(c *fiber.Ctx) error {
 //	403: ErrorResponse
 //	422: ErrorResponse
 func (h *UserHandler) RemoveUserFromProject(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "project_member", "remove")
-		if err != nil || !permitted {
-			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-	var input struct {
-		ProjectID string `json:"project_id"`
-		UserID    string `json:"user_id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.ProjectID == "" || input.UserID == "" {
+	projectID := c.Params("project_id")
+	userID := c.Params("user_id")
+	if projectID == "" || userID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "project_id and user_id required"})
 	}
-	err := h.Store.RemoveUserFromProject(c.Context(), input.ProjectID, input.UserID)
+	err := h.Store.RemoveUserFromProject(c.Context(), projectID, userID)
 	if err != nil {
 		logger.LogError("RemoveUserFromProject failed", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to remove user from project"})
@@ -602,21 +547,13 @@ func (h *UserHandler) RemoveUserFromProject(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	422: ErrorResponse
 func (h *UserHandler) ListProjectUsers(c *fiber.Ctx) error {
-	var input struct {
-		ProjectID string `json:"project_id"`
-		Page      int    `json:"page"`
-		PageSize  int    `json:"page_size"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.ProjectID == "" {
+	projectID := c.Params("project_id")
+	if projectID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "project_id required"})
 	}
-	if input.Page == 0 {
-		input.Page = 1
-	}
-	if input.PageSize == 0 {
-		input.PageSize = 50
-	}
-	users, err := h.Store.ListProjectUsers(c.Context(), input.ProjectID, input.Page, input.PageSize)
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 50)
+	users, err := h.Store.ListProjectUsers(c.Context(), projectID, page, pageSize)
 	if err != nil {
 		logger.LogError("ListProjectUsers failed", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list project users"})
@@ -639,23 +576,19 @@ func (h *UserHandler) ListProjectUsers(c *fiber.Ctx) error {
 //	403: ErrorResponse
 //	422: ErrorResponse
 func (h *UserHandler) InviteUserToProject(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := getActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "project_invite", "invite")
-		if err != nil || !permitted {
-			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
+	projectID := c.Params("project_id")
+	if projectID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "project_id required"})
 	}
 	var input struct {
-		ProjectID string `json:"project_id"`
 		Email     string `json:"email"`
 		InvitedBy string `json:"invited_by"`
 		Role      string `json:"role"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.ProjectID == "" || input.Email == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "project_id and email required"})
+	if err := c.BodyParser(&input); err != nil || input.Email == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "email required"})
 	}
-	err := h.Store.InviteUserToProject(c.Context(), input.ProjectID, input.Email, input.InvitedBy, input.Role)
+	err := h.Store.InviteUserToProject(c.Context(), projectID, input.Email, input.InvitedBy, input.Role)
 	if err != nil {
 		logger.LogError("InviteUserToProject failed", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to invite user to project"})

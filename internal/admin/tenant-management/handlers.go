@@ -3,7 +3,6 @@ package tenant_management
 import (
 	"errors"
 
-
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/subinc/subinc-backend/internal/pkg/contextutil"
@@ -55,6 +54,36 @@ func (h *TenantAdminHandler) CreateTenant(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(tenant)
 }
 
+func (h *TenantAdminHandler) GetTenant(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := contextutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant", "read")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	if h.TenantStore == nil {
+		logger.LogError("GetTenant: store not configured")
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "tenant store not configured"})
+	}
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("GetTenant: id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+	tenants, err := h.TenantStore.ListTenants(c.Context())
+	if err != nil {
+		logger.LogError("GetTenant: failed to list tenants", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch tenants"})
+	}
+	for _, t := range tenants {
+		if tenant, ok := t.(Tenant); ok && tenant.ID == id {
+			return c.Status(fiber.StatusOK).JSON(tenant)
+		}
+	}
+	return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "tenant not found"})
+}
+
 func (h *TenantAdminHandler) UpdateTenant(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := contextutil.GetActorID(c)
@@ -67,25 +96,27 @@ func (h *TenantAdminHandler) UpdateTenant(c *fiber.Ctx) error {
 		logger.LogError("UpdateTenant: store not configured")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "tenant store not configured"})
 	}
-	var input struct {
-		ID string `json:"id"`
-		Tenant
-	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
-		logger.LogError("UpdateTenant: id required", logger.ErrorField(err))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("UpdateTenant: id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	input.Tenant.ID = input.ID
-	if err := input.Tenant.Validate(); err != nil {
+	var tenant Tenant
+	if err := c.BodyParser(&tenant); err != nil {
+		logger.LogError("UpdateTenant: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	tenant.ID = id
+	if err := tenant.Validate(); err != nil {
 		logger.LogError("UpdateTenant: validation failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	if err := h.TenantStore.UpdateTenant(c.Context(), &input.Tenant); err != nil {
-		logger.LogError("UpdateTenant: failed", logger.ErrorField(err), logger.String("id", input.ID))
+	if err := h.TenantStore.UpdateTenant(c.Context(), &tenant); err != nil {
+		logger.LogError("UpdateTenant: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(input.Tenant)
+	return c.Status(fiber.StatusOK).JSON(tenant)
 }
 
 func (h *TenantAdminHandler) DeleteTenant(c *fiber.Ctx) error {
@@ -100,54 +131,17 @@ func (h *TenantAdminHandler) DeleteTenant(c *fiber.Ctx) error {
 		logger.LogError("DeleteTenant: store not configured")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "tenant store not configured"})
 	}
-	var input struct {
-		ID string `json:"id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
-		logger.LogError("DeleteTenant: id required", logger.ErrorField(err))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("DeleteTenant: id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	if err := h.TenantStore.DeleteTenant(c.Context(), input.ID); err != nil {
-		logger.LogError("DeleteTenant: failed", logger.ErrorField(err), logger.String("id", input.ID))
+	if err := h.TenantStore.DeleteTenant(c.Context(), id); err != nil {
+		logger.LogError("DeleteTenant: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
-}
-
-func (h *TenantAdminHandler) GetTenant(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "tenant", "read")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-	if h.TenantStore == nil {
-		logger.LogError("GetTenant: store not configured")
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "tenant store not configured"})
-	}
-	var input struct {
-		ID string `json:"id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
-		logger.LogError("GetTenant: id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
-	}
-	// ListTenants and filter (replace with GetTenantByID if needed)
-	tenants, err := h.TenantStore.ListTenants(c.Context())
-	if err != nil {
-		logger.LogError("GetTenant: failed to list tenants", logger.ErrorField(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch tenants"})
-	}
-	for _, t := range tenants {
-		if tenant, ok := t.(Tenant); ok && tenant.ID == input.ID {
-
-			return c.Status(fiber.StatusOK).JSON(tenant)
-		}
-	}
-
-	return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "tenant not found"})
 }
 
 func (h *TenantAdminHandler) ListTenants(c *fiber.Ctx) error {
@@ -162,17 +156,18 @@ func (h *TenantAdminHandler) ListTenants(c *fiber.Ctx) error {
 		logger.LogError("ListTenants: store not configured")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "tenant store not configured"})
 	}
-	var filter TenantFilter
-	if err := c.BodyParser(&filter); err != nil {
-		logger.LogError("ListTenants: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	filter := TenantFilter{
+		Query:   c.Query("query"),
+		SortBy:  c.Query("sort_by"),
+		SortDir: c.Query("sort_dir"),
+		Limit:   c.QueryInt("limit", 100),
+		Offset:  c.QueryInt("offset", 0),
 	}
 	tenants, total, err := h.TenantStore.SearchTenants(c.Context(), filter)
 	if err != nil {
 		logger.LogError("ListTenants: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list tenants"})
 	}
-
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"tenants": tenants, "total": total})
 }
 
@@ -188,21 +183,16 @@ func (h *TenantAdminHandler) GetTenantSettings(c *fiber.Ctx) error {
 		logger.LogError("GetTenantSettings: store not configured")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "settings store not configured"})
 	}
-	var tenantID string
-	if err := c.BodyParser(&tenantID); err != nil {
-		logger.LogError("GetTenantSettings: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if tenantID == "" {
-		logger.LogError("GetTenantSettings: id required", logger.String("id", tenantID))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("GetTenantSettings: id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	settings, err := h.TenantSettingsStore.GetTenantSettings(c.Context(), tenantID)
+	settings, err := h.TenantSettingsStore.GetTenantSettings(c.Context(), id)
 	if err != nil {
-		logger.LogError("GetTenantSettings: failed", logger.ErrorField(err), logger.String("id", tenantID))
+		logger.LogError("GetTenantSettings: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-
 	return c.Status(fiber.StatusOK).JSON(settings)
 }
 
@@ -218,29 +208,27 @@ func (h *TenantAdminHandler) UpdateTenantSettings(c *fiber.Ctx) error {
 		logger.LogError("UpdateTenantSettings: store not configured")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "settings store not configured"})
 	}
-	type SettingsInput struct {
-		TenantID string                 `json:"tenant_id"`
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("UpdateTenantSettings: id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+	var input struct {
 		Settings map[string]interface{} `json:"settings"`
 	}
-	var input SettingsInput
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateTenantSettings: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if input.TenantID == "" {
-		logger.LogError("UpdateTenantSettings: id required", logger.String("id", input.TenantID))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
 	}
 	if err := validateTenantSettings(input.Settings); err != nil {
 		logger.LogError("UpdateTenantSettings: validation failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	settings, err := h.TenantSettingsStore.UpdateTenantSettings(c.Context(), input.TenantID, input.Settings)
+	settings, err := h.TenantSettingsStore.UpdateTenantSettings(c.Context(), id, input.Settings)
 	if err != nil {
-		logger.LogError("UpdateTenantSettings: failed", logger.ErrorField(err), logger.String("id", input.TenantID))
+		logger.LogError("UpdateTenantSettings: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-
 	return c.Status(fiber.StatusOK).JSON(settings)
 }
 
@@ -255,31 +243,31 @@ func validateTenantSettings(settings map[string]interface{}) error {
 // --- Tenant Lifecycle State Handlers ---
 
 func (h *TenantAdminHandler) SetTenantStatus(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	}
 	var input struct {
-		TenantID string       `json:"tenant_id"`
-		Status   TenantStatus `json:"status"`
+		Status TenantStatus `json:"status"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.TenantID == "" || input.Status == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id and status required"})
+	if err := c.BodyParser(&input); err != nil || input.Status == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "status required"})
 	}
-	if err := h.TenantStore.SetTenantStatus(c.Context(), input.TenantID, input.Status); err != nil {
+	if err := h.TenantStore.SetTenantStatus(c.Context(), id, input.Status); err != nil {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (h *TenantAdminHandler) GetTenantStatus(c *fiber.Ctx) error {
-	tenantID := c.Query("tenant_id")
-	if tenantID == "" {
+	id := c.Params("id")
+	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
 	}
-
-	status, err := h.TenantStore.GetTenantStatus(c.Context(), tenantID)
+	status, err := h.TenantStore.GetTenantStatus(c.Context(), id)
 	if err != nil {
-		logger.LogError("GetTenantStatus: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		logger.LogError("GetTenantStatus: failed", logger.ErrorField(err), logger.String("tenant_id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-
-	return c.JSON(fiber.Map{"tenant_id": tenantID, "status": status})
+	return c.JSON(fiber.Map{"tenant_id": id, "status": status})
 }

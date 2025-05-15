@@ -5,7 +5,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/subinc/subinc-backend/internal/pkg/contextutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -63,13 +62,6 @@ func (p *Policy) Validate() error {
 }
 
 func (h *RBACHandler) CreateRole(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input Role
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateRole: invalid input", logger.ErrorField(err))
@@ -87,22 +79,32 @@ func (h *RBACHandler) CreateRole(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(role)
 }
 
+func (h *RBACHandler) GetRole(c *fiber.Ctx) error {
+	id := c.Params("id")
+	tenantID := c.Query("tenant_id")
+	if id == "" || tenantID == "" {
+		logger.LogError("GetRole: id and tenant_id required", logger.String("id", id), logger.String("tenant_id", tenantID))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id and tenant_id required"})
+	}
+	role, err := h.RoleService.GetRole(c.Context(), id, tenantID)
+	if err != nil {
+		logger.LogError("GetRole: not found", logger.ErrorField(err), logger.String("id", id))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(role)
+}
+
 func (h *RBACHandler) UpdateRole(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
 	var input Role
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateRole: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	if input.ID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
-	}
+	input.ID = id
 	role, err := h.RoleService.UpdateRole(c.Context(), input)
 	if err != nil {
 		logger.LogError("UpdateRole: failed", logger.ErrorField(err), logger.Any("input", input))
@@ -112,75 +114,32 @@ func (h *RBACHandler) UpdateRole(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) DeleteRole(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-	var req IDTenantRequest
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("DeleteRole: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.ID == "" || req.TenantID == "" {
-		logger.LogError("DeleteRole: id and tenant_id required", logger.String("id", req.ID), logger.String("tenant_id", req.TenantID))
+	id := c.Params("id")
+	tenantID := c.Query("tenant_id")
+	if id == "" || tenantID == "" {
+		logger.LogError("DeleteRole: id and tenant_id required", logger.String("id", id), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id and tenant_id required"})
 	}
-	if err := h.RoleService.DeleteRole(c.Context(), req.ID, req.TenantID); err != nil {
-		logger.LogError("DeleteRole: failed", logger.ErrorField(err), logger.String("id", req.ID))
+	if err := h.RoleService.DeleteRole(c.Context(), id, tenantID); err != nil {
+		logger.LogError("DeleteRole: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *RBACHandler) GetRole(c *fiber.Ctx) error {
-	var req IDTenantRequest
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("GetRole: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.ID == "" || req.TenantID == "" {
-		logger.LogError("GetRole: id and tenant_id required", logger.String("id", req.ID), logger.String("tenant_id", req.TenantID))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id and tenant_id required"})
-	}
-	role, err := h.RoleService.GetRole(c.Context(), req.ID, req.TenantID)
-	if err != nil {
-		logger.LogError("GetRole: not found", logger.ErrorField(err), logger.String("id", req.ID))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(role)
-}
-
 func (h *RBACHandler) ListRoles(c *fiber.Ctx) error {
-	var req ListRequest
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("ListRoles: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.Page < 1 {
-		req.Page = 1
-	}
-	if req.PageSize < 1 || req.PageSize > 1000 {
-		req.PageSize = 100
-	}
-	roles, err := h.RoleService.ListRoles(c.Context(), req.TenantID, req.Page, req.PageSize)
+	tenantID := c.Query("tenant_id")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 100)
+	roles, err := h.RoleService.ListRoles(c.Context(), tenantID, page, pageSize)
 	if err != nil {
-		logger.LogError("ListRoles: failed", logger.ErrorField(err), logger.String("tenant_id", req.TenantID))
+		logger.LogError("ListRoles: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"roles": roles, "page": req.Page, "page_size": req.PageSize})
+	return c.JSON(fiber.Map{"roles": roles, "page": page, "page_size": pageSize})
 }
 
 func (h *RBACHandler) CreatePermission(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input Permission
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreatePermission: invalid input", logger.ErrorField(err))
@@ -198,22 +157,30 @@ func (h *RBACHandler) CreatePermission(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(perm)
 }
 
+func (h *RBACHandler) GetPermission(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+	perm, err := h.PermissionService.GetPermission(c.Context(), id)
+	if err != nil {
+		logger.LogError("GetPermission: not found", logger.ErrorField(err), logger.String("id", id))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(perm)
+}
+
 func (h *RBACHandler) UpdatePermission(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
 	var input Permission
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdatePermission: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	if input.ID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
-	}
+	input.ID = id
 	perm, err := h.PermissionService.UpdatePermission(c.Context(), input)
 	if err != nil {
 		logger.LogError("UpdatePermission: failed", logger.ErrorField(err), logger.Any("input", input))
@@ -223,75 +190,31 @@ func (h *RBACHandler) UpdatePermission(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) DeletePermission(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-	var req IDRequest
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("DeletePermission: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.ID == "" {
-		logger.LogError("DeletePermission: id required", logger.String("id", req.ID))
+	id := c.Params("id")
+	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	if err := h.PermissionService.DeletePermission(c.Context(), req.ID); err != nil {
-		logger.LogError("DeletePermission: failed", logger.ErrorField(err), logger.String("id", req.ID))
+	if err := h.PermissionService.DeletePermission(c.Context(), id); err != nil {
+		logger.LogError("DeletePermission: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *RBACHandler) GetPermission(c *fiber.Ctx) error {
-	var req IDRequest
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("GetPermission: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.ID == "" {
-		logger.LogError("GetPermission: id required", logger.String("id", req.ID))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
-	}
-	perm, err := h.PermissionService.GetPermission(c.Context(), req.ID)
-	if err != nil {
-		logger.LogError("GetPermission: not found", logger.ErrorField(err), logger.String("id", req.ID))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(perm)
-}
-
 func (h *RBACHandler) ListPermissions(c *fiber.Ctx) error {
-	var req ListPermissionRequest
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("ListPermissions: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.Page < 1 {
-		req.Page = 1
-	}
-	if req.PageSize < 1 || req.PageSize > 1000 {
-		req.PageSize = 100
-	}
-	perms, err := h.PermissionService.ListPermissions(c.Context(), req.Resource, req.Action, req.Page, req.PageSize)
+	resource := c.Query("resource")
+	action := c.Query("action")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 100)
+	perms, err := h.PermissionService.ListPermissions(c.Context(), resource, action, page, pageSize)
 	if err != nil {
 		logger.LogError("ListPermissions: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"permissions": perms, "page": req.Page, "page_size": req.PageSize})
+	return c.JSON(fiber.Map{"permissions": perms, "page": page, "page_size": pageSize})
 }
 
 func (h *RBACHandler) CreateRoleBinding(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input RoleBinding
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateRoleBinding: invalid input", logger.ErrorField(err))
@@ -310,57 +233,31 @@ func (h *RBACHandler) CreateRoleBinding(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) DeleteRoleBinding(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-	var req IDRequest
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("DeleteRoleBinding: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.ID == "" {
-		logger.LogError("DeleteRoleBinding: id required", logger.String("id", req.ID))
+	id := c.Params("id")
+	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	if err := h.RoleBindingService.DeleteRoleBinding(c.Context(), req.ID); err != nil {
-		logger.LogError("DeleteRoleBinding: failed", logger.ErrorField(err), logger.String("id", req.ID))
+	if err := h.RoleBindingService.DeleteRoleBinding(c.Context(), id); err != nil {
+		logger.LogError("DeleteRoleBinding: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (h *RBACHandler) ListRoleBindings(c *fiber.Ctx) error {
-	var req ListRoleBindingRequest
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("ListRoleBindings: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.Page < 1 {
-		req.Page = 1
-	}
-	if req.PageSize < 1 || req.PageSize > 1000 {
-		req.PageSize = 100
-	}
-	bindings, err := h.RoleBindingService.ListRoleBindings(c.Context(), req.TenantID, req.UserID, req.Page, req.PageSize)
+	tenantID := c.Query("tenant_id")
+	userID := c.Query("user_id")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 100)
+	bindings, err := h.RoleBindingService.ListRoleBindings(c.Context(), tenantID, userID, page, pageSize)
 	if err != nil {
 		logger.LogError("ListRoleBindings: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"role_bindings": bindings, "page": req.Page, "page_size": req.PageSize})
+	return c.JSON(fiber.Map{"role_bindings": bindings, "page": page, "page_size": pageSize})
 }
 
 func (h *RBACHandler) CreatePolicy(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input Policy
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreatePolicy: invalid input", logger.ErrorField(err))
@@ -378,22 +275,30 @@ func (h *RBACHandler) CreatePolicy(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(policy)
 }
 
+func (h *RBACHandler) GetPolicy(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+	policy, err := h.PolicyService.GetPolicy(c.Context(), id)
+	if err != nil {
+		logger.LogError("GetPolicy: not found", logger.ErrorField(err), logger.String("id", id))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(policy)
+}
+
 func (h *RBACHandler) UpdatePolicy(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
 	var input Policy
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdatePolicy: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	if input.ID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
-	}
+	input.ID = id
 	policy, err := h.PolicyService.UpdatePolicy(c.Context(), input)
 	if err != nil {
 		logger.LogError("UpdatePolicy: failed", logger.ErrorField(err), logger.Any("input", input))
@@ -403,65 +308,27 @@ func (h *RBACHandler) UpdatePolicy(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) DeletePolicy(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-	var req IDRequest
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("DeletePolicy: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.ID == "" {
-		logger.LogError("DeletePolicy: id required", logger.String("id", req.ID))
+	id := c.Params("id")
+	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	if err := h.PolicyService.DeletePolicy(c.Context(), req.ID); err != nil {
-		logger.LogError("DeletePolicy: failed", logger.ErrorField(err), logger.String("id", req.ID))
+	if err := h.PolicyService.DeletePolicy(c.Context(), id); err != nil {
+		logger.LogError("DeletePolicy: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *RBACHandler) GetPolicy(c *fiber.Ctx) error {
-	var req IDRequest
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("GetPolicy: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.ID == "" {
-		logger.LogError("GetPolicy: id required", logger.String("id", req.ID))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
-	}
-	policy, err := h.PolicyService.GetPolicy(c.Context(), req.ID)
-	if err != nil {
-		logger.LogError("GetPolicy: not found", logger.ErrorField(err), logger.String("id", req.ID))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(policy)
-}
-
 func (h *RBACHandler) ListPolicies(c *fiber.Ctx) error {
-	var req ListRequest
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("ListPolicies: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.Page < 1 {
-		req.Page = 1
-	}
-	if req.PageSize < 1 || req.PageSize > 1000 {
-		req.PageSize = 100
-	}
-	policies, err := h.PolicyService.ListPolicies(c.Context(), req.TenantID, req.Page, req.PageSize)
+	tenantID := c.Query("tenant_id")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 100)
+	policies, err := h.PolicyService.ListPolicies(c.Context(), tenantID, page, pageSize)
 	if err != nil {
-		logger.LogError("ListPolicies: failed", logger.ErrorField(err), logger.String("tenant_id", req.TenantID))
+		logger.LogError("ListPolicies: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"policies": policies, "page": req.Page, "page_size": req.PageSize})
+	return c.JSON(fiber.Map{"policies": policies, "page": page, "page_size": pageSize})
 }
 
 func (h *RBACHandler) CreateAPIPermission(c *fiber.Ctx) error {
@@ -479,40 +346,30 @@ func (h *RBACHandler) CreateAPIPermission(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) DeleteAPIPermission(c *fiber.Ctx) error {
-	var req IDRequest
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("DeleteAPIPermission: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.ID == "" {
-		logger.LogError("DeleteAPIPermission: id required", logger.String("id", req.ID))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("DeleteAPIPermission: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	if err := h.APIPermissionService.DeleteAPIPermission(c.Context(), req.ID); err != nil {
-		logger.LogError("DeleteAPIPermission: failed", logger.ErrorField(err), logger.String("id", req.ID))
+	if err := h.APIPermissionService.DeleteAPIPermission(c.Context(), id); err != nil {
+		logger.LogError("DeleteAPIPermission: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (h *RBACHandler) ListAPIPermissions(c *fiber.Ctx) error {
-	var req ListAPIPermissionRequest
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("ListAPIPermissions: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.Page < 1 {
-		req.Page = 1
-	}
-	if req.PageSize < 1 || req.PageSize > 1000 {
-		req.PageSize = 100
-	}
-	perms, err := h.APIPermissionService.ListAPIPermissions(c.Context(), req.TenantID, req.API, req.Method, req.Page, req.PageSize)
+	tenantID := c.Query("tenant_id")
+	api := c.Query("api")
+	method := c.Query("method")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 100)
+	perms, err := h.APIPermissionService.ListAPIPermissions(c.Context(), tenantID, api, method, page, pageSize)
 	if err != nil {
 		logger.LogError("ListAPIPermissions: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"api_permissions": perms, "page": req.Page, "page_size": req.PageSize})
+	return c.JSON(fiber.Map{"api_permissions": perms, "page": page, "page_size": pageSize})
 }
 
 func (h *RBACHandler) CreateResource(c *fiber.Ctx) error {
@@ -530,7 +387,14 @@ func (h *RBACHandler) CreateResource(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) UpdateResource(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("UpdateResource: id required", logger.String("id", id))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+
 	var input Resource
+	input.ID = id
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateResource: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
@@ -547,70 +411,48 @@ func (h *RBACHandler) UpdateResource(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) DeleteResource(c *fiber.Ctx) error {
-	var req IDRequest
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("DeleteResource: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.ID == "" {
-		logger.LogError("DeleteResource: id required", logger.String("id", req.ID))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("DeleteResource: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	if err := h.ResourceService.DeleteResource(c.Context(), req.ID); err != nil {
-		logger.LogError("DeleteResource: failed", logger.ErrorField(err), logger.String("id", req.ID))
+	if err := h.ResourceService.DeleteResource(c.Context(), id); err != nil {
+		logger.LogError("DeleteResource: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (h *RBACHandler) GetResource(c *fiber.Ctx) error {
-	var req IDRequest
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("GetResource: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.ID == "" {
-		logger.LogError("GetResource: id required", logger.String("id", req.ID))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("GetResource: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	res, err := h.ResourceService.GetResource(c.Context(), req.ID)
+	res, err := h.ResourceService.GetResource(c.Context(), id)
 	if err != nil {
-		logger.LogError("GetResource: not found", logger.ErrorField(err), logger.String("id", req.ID))
+		logger.LogError("GetResource: not found", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(res)
 }
 
 func (h *RBACHandler) ListResources(c *fiber.Ctx) error {
-	var req ListResourceRequest
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("ListResources: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.Page < 1 {
-		req.Page = 1
-	}
-	if req.PageSize < 1 || req.PageSize > 1000 {
-		req.PageSize = 100
-	}
-	resources, err := h.ResourceService.ListResources(c.Context(), req.TenantID, req.Type, req.Page, req.PageSize)
+	tenantID := c.Query("tenant_id")
+	typeParam := c.Query("type")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 100)
+	resources, err := h.ResourceService.ListResources(c.Context(), tenantID, typeParam, page, pageSize)
 	if err != nil {
 		logger.LogError("ListResources: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"resources": resources, "page": req.Page, "page_size": req.PageSize})
+	return c.JSON(fiber.Map{"resources": resources, "page": page, "page_size": pageSize})
 }
 
 // --- ABAC Policy Handlers ---
 
 func (h *RBACHandler) CreateABACPolicy(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "abac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input ABACPolicy
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateABACPolicy: invalid input", logger.ErrorField(err))
@@ -628,18 +470,17 @@ func (h *RBACHandler) CreateABACPolicy(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) UpdateABACPolicy(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "abac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-	var input ABACPolicy
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
-		logger.LogError("UpdateABACPolicy: invalid input", logger.ErrorField(err))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("UpdateABACPolicy: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
+	var input ABACPolicy
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("UpdateABACPolicy: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	input.ID = id
 	policy, err := h.Store.UpdateABACPolicy(c.Context(), input)
 	if err != nil {
 		logger.LogError("UpdateABACPolicy: failed", logger.ErrorField(err), logger.Any("input", input))
@@ -649,84 +490,49 @@ func (h *RBACHandler) UpdateABACPolicy(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) DeleteABACPolicy(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "abac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
-	var input struct {
-		ID string `json:"id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
-		logger.LogError("DeleteABACPolicy: id required", logger.ErrorField(err))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("DeleteABACPolicy: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	if err := h.Store.DeleteABACPolicy(c.Context(), input.ID); err != nil {
-		logger.LogError("DeleteABACPolicy: failed", logger.ErrorField(err), logger.String("id", input.ID))
+	if err := h.Store.DeleteABACPolicy(c.Context(), id); err != nil {
+		logger.LogError("DeleteABACPolicy: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (h *RBACHandler) GetABACPolicy(c *fiber.Ctx) error {
-	var input struct {
-		ID string `json:"id"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" {
-		logger.LogError("GetABACPolicy: id required", logger.ErrorField(err))
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("GetABACPolicy: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	policy, err := h.Store.GetABACPolicy(c.Context(), input.ID)
+	policy, err := h.Store.GetABACPolicy(c.Context(), id)
 	if err != nil {
-		logger.LogError("GetABACPolicy: not found", logger.ErrorField(err), logger.String("id", input.ID))
+		logger.LogError("GetABACPolicy: not found", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(policy)
 }
 
 func (h *RBACHandler) ListABACPolicies(c *fiber.Ctx) error {
-	var input struct {
-		TenantID string `json:"tenant_id"`
-		Page     int    `json:"page"`
-		PageSize int    `json:"page_size"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
-		logger.LogError("ListABACPolicies: tenant_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
-	}
-	if input.Page == 0 {
-		input.Page = 1
-	}
-	if input.PageSize == 0 {
-		input.PageSize = 50
-	}
-	policies, err := h.Store.ListABACPolicies(c.Context(), input.TenantID, input.Page, input.PageSize)
+	tenantID := c.Query("tenant_id")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 50)
+	policies, err := h.Store.ListABACPolicies(c.Context(), tenantID, page, pageSize)
 	if err != nil {
-		logger.LogError("ListABACPolicies: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		logger.LogError("ListABACPolicies: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(policies)
+	return c.JSON(fiber.Map{"abac_policies": policies, "page": page, "page_size": pageSize})
 }
-
-func (h *RBACHandler) EvaluateABAC(c *fiber.Ctx) error {
-	var input ABACEvaluationInput
-	if err := c.BodyParser(&input); err != nil {
-		logger.LogError("EvaluateABAC: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	result, err := h.Store.EvaluateABAC(c.Context(), input)
-	if err != nil {
-		logger.LogError("EvaluateABAC: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(result)
-}
-
-// --- Policy Simulation Handler ---
 
 func (h *RBACHandler) SimulatePolicy(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
 	var input PolicySimulationInput
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("SimulatePolicy: invalid input", logger.ErrorField(err))
@@ -740,8 +546,11 @@ func (h *RBACHandler) SimulatePolicy(c *fiber.Ctx) error {
 	return c.JSON(result)
 }
 
-// POST /policies/simulate: simulate policy for what-if scenarios
 func (h *RBACHandler) SimulatePolicyWhatIf(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
 	var input PolicySimulationInput
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("SimulatePolicyWhatIf: invalid input", logger.ErrorField(err))
@@ -758,7 +567,24 @@ func (h *RBACHandler) SimulatePolicyWhatIf(c *fiber.Ctx) error {
 	return c.JSON(result)
 }
 
-// --- Permission Explainer Handler ---
+func (h *RBACHandler) EvaluateABAC(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("EvaluateABAC: id required", logger.String("id", id))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+	var input ABACEvaluationInput
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("EvaluateABAC: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	result, err := h.Store.EvaluateABAC(c.Context(), input)
+	if err != nil {
+		logger.LogError("EvaluateABAC: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(result)
+}
 
 func (h *RBACHandler) ExplainPermission(c *fiber.Ctx) error {
 	var input PermissionExplainInput
@@ -777,13 +603,6 @@ func (h *RBACHandler) ExplainPermission(c *fiber.Ctx) error {
 // --- Role Delegation Handlers ---
 
 func (h *RBACHandler) DelegateRole(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input RoleDelegationInput
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("DelegateRole: invalid input", logger.ErrorField(err))
@@ -800,13 +619,6 @@ func (h *RBACHandler) DelegateRole(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) RevokeDelegatedRole(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var input RoleDelegationInput
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("RevokeDelegatedRole: invalid input", logger.ErrorField(err))
@@ -823,39 +635,20 @@ func (h *RBACHandler) RevokeDelegatedRole(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) ListDelegatedRoles(c *fiber.Ctx) error {
-	var input struct {
-		TenantID string `json:"tenant_id"`
-		UserID   string `json:"user_id"`
-		Page     int    `json:"page"`
-		PageSize int    `json:"page_size"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
-		logger.LogError("ListDelegatedRoles: tenant_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
-	}
-	if input.Page == 0 {
-		input.Page = 1
-	}
-	if input.PageSize == 0 {
-		input.PageSize = 50
-	}
-	roles, err := h.Store.ListDelegatedRoles(c.Context(), input.TenantID, input.UserID, input.Page, input.PageSize)
+	tenantID := c.Query("tenant_id")
+	userID := c.Query("user_id")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 50)
+	roles, err := h.Store.ListDelegatedRoles(c.Context(), tenantID, userID, page, pageSize)
 	if err != nil {
-		logger.LogError("ListDelegatedRoles: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID), logger.String("user_id", input.UserID))
+		logger.LogError("ListDelegatedRoles: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID), logger.String("user_id", userID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(roles)
+	return c.JSON(fiber.Map{"delegated_roles": roles, "page": page, "page_size": pageSize})
 }
 
 // Bulk assign roles to users
 func (h *RBACHandler) BulkAssignRoleBindings(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var req struct {
 		TenantID string   `json:"tenant_id"`
 		RoleID   string   `json:"role_id"`
@@ -878,13 +671,6 @@ func (h *RBACHandler) BulkAssignRoleBindings(c *fiber.Ctx) error {
 
 // Bulk remove role bindings from users
 func (h *RBACHandler) BulkRemoveRoleBindings(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
 	var req struct {
 		TenantID string   `json:"tenant_id"`
 		RoleID   string   `json:"role_id"`
@@ -907,17 +693,14 @@ func (h *RBACHandler) BulkRemoveRoleBindings(c *fiber.Ctx) error {
 
 // POST /delegations/delegate: delegate a role to another user with optional expiry
 func (h *RBACHandler) DelegateRoleWithExpiry(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
-	}
+	id := c.Params("id")
 	var input RoleDelegationInput
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("DelegateRoleWithExpiry: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if id != "" {
+		input.RoleID = id
 	}
 	if input.TenantID == "" || input.FromUserID == "" || input.ToUserID == "" || input.RoleID == "" {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tenant_id, from_user_id, to_user_id, and role_id required"})
@@ -934,18 +717,16 @@ func (h *RBACHandler) DelegateRoleWithExpiry(c *fiber.Ctx) error {
 
 // POST /delegations/revoke: revoke a delegated role
 func (h *RBACHandler) RevokeDelegatedRoleWithAudit(c *fiber.Ctx) error {
-	if h.RBACService != nil {
-		actorID := contextutil.GetActorID(c)
-		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "rbac", "manage")
-		if err != nil || !permitted {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
-		}
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
 	var input RoleDelegationInput
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("RevokeDelegatedRoleWithAudit: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
+	input.RoleID = id
 	if input.TenantID == "" || input.FromUserID == "" || input.ToUserID == "" || input.RoleID == "" {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tenant_id, from_user_id, to_user_id, and role_id required"})
 	}
@@ -1044,15 +825,19 @@ func (h *RBACHandler) ListPermissionTemplates(c *fiber.Ctx) error {
 
 // POST /permission-templates/apply: apply a template to a role
 func (h *RBACHandler) ApplyPermissionTemplate(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("ApplyPermissionTemplate: id required", logger.String("id", id))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
 	var input struct {
-		RoleID     string `json:"role_id"`
-		TemplateID string `json:"template_id"`
+		RoleID string `json:"role_id"`
 	}
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("ApplyPermissionTemplate: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	tpl, ok := permissionTemplates[input.TemplateID]
+	tpl, ok := permissionTemplates[id]
 	if !ok {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "template not found"})
 	}
@@ -1079,18 +864,15 @@ func (h *RBACHandler) DiscoverPermissions(c *fiber.Ctx) error {
 	return c.JSON(result)
 }
 
-// POST /roles/restore: restore a soft-deleted role
+// POST /roles/:id/restore: restore a soft-deleted role
 func (h *RBACHandler) RestoreRole(c *fiber.Ctx) error {
-	var req IDTenantRequest
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("RestoreRole: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.ID == "" || req.TenantID == "" {
+	id := c.Params("id")
+	tenantID := c.Query("tenant_id")
+	if id == "" || tenantID == "" {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "id and tenant_id required"})
 	}
-	if err := h.Store.RestoreRole(c.Context(), req.ID, req.TenantID); err != nil {
-		logger.LogError("RestoreRole: failed", logger.ErrorField(err), logger.String("id", req.ID))
+	if err := h.Store.RestoreRole(c.Context(), id, tenantID); err != nil {
+		logger.LogError("RestoreRole: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
@@ -1098,16 +880,12 @@ func (h *RBACHandler) RestoreRole(c *fiber.Ctx) error {
 
 // POST /policies/restore: restore a soft-deleted policy
 func (h *RBACHandler) RestorePolicy(c *fiber.Ctx) error {
-	var req IDRequest
-	if err := c.BodyParser(&req); err != nil {
-		logger.LogError("RestorePolicy: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if req.ID == "" {
+	id := c.Params("id")
+	if id == "" {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "id required"})
 	}
-	if err := h.Store.RestorePolicy(c.Context(), req.ID); err != nil {
-		logger.LogError("RestorePolicy: failed", logger.ErrorField(err), logger.String("id", req.ID))
+	if err := h.Store.RestorePolicy(c.Context(), id); err != nil {
+		logger.LogError("RestorePolicy: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)

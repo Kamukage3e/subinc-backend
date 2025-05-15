@@ -7,26 +7,28 @@ import (
 	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
 )
 
-func RegisterSubscriptionRoutes(router fiber.Router, handler *SubscriptionHandler, auditLogger security_management.AuditLogger) {
-	subscriptionRouter := router.Group("/subscriptions", auditmiddleware.AuditLoggerMiddleware(auditLogger))
+func RegisterRoutes(router fiber.Router, handler *SubscriptionHandler, auditLogger security_management.AuditLogger) {
+	route := router.Group("/plans", auditmiddleware.AuditLoggerMiddleware(auditLogger))
+	route.Post("/", handler.CreatePlan)
+	route.Get("/", handler.ListPlans)
+	route.Get("/:id", handler.GetPlan)
+	route.Put("/:id", handler.UpdatePlan)
+	route.Delete("/:id", handler.DeletePlan)
 
-	subscriptionRouter.Post("/plans/create", handler.CreatePlan)
-	subscriptionRouter.Put("/plans/update", handler.UpdatePlan)
-	subscriptionRouter.Get("/plans/get", handler.GetPlan)
-	subscriptionRouter.Get("/plans/list", handler.ListPlans)
-	subscriptionRouter.Delete("/plans/delete", handler.DeletePlan)
+	route = router.Group("/usages", auditmiddleware.AuditLoggerMiddleware(auditLogger))
+	route.Post("/", handler.CreateUsage)
+	route.Get("/", handler.ListUsage)
 
-	subscriptionRouter.Post("/usage/create", handler.CreateUsage)
-	subscriptionRouter.Get("/usage/list", handler.ListUsage)
+	route = router.Group("/subscriptions", auditmiddleware.AuditLoggerMiddleware(auditLogger))
+	route.Post("/", handler.CreateSubscription)
+	route.Get("/", handler.ListSubscriptions)
+	route.Get("/:id", handler.GetSubscription)
+	route.Put("/:id", handler.UpdateSubscription)
+	route.Patch("/:id", handler.PatchSubscription)
+	route.Delete("/:id", handler.DeleteSubscription)
 
-	subscriptionRouter.Post("/subscription/create", handler.CreateSubscription)
-	subscriptionRouter.Put("/subscription/update", handler.UpdateSubscription)
-	subscriptionRouter.Patch("/subscription/patch", handler.PatchSubscription)
-	subscriptionRouter.Delete("/subscription/delete", handler.DeleteSubscription)
-	subscriptionRouter.Get("/subscription/get", handler.GetSubscription)
-	subscriptionRouter.Get("/subscription/list", handler.ListSubscriptions)
-	subscriptionRouter.Post("/subscription/change-plan", handler.ChangePlanSubscription)
-	subscriptionRouter.Post("/subscription/cancel", handler.CancelSubscriptionNow)
-	subscriptionRouter.Post("/subscription/resume", handler.ResumeSubscription)
-	subscriptionRouter.Post("/subscription/upgrade-now", handler.UpgradeNowSubscription)
+	route.Post("/:id/change-plan", handler.ChangePlanSubscription)
+	route.Post("/:id/cancel-now", handler.CancelSubscriptionNow)
+	route.Post("/:id/resume", handler.ResumeSubscription)
+	route.Post("/:id/upgrade-now", handler.UpgradeNowSubscription)
 }

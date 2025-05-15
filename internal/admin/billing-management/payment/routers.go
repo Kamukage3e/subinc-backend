@@ -1,8 +1,6 @@
 package payment
 
 import (
-
-
 	"github.com/gofiber/fiber/v2"
 
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
@@ -14,8 +12,8 @@ func paymentScopeExtractor(c *fiber.Ctx) (string, string) {
 }
 
 // RegisterPaymentRoutes registers payment related routes
-func RegisterPaymentRoutes(router fiber.Router, handler *PaymentHandler, jwtSecret string, auditLogger security_management.AuditLogger) {
-	payment := router.Group(
+func RegisterRoutes(router fiber.Router, handler *PaymentHandler, jwtSecret string, auditLogger security_management.AuditLogger) {
+	route := router.Group(
 		"/payments",
 		security_management.OIDCMiddleware(jwtSecret),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, paymentScopeExtractor),
@@ -23,28 +21,38 @@ func RegisterPaymentRoutes(router fiber.Router, handler *PaymentHandler, jwtSecr
 	)
 
 	// Payment endpoints
-	payment.Post("/create", handler.CreatePayment)
-	payment.Post("/refund", handler.RefundPayment)
-	payment.Get("/status", handler.GetPaymentStatus)
-	payment.Put("/update", handler.UpdatePayment)
-	payment.Get("/get", handler.GetPayment)
-	payment.Get("/list", handler.ListPayments)
+	route.Post("/", handler.CreatePayment)
+	route.Get("/", handler.ListPayments)
+	route.Get("/:id", handler.GetPayment)
+	route.Put("/:id", handler.UpdatePayment)
+	route.Post("/:id/refund", handler.RefundPayment)
+	route.Get("/:id/status", handler.GetPaymentStatus)
+
 	// Payment method endpoints
-	methods := payment.Group("/methods", auditmiddleware.AuditLoggerMiddleware(auditLogger))
-	methods.Post("/create", handler.CreatePaymentMethod)
-	methods.Put("/update", handler.UpdatePaymentMethod)
-	methods.Patch("/patch", handler.PatchPaymentMethod)
-	methods.Delete("/delete", handler.DeletePaymentMethod)
-	methods.Get("/get", handler.GetPaymentMethod)
-	methods.Get("/list", handler.ListPaymentMethods)
+	route.Post("/payment-methods", handler.CreatePaymentMethod)
+	route.Get("/payment-methods", handler.ListPaymentMethods)
+	route.Get("/payment-methods/:id", handler.GetPaymentMethod)
+	route.Put("/payment-methods/:id", handler.UpdatePaymentMethod)
+	route.Patch("/payment-methods/:id", handler.PatchPaymentMethod)
+	route.Delete("/payment-methods/:id", handler.DeletePaymentMethod)
 
 	// Refund endpoints
-	refunds := payment.Group("/refunds", auditmiddleware.AuditLoggerMiddleware(auditLogger))
-	refunds.Post("/create", handler.CreateRefund)
-	refunds.Put("/update", handler.UpdateRefund)
-	refunds.Delete("/delete", handler.DeleteRefund)
-	refunds.Get("/get", handler.GetRefund)
-	refunds.Get("/list", handler.ListRefunds)
+	route.Post("/refunds", handler.CreateRefund)
+	route.Get("/refunds", handler.ListRefunds)
+	route.Get("/refunds/:id", handler.GetRefund)
+	route.Put("/refunds/:id", handler.UpdateRefund)
+	route.Delete("/refunds/:id", handler.DeleteRefund)
 
+	// Dispute endpoints
+	route.Post("/disputes", handler.CreateDispute)
+	route.Get("/disputes", handler.ListDisputes)
+	route.Get("/disputes/:id", handler.GetDispute)
+	route.Put("/disputes/:id", handler.UpdateDispute)
+	route.Delete("/disputes/:id", handler.DeleteDispute)
 
+	route.Post("/disputes/:id/evidence", handler.CreateEvidence)
+	route.Get("/disputes/:id/evidence", handler.ListEvidence)
+	route.Get("/disputes/evidence/:evidence_id", handler.GetEvidence)
+	route.Put("/disputes/evidence/:evidence_id", handler.UpdateEvidence)
+	route.Delete("/disputes/evidence/:evidence_id", handler.DeleteEvidence)
 }

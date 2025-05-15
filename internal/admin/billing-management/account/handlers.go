@@ -79,11 +79,17 @@ func (h *AccountHandler) UpdateAccount(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("UpdateAccount: id required", logger.String("id", id))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
 	var input Account
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateAccount: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
+	input.ID = id
 	if err := input.Validate(); err != nil {
 		logger.LogError("UpdateAccount: validation failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
@@ -103,7 +109,6 @@ func (h *AccountHandler) UpdateAccount(c *fiber.Ctx) error {
 		}
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
 	}
-
 	return c.JSON(account)
 }
 
@@ -115,19 +120,16 @@ func (h *AccountHandler) GetAccount(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		ActorID string `json:"actor_id"`
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("GetAccount: id required", logger.String("id", id))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	if err := c.BodyParser(&input); err != nil || input.ActorID == "" {
-		logger.LogError("GetAccount: actor_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "actor_id required"})
-	}
-	account, err := h.AccountService.GetAccount(input.ActorID)
+	account, err := h.AccountService.GetAccount(id)
 	if err != nil {
 		logger.LogError("GetAccount: not found", logger.ErrorField(err))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
-
 	return c.JSON(account)
 }
 
@@ -139,24 +141,12 @@ func (h *AccountHandler) ListAccounts(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		TenantID string `json:"tenant_id"`
-		Page     int    `json:"page"`
-		PageSize int    `json:"page_size"`
-	}
-	if err := c.BodyParser(&input); err != nil {
-		logger.LogError("ListAccounts: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if input.Page == 0 {
-		input.Page = 1
-	}
-	if input.PageSize == 0 {
-		input.PageSize = 100
-	}
-	accounts, err := h.AccountService.ListAccounts(input.TenantID, input.Page, input.PageSize)
+	tenantID := c.Query("tenant_id")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 100)
+	accounts, err := h.AccountService.ListAccounts(tenantID, page, pageSize)
 	if err != nil {
-		logger.LogError("ListAccounts: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		logger.LogError("ListAccounts: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		errResp := fiber.Map{"error": err.Error()}
 		if apiErr, ok := err.(interface {
 			Message() string
@@ -169,7 +159,7 @@ func (h *AccountHandler) ListAccounts(c *fiber.Ctx) error {
 		}
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
 	}
-	return c.JSON(fiber.Map{"accounts": accounts, "page": input.Page, "page_size": input.PageSize})
+	return c.JSON(fiber.Map{"accounts": accounts, "page": page, "page_size": pageSize})
 }
 
 func (h *AccountHandler) PerformAccountAction(c *fiber.Ctx) error {
@@ -180,18 +170,22 @@ func (h *AccountHandler) PerformAccountAction(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("PerformAccountAction: id required", logger.String("id", id))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
 	var input struct {
-		ID     string                 `json:"id"`
 		Action string                 `json:"action"`
 		Params map[string]interface{} `json:"params"`
 	}
-	if err := c.BodyParser(&input); err != nil || input.ID == "" || input.Action == "" {
-		logger.LogError("PerformAccountAction: id and action required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id and action required"})
+	if err := c.BodyParser(&input); err != nil || input.Action == "" {
+		logger.LogError("PerformAccountAction: action required", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "action required"})
 	}
-	result, err := h.AccountService.PerformAccountAction(c.Context(), input.ID, input.Action, input.Params)
+	result, err := h.AccountService.PerformAccountAction(c.Context(), id, input.Action, input.Params)
 	if err != nil {
-		logger.LogError("PerformAccountAction: failed", logger.ErrorField(err), logger.String("account_id", input.ID), logger.String("action", input.Action))
+		logger.LogError("PerformAccountAction: failed", logger.ErrorField(err), logger.String("account_id", id), logger.String("action", input.Action))
 		errResp := fiber.Map{"error": err.Error()}
 		if apiErr, ok := err.(*Error); ok {
 			errResp["error"] = apiErr.Message
@@ -200,6 +194,5 @@ func (h *AccountHandler) PerformAccountAction(c *fiber.Ctx) error {
 		}
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
 	}
-
 	return c.Status(fiber.StatusOK).JSON(result)
 }

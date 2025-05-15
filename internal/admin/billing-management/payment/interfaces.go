@@ -42,11 +42,17 @@ type DisputeDataStoreInterface interface {
 	ListDisputes(ctx context.Context, tenantID, paymentID string, status DisputeStatus, page, pageSize int) ([]*Dispute, error)
 	UpdateDisputeStatus(ctx context.Context, id string, status DisputeStatus, evidenceSubmitted *time.Time) error
 
+	// Add this for soft delete
+	DeleteDispute(ctx context.Context, id string) error
+
 	// Dispute evidence methods
 	CreateDisputeEvidence(ctx context.Context, e *DisputeEvidence) error
 	GetDisputeEvidence(ctx context.Context, evidenceID string) (*DisputeEvidence, error)
 	ListDisputeEvidence(ctx context.Context, disputeID, tenantID string, page, pageSize int) ([]*DisputeEvidence, error)
 	UpdateDisputeEvidenceStatus(ctx context.Context, evidenceID, providerStatus, providerResponse string) error
+
+	// Add this for soft delete of evidence
+	DeleteDisputeEvidence(ctx context.Context, evidenceID string) error
 }
 
 // PaymentService manages payment operations

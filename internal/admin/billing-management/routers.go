@@ -29,7 +29,10 @@ func RegisterRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret
 	route.Put("/invoices/:id", handler.UpdateInvoice)
 	route.Delete("/invoices/:id", handler.DeleteInvoice)
 
-	route.Post("/invoices/pdf/download", handler.DownloadInvoicePDF)
+	route.Get("/invoices/:id/pdf", handler.DownloadInvoicePDF)
+	route.Post("/invoices/:id/apply-credits", handler.ApplyCreditsToInvoice)
+	route.Post("/invoices/:id/with-fees-tax", handler.CreateInvoiceWithFeesAndTax)
+	route.Post("/invoices/:id/manual-adjustment", handler.CreateManualAdjustment)
 
 	route.Post("/webhook-events", handler.CreateWebhookEvent)
 	route.Get("/webhook-events", handler.ListWebhookEvents)
@@ -42,24 +45,20 @@ func RegisterRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret
 	route.Get("/invoice-adjustments/:id", handler.GetInvoiceAdjustment)
 	route.Put("/invoice-adjustments/:id", handler.UpdateInvoiceAdjustment)
 	route.Delete("/invoice-adjustments/:id", handler.DeleteInvoiceAdjustment)
-	route.Post("/invoices/apply-credits", handler.ApplyCreditsToInvoice)
-	route.Post("/invoices/with-fees-tax/create", handler.CreateInvoiceWithFeesAndTax)
 
-	route.Get("/reports/revenue/get", handler.GetRevenueReport)
-	route.Get("/reports/accounts-receivable/get", handler.GetARReport)
-	route.Get("/reports/churn/get", handler.GetChurnReport)
+	route.Get("/reports/revenue", handler.GetRevenueReport)
+	route.Get("/reports/accounts-receivable", handler.GetARReport)
+	route.Get("/reports/churn", handler.GetChurnReport)
 
-	route.Post("/manual-adjustment/create", handler.CreateManualAdjustment)
-
-	route.Get("/billing/config/get", handler.GetBillingConfig)
-	route.Post("/billing/config/set", handler.SetBillingConfig)
+	route.Get("/billing/config", handler.GetBillingConfig)
+	route.Put("/billing/config", handler.SetBillingConfig)
 
 	route.Post("/webhook-subscriptions", handler.CreateWebhookSubscription)
 	route.Get("/webhook-subscriptions", handler.ListWebhookSubscriptions)
 	route.Delete("/webhook-subscriptions/:id", handler.DeleteWebhookSubscription)
 
-	route.Post("/tenant-currency/set", handler.SetTenantCurrency)
-	route.Get("/tenant-currency/get", handler.GetTenantCurrency)
+	route.Post("/tenant-currency", handler.SetTenantCurrency)
+	route.Get("/tenant-currency", handler.GetTenantCurrency)
 
 	route.Post("/stripe/webhook", handler.StripeWebhookHandler)
 }

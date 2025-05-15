@@ -662,3 +662,39 @@ func (s *PostgresStore) UpdatePaymentStatus(ctx context.Context, paymentID, stat
 	}
 	return nil
 }
+
+// DeleteDispute sets status to 'closed' for soft delete
+func (s *PostgresStore) DeleteDispute(ctx context.Context, id string) error {
+	if id == "" {
+		logger.LogError("DeleteDispute: id must not be empty", logger.ErrorField(errors.New("id must not be empty")))
+		return errors.New("id must not be empty")
+	}
+	const q = `UPDATE disputes SET status = 'closed', updated_at = NOW() WHERE id = $1`
+	res, err := s.DB.Exec(ctx, q, id)
+	if err != nil {
+		logger.LogError("DeleteDispute: update failed", logger.ErrorField(err))
+		return errors.New("failed to delete dispute")
+	}
+	if res.RowsAffected() == 0 {
+		return errors.New("dispute not found")
+	}
+	return nil
+}
+
+// DeleteDisputeEvidence sets provider_status to 'deleted' for soft delete
+func (s *PostgresStore) DeleteDisputeEvidence(ctx context.Context, evidenceID string) error {
+	if evidenceID == "" {
+		logger.LogError("DeleteDisputeEvidence: evidence_id must not be empty", logger.ErrorField(errors.New("evidence_id must not be empty")))
+		return errors.New("evidence_id must not be empty")
+	}
+	const q = `UPDATE dispute_evidence SET provider_status = 'deleted', updated_at = NOW() WHERE id = $1`
+	res, err := s.DB.Exec(ctx, q, evidenceID)
+	if err != nil {
+		logger.LogError("DeleteDisputeEvidence: update failed", logger.ErrorField(err))
+		return errors.New("failed to delete dispute evidence")
+	}
+	if res.RowsAffected() == 0 {
+		return errors.New("dispute evidence not found")
+	}
+	return nil
+}

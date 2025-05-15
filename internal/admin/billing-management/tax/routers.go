@@ -8,13 +8,14 @@ import (
 	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
 )
 
+func RegisterRoutes(router fiber.Router, handler *TaxHandler, auditLogger security_management.AuditLogger) {
+	route := router.Group("/tax", auditmiddleware.AuditLoggerMiddleware(auditLogger))
 
+	route.Post("/tax-info", handler.SetTaxInfo)
+	route.Get("/tax-info/:tenant_id", handler.GetTaxInfo)
 
-func RegisterTaxRoutes(router fiber.Router, handler *TaxHandler, auditLogger security_management.AuditLogger) {
-	taxRouter := router.Group("/tax", auditmiddleware.AuditLoggerMiddleware(auditLogger))
-
-	taxRouter.Post("/tax-info/set", handler.SetTaxInfo)
-	taxRouter.Get("/tax-info/get", handler.GetTaxInfo)
-	taxRouter.Post("/tax-plugin/list", handler.ListTaxPlugins)
-	taxRouter.Post("/tax-plugin/set", handler.SetTaxPluginConfig)
+	route.Get("/plugins", handler.ListTaxPlugins)
+	route.Put("/plugin/:tenant_id", handler.SetTaxPluginConfig)
+	route.Get("/plugin/:tenant_id", handler.GetTaxPluginConfig)
+	route.Post("/tax-plugin/list", handler.ListTaxPlugins)
 }

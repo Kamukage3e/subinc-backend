@@ -12,31 +12,17 @@ import (
 	paypal "github.com/plutov/paypal/v4"
 	stripe "github.com/stripe/stripe-go/v75"
 	stripeAccount "github.com/stripe/stripe-go/v75/account"
-	stripePaymentIntent "github.com/stripe/stripe-go/v75/paymentintent"
-	stripeRefund "github.com/stripe/stripe-go/v75/refund"
+	"github.com/stripe/stripe-go/v75/paymentintent"
+	"github.com/stripe/stripe-go/v75/refund"
 
 	"github.com/gofiber/fiber/v2"
+
 	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
-
-// PaymentHandler is the handler for payment-related routes
-type PaymentHandler struct {
-	PaymentService       PaymentService
-	RefundService        RefundService
-	PaymentMethodService PaymentMethodService
-	ManualRefundService  ManualRefundService
-
-	RBACService      rbac_management.RBACService          // optional, may be nil
-	RateLimitService security_management.RateLimitService // for distributed rate limiting
-	ConfigService    *server_config.Service               // for fetching secrets, keys, and static configs from server-config
-	Logger           logger.Logger                        // add logger for webhook and handler logging
-	Notify           security_management.NotificationService
-	StoreRegistry    StoreInterface
-}
 
 // NewPaymentHandler creates a new payment handler
 func NewPaymentHandler(
@@ -101,18 +87,21 @@ func (h *PaymentHandler) RefundPayment(c *fiber.Ctx) error {
 		}
 	}
 
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
+	}
 	var input RefundPaymentRequest
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("RefundPayment: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-
+	input.PaymentID = id
 	result, err := h.PaymentService.RefundPayment(c.Context(), &input)
 	if err != nil {
 		logger.LogError("RefundPayment: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to refund payment"})
 	}
-
 	return c.JSON(result)
 }
 
@@ -125,18 +114,15 @@ func (h *PaymentHandler) GetPaymentStatus(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-
-	paymentID := c.Query("payment_id")
-	if paymentID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "payment_id is required"})
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
 	}
-
-	status, err := h.PaymentService.GetPaymentStatus(c.Context(), paymentID)
+	status, err := h.PaymentService.GetPaymentStatus(c.Context(), id)
 	if err != nil {
 		logger.LogError("GetPaymentStatus: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get payment status"})
 	}
-
 	return c.JSON(status)
 }
 
@@ -149,19 +135,21 @@ func (h *PaymentHandler) UpdatePayment(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
+	}
 	var input Payment
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdatePayment: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-
+	input.ID = id
 	payment, err := h.PaymentService.UpdatePayment(input)
 	if err != nil {
 		logger.LogError("UpdatePayment: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update payment"})
 	}
-
 	return c.JSON(payment)
 }
 
@@ -174,18 +162,15 @@ func (h *PaymentHandler) GetPayment(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-
-	id := c.Query("id")
+	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
 	}
-
 	payment, err := h.PaymentService.GetPayment(id)
 	if err != nil {
 		logger.LogError("GetPayment: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get payment"})
 	}
-
 	return c.JSON(payment)
 }
 
@@ -198,17 +183,14 @@ func (h *PaymentHandler) ListPayments(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-
 	invoiceID := c.Query("invoice_id")
-	page, _ := strconv.Atoi(c.Query("page", "1"))
-	pageSize, _ := strconv.Atoi(c.Query("page_size", "20"))
-
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 20)
 	payments, err := h.PaymentService.ListPayments(invoiceID, page, pageSize)
 	if err != nil {
 		logger.LogError("ListPayments: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list payments"})
 	}
-
 	return c.JSON(fiber.Map{"payments": payments, "page": page, "page_size": pageSize})
 }
 
@@ -250,19 +232,21 @@ func (h *PaymentHandler) UpdatePaymentMethod(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
+	}
 	var input PaymentMethod
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdatePaymentMethod: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-
+	input.ID = id
 	method, err := h.PaymentMethodService.UpdatePaymentMethod(input)
 	if err != nil {
 		logger.LogError("UpdatePaymentMethod: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update payment method"})
 	}
-
 	return c.JSON(method)
 }
 
@@ -275,27 +259,22 @@ func (h *PaymentHandler) PatchPaymentMethod(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
+	}
 	var input struct {
-		ID         string `json:"id"`
 		SetDefault *bool  `json:"set_default"`
 		Status     string `json:"status"`
 	}
-
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("PatchPaymentMethod: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-
-	if input.ID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
-	}
-
-	if err := h.PaymentMethodService.PatchPaymentMethod(input.ID, input.SetDefault, input.Status); err != nil {
+	if err := h.PaymentMethodService.PatchPaymentMethod(id, input.SetDefault, input.Status); err != nil {
 		logger.LogError("PatchPaymentMethod: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to patch payment method"})
 	}
-
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -308,17 +287,14 @@ func (h *PaymentHandler) DeletePaymentMethod(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-
-	id := c.Query("id")
+	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
 	}
-
 	if err := h.PaymentMethodService.DeletePaymentMethod(id); err != nil {
 		logger.LogError("DeletePaymentMethod: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete payment method"})
 	}
-
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -331,18 +307,15 @@ func (h *PaymentHandler) GetPaymentMethod(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-
-	id := c.Query("id")
+	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
 	}
-
 	method, err := h.PaymentMethodService.GetPaymentMethod(id)
 	if err != nil {
 		logger.LogError("GetPaymentMethod: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get payment method"})
 	}
-
 	return c.JSON(method)
 }
 
@@ -404,17 +377,14 @@ func (h *PaymentHandler) UpdateRefund(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-
-	id := c.Query("id")
+	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
 	}
-
 	if err := h.RefundService.UpdateRefund(id); err != nil {
 		logger.LogError("UpdateRefund: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update refund"})
 	}
-
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -427,17 +397,14 @@ func (h *PaymentHandler) DeleteRefund(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-
-	id := c.Query("id")
+	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
 	}
-
 	if err := h.RefundService.DeleteRefund(id); err != nil {
 		logger.LogError("DeleteRefund: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete refund"})
 	}
-
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -450,18 +417,15 @@ func (h *PaymentHandler) GetRefund(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-
-	id := c.Query("id")
+	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
 	}
-
 	refund, err := h.RefundService.GetRefund(id)
 	if err != nil {
 		logger.LogError("GetRefund: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get refund"})
 	}
-
 	return c.JSON(refund)
 }
 
@@ -670,161 +634,6 @@ func (p *PaypalProvider) GetPaymentStatus(ctx context.Context, paymentID string)
 	}, nil
 }
 
-func (s *StripeProvider) CreatePayment(ctx context.Context, req *CreatePaymentRequest) (*PaymentResult, error) {
-	if req == nil {
-		err := errors.New("request must not be nil")
-		logger.LogError("stripe.create_payment.invalid_request", logger.ErrorField(err))
-		return nil, err
-	}
-	if req.Amount <= 0 {
-		err := errors.New("amount must be positive")
-		logger.LogError("stripe.create_payment.invalid_amount", logger.ErrorField(err))
-		return nil, err
-	}
-	if req.Currency == "" {
-		err := errors.New("currency must not be empty")
-		logger.LogError("stripe.create_payment.missing_currency", logger.ErrorField(err))
-		return nil, err
-	}
-	if req.Source == "" {
-		err := errors.New("source must not be empty")
-		logger.LogError("stripe.create_payment.missing_source", logger.ErrorField(err))
-		return nil, err
-	}
-	if s.APIKey == "" {
-		err := errors.New("stripe api_key not initialized")
-		logger.LogError("stripe.create_payment.api_key_missing", logger.ErrorField(err))
-		return nil, err
-	}
-	stripe.Key = s.APIKey
-	params := &stripe.PaymentIntentParams{
-		Amount:      stripe.Int64(int64(req.Amount * 100)),
-		Currency:    stripe.String(req.Currency),
-		Confirm:     stripe.Bool(true),
-		Description: stripe.String(req.Description),
-	}
-	switch req.Source {
-	case PaymentMethodCard, "visa", "mastercard":
-		params.PaymentMethodTypes = []*string{stripe.String("card")}
-		params.PaymentMethod = stripe.String(req.Metadata["payment_method_id"])
-	case PaymentMethodApplePay:
-		params.PaymentMethodTypes = []*string{stripe.String("card")}
-		params.PaymentMethod = stripe.String(req.Metadata["payment_method_id"])
-		params.Metadata = map[string]string{"wallet": "apple_pay"}
-	case PaymentMethodGooglePay:
-		params.PaymentMethodTypes = []*string{stripe.String("card")}
-		params.PaymentMethod = stripe.String(req.Metadata["payment_method_id"])
-		params.Metadata = map[string]string{"wallet": "google_pay"}
-	default:
-		err := errors.New("unsupported payment method for Stripe")
-		logger.LogError("stripe.create_payment.unsupported_method", logger.ErrorField(err), logger.String("source", req.Source))
-
-		return nil, err
-	}
-	if req.Metadata != nil && params.Metadata == nil {
-		params.Metadata = req.Metadata
-	}
-	intent, err := stripePaymentIntent.New(params)
-	if err != nil {
-		logger.LogError("stripe.create_payment.failed", logger.ErrorField(err), logger.String("currency", req.Currency), logger.Float64("amount", req.Amount))
-		return nil, errors.New("stripe: failed to create payment intent")
-	}
-	logger.LogInfo("stripe.create_payment.success", logger.String("intent_id", intent.ID), logger.Float64("amount", float64(intent.Amount)/100.0), logger.String("currency", string(intent.Currency)))
-
-	result := &PaymentResult{
-		PaymentID: intent.ID,
-		Status:    string(intent.Status),
-		Amount:    float64(intent.Amount) / 100.0,
-		Currency:  string(intent.Currency),
-		CreatedAt: time.Unix(intent.Created, 0),
-		Provider:  "stripe",
-		Raw:       intent,
-	}
-	if err := s.Store.SavePayment(ctx, result); err != nil {
-		logger.LogError("stripe.create_payment.save_payment_failed", logger.ErrorField(err))
-		return nil, err
-	}
-	return result, nil
-}
-
-func (s *StripeProvider) RefundPayment(ctx context.Context, req *RefundPaymentRequest) (*PaymentResult, error) {
-	if req == nil {
-		err := errors.New("request must not be nil")
-		logger.LogError("stripe.refund_payment.invalid_request", logger.ErrorField(err))
-		return nil, err
-	}
-	if req.Amount <= 0 {
-		err := errors.New("amount must be positive")
-		logger.LogError("stripe.refund_payment.invalid_amount", logger.ErrorField(err))
-		return nil, err
-	}
-	if req.Currency == "" {
-		err := errors.New("currency must not be empty")
-		logger.LogError("stripe.refund_payment.missing_currency", logger.ErrorField(err))
-		return nil, err
-	}
-	if req.PaymentID == "" {
-		err := errors.New("payment_id must not be empty")
-		logger.LogError("stripe.refund_payment.missing_payment_id", logger.ErrorField(err))
-		return nil, err
-	}
-	if s.APIKey == "" {
-		err := errors.New("stripe api_key not initialized")
-		logger.LogError("stripe.refund_payment.api_key_missing", logger.ErrorField(err))
-		return nil, err
-	}
-	stripe.Key = s.APIKey
-	params := &stripe.RefundParams{
-		PaymentIntent: stripe.String(req.PaymentID),
-		Amount:        stripe.Int64(int64(req.Amount * 100)),
-	}
-	refund, err := stripeRefund.New(params)
-	if err != nil {
-		logger.LogError("stripe.refund_payment.failed", logger.ErrorField(err), logger.String("payment_id", req.PaymentID))
-		return nil, errors.New("stripe: failed to refund payment")
-	}
-	logger.LogInfo("stripe.refund_payment.success", logger.String("refund_id", refund.ID), logger.Float64("amount", float64(refund.Amount)/100.0), logger.String("currency", string(refund.Currency)))
-
-	result := &PaymentResult{
-		PaymentID: req.PaymentID,
-		Status:    string(refund.Status),
-		Amount:    float64(refund.Amount) / 100.0,
-		Currency:  string(refund.Currency),
-		CreatedAt: time.Unix(refund.Created, 0),
-		Provider:  "stripe",
-		Raw:       refund,
-	}
-	if err := s.Store.SavePayment(ctx, result); err != nil {
-		logger.LogError("stripe.refund_payment.save_payment_failed", logger.ErrorField(err))
-		return nil, err
-	}
-	return result, nil
-}
-
-func (s *StripeProvider) GetPaymentStatus(ctx context.Context, paymentID string) (*PaymentStatus, error) {
-	if paymentID == "" {
-		err := errors.New("payment_id must not be empty")
-		logger.LogError("stripe.get_payment_status.missing_payment_id", logger.ErrorField(err))
-		return nil, err
-	}
-	result, err := s.Store.GetPaymentResult(ctx, paymentID)
-	if err != nil {
-		logger.LogError("stripe.get_payment_status.get_payment_failed", logger.ErrorField(err))
-
-		return nil, err
-	}
-
-	return &PaymentStatus{
-		PaymentID: result.PaymentID,
-		Status:    result.Status,
-		Amount:    result.Amount,
-		Currency:  result.Currency,
-		UpdatedAt: result.CreatedAt,
-		Provider:  result.Provider,
-		Raw:       result.Raw,
-	}, nil
-}
-
 func formatAmount(amount float64) string {
 	return strconv.FormatFloat(amount, 'f', 2, 64)
 }
@@ -943,8 +752,6 @@ func GetProviderForTenant(ctx context.Context, store StoreInterface, tenantID st
 		return nil, errors.New("unsupported provider: " + cfg.Provider)
 	}
 }
-
-
 
 func CheckProviderConnection(ctx context.Context, store StoreInterface, tenantID, providerName string, configService *server_config.Service) error {
 	err := error(nil)
@@ -1239,4 +1046,389 @@ func (b *BraintreeProvider) GetPaymentStatus(ctx context.Context, paymentID stri
 		Provider:  "braintree",
 		Raw:       tr,
 	}, nil
+}
+
+func (s *StripeProvider) CreatePayment(ctx context.Context, req *CreatePaymentRequest) (*PaymentResult, error) {
+	if req == nil {
+		err := errors.New("request must not be nil")
+		logger.LogError("stripe.create_payment.invalid_request", logger.ErrorField(err))
+		return nil, err
+	}
+	if req.Amount <= 0 {
+		err := errors.New("amount must be positive")
+		logger.LogError("stripe.create_payment.invalid_amount", logger.ErrorField(err))
+		return nil, err
+	}
+	if req.Currency == "" {
+		err := errors.New("currency must not be empty")
+		logger.LogError("stripe.create_payment.missing_currency", logger.ErrorField(err))
+		return nil, err
+	}
+	if req.Source == "" {
+		err := errors.New("source must not be empty")
+		logger.LogError("stripe.create_payment.missing_source", logger.ErrorField(err))
+		return nil, err
+	}
+	if s.APIKey == "" {
+		err := errors.New("stripe api_key not initialized")
+		logger.LogError("stripe.create_payment.api_key_missing", logger.ErrorField(err))
+		return nil, err
+	}
+	stripe.Key = s.APIKey
+	params := &stripe.PaymentIntentParams{
+		Amount:      stripe.Int64(int64(req.Amount * 100)),
+		Currency:    stripe.String(req.Currency),
+		Confirm:     stripe.Bool(true),
+		Description: stripe.String(req.Description),
+	}
+	switch req.Source {
+	case PaymentMethodCard, "visa", "mastercard":
+		params.PaymentMethodTypes = []*string{stripe.String("card")}
+		params.PaymentMethod = stripe.String(req.Metadata["payment_method_id"])
+	case PaymentMethodApplePay:
+		params.PaymentMethodTypes = []*string{stripe.String("card")}
+		params.PaymentMethod = stripe.String(req.Metadata["payment_method_id"])
+		params.Metadata = map[string]string{"wallet": "apple_pay"}
+	case PaymentMethodGooglePay:
+		params.PaymentMethodTypes = []*string{stripe.String("card")}
+		params.PaymentMethod = stripe.String(req.Metadata["payment_method_id"])
+		params.Metadata = map[string]string{"wallet": "google_pay"}
+	default:
+		err := errors.New("unsupported payment method for Stripe")
+		logger.LogError("stripe.create_payment.unsupported_method", logger.ErrorField(err), logger.String("source", req.Source))
+		return nil, err
+	}
+	if req.Metadata != nil && params.Metadata == nil {
+		params.Metadata = req.Metadata
+	}
+	intent, err := paymentintent.New(params)
+	if err != nil {
+		logger.LogError("stripe.create_payment.failed", logger.ErrorField(err), logger.String("currency", req.Currency), logger.Float64("amount", req.Amount))
+		return nil, errors.New("stripe: failed to create payment intent")
+	}
+	logger.LogInfo("stripe.create_payment.success", logger.String("intent_id", intent.ID), logger.Float64("amount", float64(intent.Amount)/100.0), logger.String("currency", string(intent.Currency)))
+	result := &PaymentResult{
+		PaymentID: intent.ID,
+		Status:    string(intent.Status),
+		Amount:    float64(intent.Amount) / 100.0,
+		Currency:  string(intent.Currency),
+		CreatedAt: time.Unix(intent.Created, 0),
+		Provider:  "stripe",
+		Raw:       intent,
+	}
+	if err := s.Store.SavePayment(ctx, result); err != nil {
+		logger.LogError("stripe.create_payment.save_payment_failed", logger.ErrorField(err))
+		return nil, err
+	}
+	return result, nil
+}
+
+func (s *StripeProvider) RefundPayment(ctx context.Context, req *RefundPaymentRequest) (*PaymentResult, error) {
+	if req == nil {
+		err := errors.New("request must not be nil")
+		logger.LogError("stripe.refund_payment.invalid_request", logger.ErrorField(err))
+		return nil, err
+	}
+	if req.Amount <= 0 {
+		err := errors.New("amount must be positive")
+		logger.LogError("stripe.refund_payment.invalid_amount", logger.ErrorField(err))
+		return nil, err
+	}
+	if req.Currency == "" {
+		err := errors.New("currency must not be empty")
+		logger.LogError("stripe.refund_payment.missing_currency", logger.ErrorField(err))
+		return nil, err
+	}
+	if req.PaymentID == "" {
+		err := errors.New("payment_id must not be empty")
+		logger.LogError("stripe.refund_payment.missing_payment_id", logger.ErrorField(err))
+		return nil, err
+	}
+	if s.APIKey == "" {
+		err := errors.New("stripe api_key not initialized")
+		logger.LogError("stripe.refund_payment.api_key_missing", logger.ErrorField(err))
+		return nil, err
+	}
+	stripe.Key = s.APIKey
+	params := &stripe.RefundParams{
+		PaymentIntent: stripe.String(req.PaymentID),
+		Amount:        stripe.Int64(int64(req.Amount * 100)),
+	}
+	refund, err := refund.New(params)
+	if err != nil {
+		logger.LogError("stripe.refund_payment.failed", logger.ErrorField(err), logger.String("payment_id", req.PaymentID))
+		return nil, errors.New("stripe: failed to refund payment")
+	}
+	logger.LogInfo("stripe.refund_payment.success", logger.String("refund_id", refund.ID), logger.Float64("amount", float64(refund.Amount)/100.0), logger.String("currency", string(refund.Currency)))
+	result := &PaymentResult{
+		PaymentID: req.PaymentID,
+		Status:    string(refund.Status),
+		Amount:    float64(refund.Amount) / 100.0,
+		Currency:  string(refund.Currency),
+		CreatedAt: time.Unix(refund.Created, 0),
+		Provider:  "stripe",
+		Raw:       refund,
+	}
+	if err := s.Store.SavePayment(ctx, result); err != nil {
+		logger.LogError("stripe.refund_payment.save_payment_failed", logger.ErrorField(err))
+		return nil, err
+	}
+	return result, nil
+}
+
+func (s *StripeProvider) GetPaymentStatus(ctx context.Context, paymentID string) (*PaymentStatus, error) {
+	if paymentID == "" {
+		err := errors.New("payment_id must not be empty")
+		logger.LogError("stripe.get_payment_status.missing_payment_id", logger.ErrorField(err))
+		return nil, err
+	}
+	result, err := s.Store.GetPaymentResult(ctx, paymentID)
+	if err != nil {
+		logger.LogError("stripe.get_payment_status.get_payment_failed", logger.ErrorField(err))
+		return nil, err
+	}
+	return &PaymentStatus{
+		PaymentID: result.PaymentID,
+		Status:    result.Status,
+		Amount:    result.Amount,
+		Currency:  result.Currency,
+		UpdatedAt: result.CreatedAt,
+		Provider:  result.Provider,
+		Raw:       result.Raw,
+	}, nil
+}
+
+func (h *PaymentHandler) CreateDispute(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute", "create")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	var input Dispute
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("CreateDispute: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.ID == "" {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "id required"})
+	}
+	if err := h.DisputeService.CreateDispute(c.Context(), &input); err != nil {
+		logger.LogError("CreateDispute: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusCreated).JSON(input)
+}
+
+func (h *PaymentHandler) ListDisputes(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute", "list")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	tenantID := c.Query("tenant_id")
+	paymentID := c.Query("payment_id")
+	status := DisputeStatus(c.Query("status"))
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 100)
+	if tenantID == "" {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tenant_id required"})
+	}
+	disputes, err := h.DisputeService.ListDisputes(c.Context(), tenantID, paymentID, status, page, pageSize)
+	if err != nil {
+		logger.LogError("ListDisputes: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"disputes": disputes, "page": page, "page_size": pageSize})
+}
+
+func (h *PaymentHandler) GetDispute(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute", "read")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+	dispute, err := h.DisputeService.GetDispute(c.Context(), id)
+	if err != nil {
+		logger.LogError("GetDispute: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(dispute)
+}
+
+func (h *PaymentHandler) UpdateDispute(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute", "update")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+	var input struct {
+		Status            DisputeStatus `json:"status"`
+		EvidenceSubmitted *time.Time    `json:"evidence_submitted"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("UpdateDispute: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if err := h.DisputeService.UpdateDisputeStatus(c.Context(), id, input.Status, input.EvidenceSubmitted); err != nil {
+		logger.LogError("UpdateDispute: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *PaymentHandler) DeleteDispute(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute", "delete")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+	err := h.DisputeService.DeleteDispute(c.Context(), id)
+	if err != nil {
+		if err.Error() == "dispute not found" {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "dispute not found"})
+		}
+		logger.LogError("DeleteDispute: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete dispute"})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *PaymentHandler) CreateEvidence(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute_evidence", "create")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	disputeID := c.Params("id")
+	if disputeID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "dispute_id required"})
+	}
+	var input DisputeEvidence
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("CreateEvidence: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	input.DisputeID = disputeID
+	if err := h.EvidenceService.CreateDisputeEvidence(c.Context(), &input); err != nil {
+		logger.LogError("CreateEvidence: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusCreated).JSON(input)
+}
+
+func (h *PaymentHandler) ListEvidence(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute_evidence", "list")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	disputeID := c.Params("id")
+	tenantID := c.Query("tenant_id")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 100)
+	if disputeID == "" || tenantID == "" {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "dispute_id and tenant_id required"})
+	}
+	evidence, err := h.EvidenceService.ListDisputeEvidence(c.Context(), disputeID, tenantID, page, pageSize)
+	if err != nil {
+		logger.LogError("ListEvidence: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"evidence": evidence, "page": page, "page_size": pageSize})
+}
+
+func (h *PaymentHandler) GetEvidence(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute_evidence", "read")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	evidenceID := c.Params("evidence_id")
+	if evidenceID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "evidence_id required"})
+	}
+	evidence, err := h.EvidenceService.GetDisputeEvidence(c.Context(), evidenceID)
+	if err != nil {
+		logger.LogError("GetEvidence: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(evidence)
+}
+
+func (h *PaymentHandler) UpdateEvidence(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute_evidence", "update")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	evidenceID := c.Params("evidence_id")
+	if evidenceID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "evidence_id required"})
+	}
+	var input struct {
+		ProviderStatus   string `json:"provider_status"`
+		ProviderResponse string `json:"provider_response"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("UpdateEvidence: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if err := h.EvidenceService.UpdateDisputeEvidenceStatus(c.Context(), evidenceID, input.ProviderStatus, input.ProviderResponse); err != nil {
+		logger.LogError("UpdateEvidence: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *PaymentHandler) DeleteEvidence(c *fiber.Ctx) error {
+	if h.RBACService != nil {
+		actorID := commonutil.GetActorID(c)
+		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "dispute_evidence", "delete")
+		if err != nil || !permitted {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
+		}
+	}
+	evidenceID := c.Params("evidence_id")
+	if evidenceID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "evidence_id required"})
+	}
+	err := h.EvidenceService.DeleteDisputeEvidence(c.Context(), evidenceID)
+	if err != nil {
+		if err.Error() == "dispute evidence not found" {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "dispute evidence not found"})
+		}
+		logger.LogError("DeleteEvidence: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete dispute evidence"})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
 }

@@ -8,6 +8,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	paypal "github.com/plutov/paypal/v4"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
+	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
+	logger "github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
 const (
@@ -15,6 +18,29 @@ const (
 	PaymentMethodApplePay  = "apple_pay"
 	PaymentMethodGooglePay = "google_pay"
 )
+
+// PaymentHandler is the handler for payment-related routes
+type PaymentHandler struct {
+	PaymentService       PaymentService
+	RefundService        RefundService
+	PaymentMethodService PaymentMethodService
+	ManualRefundService  ManualRefundService
+	DisputeService       DisputeDataStoreInterface
+	EvidenceService      DisputeDataStoreInterface
+	RBACService          rbac_management.RBACService          // optional, may be nil
+	RateLimitService     security_management.RateLimitService // for distributed rate limiting
+	ConfigService    *server_config.Service               // for fetching secrets, keys, and static configs from server-config
+	Logger           logger.Logger                        // add logger for webhook and handler logging
+	Notify           security_management.NotificationService
+	StoreRegistry    StoreInterface
+}
+
+// DisputeHandler handles dispute endpoints
+// Implements RESTful dispute and evidence management
+// All methods robust, audit-logged, and RBAC-checked
+
+
+
 
 type PostgresStore struct {
 	DB *pgxpool.Pool

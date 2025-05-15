@@ -1,39 +1,36 @@
 package discount
 
 import (
-
 	"github.com/gofiber/fiber/v2"
 
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
 )
 
-func RegisterDiscountRoutes(router fiber.Router, handler *DiscountHandler, jwtSecret string, auditLogger security_management.AuditLogger) {
+func RegisterRoutes(router fiber.Router, handler *DiscountHandler, jwtSecret string, auditLogger security_management.AuditLogger) {
 	// audit := auditmiddleware.AuditLoggerMiddleware(auditLogger)
 
-	discount := router.Group("/discounts", auditmiddleware.AuditLoggerMiddleware(auditLogger))
-	discount.Post("/create", handler.CreateDiscount)
-	discount.Put("/update", handler.UpdateDiscount)
-	discount.Delete("/delete", handler.DeleteDiscount)
-	discount.Get("/get", handler.GetDiscount)
-	discount.Get("/code", handler.GetDiscountByCode)
-	discount.Get("/list", handler.ListDiscounts)
+	route := router.Group("/discounts", auditmiddleware.AuditLoggerMiddleware(auditLogger))
+	route.Post("/", handler.CreateDiscount)
+	route.Get("/", handler.ListDiscounts)
+	route.Get("/:id", handler.GetDiscount)
+	route.Put("/:id", handler.UpdateDiscount)
+	route.Delete("/:id", handler.DeleteDiscount)
+	route.Get("/code/:code", handler.GetDiscountByCode)
 
-	coupon := discount.Group("/coupons", auditmiddleware.AuditLoggerMiddleware(auditLogger))
-	coupon.Post("/create", handler.CreateCoupon)
-	coupon.Put("/update", handler.UpdateCoupon)
-	coupon.Delete("/delete", handler.DeleteCoupon)
-	coupon.Get("/get", handler.GetCoupon)
-	coupon.Get("/code", handler.GetCouponByCode)
-	coupon.Get("/list", handler.ListCoupons)
-	coupon.Post("/redeem", handler.RedeemCoupon)
+	route.Post("/coupons", handler.CreateCoupon)
+	route.Get("/coupons", handler.ListCoupons)
+	route.Get("/coupons/:id", handler.GetCoupon)
+	route.Put("/coupons/:id", handler.UpdateCoupon)
+	route.Delete("/coupons/:id", handler.DeleteCoupon)
+	route.Get("/coupons/code/:code", handler.GetCouponByCode)
+	route.Post("/coupons/:id/redeem", handler.RedeemCoupon)
 
-	credit := discount.Group("/credits", auditmiddleware.AuditLoggerMiddleware(auditLogger))
-	credit.Post("/create", handler.CreateCredit)
-	credit.Put("/update", handler.UpdateCredit)
-	credit.Patch("/patch", handler.PatchCredit)
-	credit.Delete("/delete", handler.DeleteCredit)
-	credit.Get("/get", handler.GetCredit)
-	credit.Get("/list", handler.ListCredits)
-	credit.Post("/apply", handler.ApplyCreditsToInvoice)
+	route.Post("/credits", handler.CreateCredit)
+	route.Get("/credits", handler.ListCredits)
+	route.Get("/credits/:id", handler.GetCredit)
+	route.Put("/credits/:id", handler.UpdateCredit)
+	route.Patch("/credits/:id", handler.PatchCredit)
+	route.Delete("/credits/:id", handler.DeleteCredit)
+	route.Post("/credits/:id/apply", handler.ApplyCreditsToInvoice)
 }

@@ -146,28 +146,15 @@ func (h *OrganizationHandler) ListOrganizations(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
 		}
 	}
-	var input struct {
-		OwnerID  string `json:"owner_id"`
-		Page     int    `json:"page"`
-		PageSize int    `json:"page_size"`
-	}
-	if err := c.BodyParser(&input); err != nil {
-		logger.LogError("ListOrganizations: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	if input.Page == 0 {
-		input.Page = 1
-	}
-	if input.PageSize == 0 {
-		input.PageSize = 100
-	}
-	orgs, err := h.OrganizationService.ListOrganizations(c.Context(), input.OwnerID, input.Page, input.PageSize)
+	ownerID := c.Query("owner_id")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 100)
+	orgs, err := h.OrganizationService.ListOrganizations(c.Context(), ownerID, page, pageSize)
 	if err != nil {
-		logger.LogError("ListOrganizations: failed", logger.ErrorField(err), logger.String("owner_id", input.OwnerID))
+		logger.LogError("ListOrganizations: failed", logger.ErrorField(err), logger.String("owner_id", ownerID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-
-	return c.JSON(fiber.Map{"organizations": orgs, "page": input.Page, "page_size": input.PageSize})
+	return c.JSON(fiber.Map{"organizations": orgs, "page": page, "page_size": pageSize})
 }
 
 func (h *OrganizationHandler) GetSettings(c *fiber.Ctx) error {
