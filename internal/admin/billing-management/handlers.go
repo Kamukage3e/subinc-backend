@@ -26,10 +26,57 @@ import (
 
 // Payment, Refund, and PaymentMethod logic is now handled exclusively in internal/admin/billing-management/payment/handlers.go
 
-func NewBillingHandler(store *PostgresStore) *BillingAdminHandler {
-	return &BillingAdminHandler{Store: store}
+func NewBillingHandler(store *PostgresStore, paymentStore payment.StoreInterface) *BillingAdminHandler {
+	return &BillingAdminHandler{Store: store, PaymentStore: paymentStore}
 }
 
+// swagger:route POST /billing-management/webhook-events/create billing webhookEventCreate
+// ---
+// summary: Create a webhook event
+// description: Creates a new webhook event.
+// tags:
+//   - billing
+//   - webhook
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     $ref: "#/definitions/WebhookEvent"
+//
+// responses:
+//
+//	201:
+//	  description: WebhookEvent
+//	  schema:
+//	    $ref: "#/definitions/WebhookEvent"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) CreateWebhookEvent(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -56,6 +103,53 @@ func (h *BillingAdminHandler) CreateWebhookEvent(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(event)
 }
 
+// swagger:route PUT /billing-management/webhook-events/update billing webhookEventUpdate
+// ---
+// summary: Update a webhook event
+// description: Updates an existing webhook event.
+// tags:
+//   - billing
+//   - webhook
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     $ref: "#/definitions/WebhookEvent"
+//
+// responses:
+//
+//	200:
+//	  description: WebhookEvent
+//	  schema:
+//	    $ref: "#/definitions/WebhookEvent"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) UpdateWebhookEvent(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -83,6 +177,54 @@ func (h *BillingAdminHandler) UpdateWebhookEvent(c *fiber.Ctx) error {
 	return c.JSON(event)
 }
 
+// swagger:route DELETE /billing-management/webhook-events/delete billing webhookEventDelete
+// ---
+// summary: Delete a webhook event
+// description: Deletes a webhook event by ID.
+// tags:
+//   - billing
+//   - webhook
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     type: object
+//     properties:
+//     id:
+//     type: string
+//
+// responses:
+//
+//	204:
+//	  description: EmptyResponse
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) DeleteWebhookEvent(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -112,6 +254,56 @@ func (h *BillingAdminHandler) DeleteWebhookEvent(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// swagger:route GET /billing-management/webhook-events/get billing webhookEventGet
+// ---
+// summary: Get a webhook event
+// description: Retrieves a webhook event by ID.
+// tags:
+//   - billing
+//   - webhook
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     type: object
+//     properties:
+//     id:
+//     type: string
+//
+// responses:
+//
+//	200:
+//	  description: WebhookEvent
+//	  schema:
+//	    $ref: "#/definitions/WebhookEvent"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	404:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) GetWebhookEvent(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -136,6 +328,62 @@ func (h *BillingAdminHandler) GetWebhookEvent(c *fiber.Ctx) error {
 	return c.JSON(event)
 }
 
+// swagger:route GET /billing-management/webhook-events/list billing webhookEventList
+// ---
+// summary: List webhook events
+// description: Lists webhook events with optional filters.
+// tags:
+//   - billing
+//   - webhook
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: false
+//     schema:
+//     type: object
+//     properties:
+//     account_id:
+//     type: string
+//     status:
+//     type: string
+//     page:
+//     type: integer
+//     page_size:
+//     type: integer
+//
+// responses:
+//
+//	200:
+//	  description: WebhookEventListResponse
+//	  schema:
+//	    $ref: "#/definitions/WebhookEventListResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) ListWebhookEvents(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -174,6 +422,53 @@ func (h *BillingAdminHandler) ListWebhookEvents(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"webhook_events": events, "page": input.Page, "page_size": input.PageSize})
 }
 
+// swagger:route POST /billing-management/invoice-adjustments/create billing invoiceAdjustmentCreate
+// ---
+// summary: Create an invoice adjustment
+// description: Creates a new invoice adjustment.
+// tags:
+//   - billing
+//   - invoice-adjustment
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     $ref: "#/definitions/InvoiceAdjustment"
+//
+// responses:
+//
+//	201:
+//	  description: InvoiceAdjustment
+//	  schema:
+//	    $ref: "#/definitions/InvoiceAdjustment"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) CreateInvoiceAdjustment(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -212,6 +507,53 @@ func (h *BillingAdminHandler) CreateInvoiceAdjustment(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(adj)
 }
 
+// swagger:route PUT /billing-management/invoice-adjustments/update billing invoiceAdjustmentUpdate
+// ---
+// summary: Update an invoice adjustment
+// description: Updates an existing invoice adjustment.
+// tags:
+//   - billing
+//   - invoice-adjustment
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     $ref: "#/definitions/InvoiceAdjustment"
+//
+// responses:
+//
+//	200:
+//	  description: InvoiceAdjustment
+//	  schema:
+//	    $ref: "#/definitions/InvoiceAdjustment"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) UpdateInvoiceAdjustment(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -239,6 +581,54 @@ func (h *BillingAdminHandler) UpdateInvoiceAdjustment(c *fiber.Ctx) error {
 	return c.JSON(adj)
 }
 
+// swagger:route DELETE /billing-management/invoice-adjustments/delete billing invoiceAdjustmentDelete
+// ---
+// summary: Delete an invoice adjustment
+// description: Deletes an invoice adjustment by ID.
+// tags:
+//   - billing
+//   - invoice-adjustment
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     type: object
+//     properties:
+//     id:
+//     type: string
+//
+// responses:
+//
+//	204:
+//	  description: EmptyResponse
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) DeleteInvoiceAdjustment(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -268,6 +658,56 @@ func (h *BillingAdminHandler) DeleteInvoiceAdjustment(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// swagger:route GET /billing-management/invoice-adjustments/get billing invoiceAdjustmentGet
+// ---
+// summary: Get an invoice adjustment
+// description: Retrieves an invoice adjustment by ID.
+// tags:
+//   - billing
+//   - invoice-adjustment
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     type: object
+//     properties:
+//     id:
+//     type: string
+//
+// responses:
+//
+//	200:
+//	  description: InvoiceAdjustment
+//	  schema:
+//	    $ref: "#/definitions/InvoiceAdjustment"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	404:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) GetInvoiceAdjustment(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -292,6 +732,60 @@ func (h *BillingAdminHandler) GetInvoiceAdjustment(c *fiber.Ctx) error {
 	return c.JSON(adj)
 }
 
+// swagger:route GET /billing-management/invoice-adjustments/list billing invoiceAdjustmentList
+// ---
+// summary: List invoice adjustments
+// description: Lists invoice adjustments with optional filters.
+// tags:
+//   - billing
+//   - invoice-adjustment
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: false
+//     schema:
+//     type: object
+//     properties:
+//     invoice_id:
+//     type: string
+//     page:
+//     type: integer
+//     page_size:
+//     type: integer
+//
+// responses:
+//
+//	200:
+//	  description: InvoiceAdjustmentListResponse
+//	  schema:
+//	    $ref: "#/definitions/InvoiceAdjustmentListResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) ListInvoiceAdjustments(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -329,6 +823,51 @@ func (h *BillingAdminHandler) ListInvoiceAdjustments(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"invoice_adjustments": adjs, "page": input.Page, "page_size": input.PageSize})
 }
 
+// swagger:route POST /billing-management/manual-adjustment/create billing manualAdjustmentCreate
+// ---
+// summary: Create a manual adjustment
+// description: Creates a manual adjustment for an invoice.
+// tags:
+//   - billing
+//   - manual-adjustment
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     $ref: "#/definitions/InvoiceAdjustment"
+//
+// responses:
+//
+//	201:
+//	  description: EmptyResponse
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) CreateManualAdjustment(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -367,9 +906,58 @@ func (h *BillingAdminHandler) CreateManualAdjustment(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusCreated)
 }
 
+// swagger:route GET /billing-management/accounts/invoice-preview billing invoicePreviewGet
+// ---
+// summary: Get invoice preview
+// description: Returns a preview of an invoice by ID.
+// tags:
+//   - billing
+//   - invoice
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     type: object
+//     properties:
+//     id:
+//     type: string
+//
+// responses:
+//
+//	204:
+//	  description: EmptyResponse
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) GetInvoicePreview(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
+
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "invoice_preview", "get")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -396,9 +984,59 @@ func (h *BillingAdminHandler) GetInvoicePreview(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// swagger:route POST /billing-management/invoices/apply-credits billing invoiceApplyCredits
+// ---
+// summary: Apply credits to invoice
+// description: Applies available credits to an invoice.
+// tags:
+//   - billing
+//   - invoice
+//   - credit
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     type: object
+//     properties:
+//     invoice_id:
+//     type: string
+//
+// responses:
+//
+//	204:
+//	  description: EmptyResponse
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) ApplyCreditsToInvoice(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
+
 		permitted, err := h.RBACService.CheckPermission(c.Context(), actorID, "credit", "apply")
 		if err != nil || !permitted {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "permission denied"})
@@ -425,6 +1063,38 @@ func (h *BillingAdminHandler) ApplyCreditsToInvoice(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// swagger:route GET /billing-management/billing/config/get billing billingConfigGet
+// ---
+// summary: Get billing config
+// description: Retrieves the current billing configuration.
+// tags:
+//   - billing
+//   - config
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// responses:
+//
+//	200:
+//	  description: BillingConfigResponse
+//	  schema:
+//	    $ref: "#/definitions/BillingConfigResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) GetBillingConfig(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -450,6 +1120,51 @@ func (h *BillingAdminHandler) GetBillingConfig(c *fiber.Ctx) error {
 	return c.JSON(cfg)
 }
 
+// swagger:route POST /billing-management/billing/config/set billing billingConfigSet
+// ---
+// summary: Set billing config
+// description: Sets the billing configuration.
+// tags:
+//   - billing
+//   - config
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     type: object
+//
+// responses:
+//
+//	204:
+//	  description: EmptyResponse
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) SetBillingConfig(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -477,6 +1192,52 @@ func (h *BillingAdminHandler) SetBillingConfig(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// swagger:route POST /billing-management/webhook-subscriptions/create billing webhookSubscriptionCreate
+// ---
+// summary: Create a webhook subscription
+// description: Creates a new webhook subscription.
+// tags:
+//   - billing
+//   - webhook-subscription
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     type: object
+//     properties:
+//     url:
+//     type: string
+//     secret:
+//     type: string
+//     description:
+//     type: string
+//     events:
+//     type: array
+//     items:
+//     type: string
+//
+// responses:
+//
+//	201:
+//	  description: Created
+//	  schema:
+//	    type: string
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
 func (h *BillingAdminHandler) CreateWebhookSubscription(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -507,6 +1268,60 @@ func (h *BillingAdminHandler) CreateWebhookSubscription(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusCreated)
 }
 
+// swagger:route GET /billing-management/webhook-subscriptions/list billing webhookSubscriptionList
+// ---
+// summary: List webhook subscriptions
+// description: Lists webhook subscriptions for a tenant.
+// tags:
+//   - billing
+//   - webhook-subscription
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: false
+//     schema:
+//     type: object
+//     properties:
+//     tenant_id:
+//     type: string
+//     page:
+//     type: integer
+//     page_size:
+//     type: integer
+//
+// responses:
+//
+//	200:
+//	  description: List of webhook subscriptions
+//	  schema:
+//	    type: object
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) ListWebhookSubscriptions(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -543,6 +1358,42 @@ func (h *BillingAdminHandler) ListWebhookSubscriptions(c *fiber.Ctx) error {
 	return c.JSON(out)
 }
 
+// swagger:route DELETE /billing-management/webhook-subscriptions/delete billing webhookSubscriptionDelete
+// ---
+// summary: Delete a webhook subscription
+// description: Deletes a webhook subscription by ID.
+// tags:
+//   - billing
+//   - webhook-subscription
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     type: object
+//     properties:
+//     id:
+//     type: string
+//
+// responses:
+//
+//	204:
+//	  description: No Content
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
 func (h *BillingAdminHandler) DeleteWebhookSubscription(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -570,6 +1421,35 @@ func (h *BillingAdminHandler) DeleteWebhookSubscription(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// swagger:route GET /billing-management/reports/revenue billing revenueReportGet
+// ---
+// summary: Get revenue report
+// description: Retrieves the revenue report.
+// tags:
+//   - billing
+//   - report
+//
+// produces:
+//   - application/json
+//
+// responses:
+//
+//	200:
+//	  description: Revenue report
+//	  schema:
+//	    type: object
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) GetRevenueReport(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -594,6 +1474,31 @@ func (h *BillingAdminHandler) GetRevenueReport(c *fiber.Ctx) error {
 	return c.JSON(out)
 }
 
+// swagger:route GET /billing-management/reports/ar billing arReportGet
+// ---
+// summary: Get accounts receivable report
+// description: Retrieves the accounts receivable report.
+// tags:
+//   - billing
+//   - report
+//
+// produces:
+//   - application/json
+//
+// responses:
+//
+//	200:
+//	  description: Accounts receivable report
+//	  schema:
+//	    type: object
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) GetARReport(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -618,6 +1523,31 @@ func (h *BillingAdminHandler) GetARReport(c *fiber.Ctx) error {
 	return c.JSON(out)
 }
 
+// swagger:route GET /billing-management/reports/churn billing churnReportGet
+// ---
+// summary: Get churn report
+// description: Retrieves the churn report.
+// tags:
+//   - billing
+//   - report
+//
+// produces:
+//   - application/json
+//
+// responses:
+//
+//	200:
+//	  description: Churn report
+//	  schema:
+//	    type: object
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) GetChurnReport(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -642,6 +1572,62 @@ func (h *BillingAdminHandler) GetChurnReport(c *fiber.Ctx) error {
 	return c.JSON(out)
 }
 
+// swagger:route POST /billing-management/invoices/create-with-fees billing invoiceCreateWithFees
+// ---
+// summary: Create invoice with fees and tax
+// description: Creates an invoice with additional fees and tax.
+// tags:
+//   - billing
+//   - invoice
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     type: object
+//     properties:
+//     invoice:
+//     $ref: "#/definitions/Invoice"
+//     fixed_fee:
+//     type: number
+//     percent_fee:
+//     type: number
+//     tax_rate:
+//     type: number
+//
+// responses:
+//
+//	201:
+//	  description: Invoice
+//	  schema:
+//	    $ref: "#/definitions/Invoice"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) CreateInvoiceWithFeesAndTax(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -673,6 +1659,53 @@ func (h *BillingAdminHandler) CreateInvoiceWithFeesAndTax(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(out)
 }
 
+// swagger:route POST /billing-management/invoices/create billing invoiceCreate
+// ---
+// summary: Create an invoice
+// description: Creates a new invoice.
+// tags:
+//   - billing
+//   - invoice
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     $ref: "#/definitions/Invoice"
+//
+// responses:
+//
+//	201:
+//	  description: Invoice
+//	  schema:
+//	    $ref: "#/definitions/Invoice"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -792,6 +1825,53 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(invoice)
 }
 
+// swagger:route PUT /billing-management/invoices/update billing invoiceUpdate
+// ---
+// summary: Update an invoice
+// description: Updates an existing invoice.
+// tags:
+//   - billing
+//   - invoice
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     $ref: "#/definitions/Invoice"
+//
+// responses:
+//
+//	200:
+//	  description: Invoice
+//	  schema:
+//	    $ref: "#/definitions/Invoice"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) UpdateInvoice(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -824,6 +1904,56 @@ func (h *BillingAdminHandler) UpdateInvoice(c *fiber.Ctx) error {
 	return c.JSON(invoice)
 }
 
+// swagger:route GET /billing-management/invoices/get billing invoiceGet
+// ---
+// summary: Get an invoice
+// description: Retrieves an invoice by ID.
+// tags:
+//   - billing
+//   - invoice
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     type: object
+//     properties:
+//     invoice_id:
+//     type: string
+//
+// responses:
+//
+//	200:
+//	  description: Invoice
+//	  schema:
+//	    $ref: "#/definitions/Invoice"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	404:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) GetInvoice(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -849,6 +1979,62 @@ func (h *BillingAdminHandler) GetInvoice(c *fiber.Ctx) error {
 	return c.JSON(invoice)
 }
 
+// swagger:route GET /billing-management/invoices/list billing invoiceList
+// ---
+// summary: List invoices
+// description: Lists invoices with optional filters.
+// tags:
+//   - billing
+//   - invoice
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: false
+//     schema:
+//     type: object
+//     properties:
+//     account_id:
+//     type: string
+//     status:
+//     type: string
+//     page:
+//     type: integer
+//     page_size:
+//     type: integer
+//
+// responses:
+//
+//	200:
+//	  description: List of invoices
+//	  schema:
+//	    type: object
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) ListInvoices(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -890,6 +2076,53 @@ func (h *BillingAdminHandler) ListInvoices(c *fiber.Ctx) error {
 
 // --- ExchangeRate Handlers ---
 
+// swagger:route POST /billing-management/exchange-rates/create billing exchangeRateCreate
+// ---
+// summary: Create an exchange rate
+// description: Creates a new exchange rate.
+// tags:
+//   - billing
+//   - exchange-rate
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     $ref: "#/definitions/ExchangeRate"
+//
+// responses:
+//
+//	201:
+//	  description: ExchangeRate
+//	  schema:
+//	    $ref: "#/definitions/ExchangeRate"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) CreateExchangeRate(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -924,6 +2157,53 @@ func (h *BillingAdminHandler) CreateExchangeRate(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(rate)
 }
 
+// swagger:route PUT /billing-management/exchange-rates/update billing exchangeRateUpdate
+// ---
+// summary: Update an exchange rate
+// description: Updates an existing exchange rate.
+// tags:
+//   - billing
+//   - exchange-rate
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     $ref: "#/definitions/ExchangeRate"
+//
+// responses:
+//
+//	200:
+//	  description: ExchangeRate
+//	  schema:
+//	    $ref: "#/definitions/ExchangeRate"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) UpdateExchangeRate(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -955,6 +2235,56 @@ func (h *BillingAdminHandler) UpdateExchangeRate(c *fiber.Ctx) error {
 	return c.JSON(rate)
 }
 
+// swagger:route DELETE /billing-management/exchange-rates/delete billing exchangeRateDelete
+// ---
+// summary: Delete an exchange rate
+// description: Deletes an exchange rate by base and quote currency.
+// tags:
+//   - billing
+//   - exchange-rate
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     type: object
+//     properties:
+//     base_currency:
+//     type: string
+//     quote_currency:
+//     type: string
+//
+// responses:
+//
+//	204:
+//	  description: EmptyResponse
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) DeleteExchangeRate(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -988,6 +2318,49 @@ func (h *BillingAdminHandler) DeleteExchangeRate(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// swagger:route GET /billing-management/exchange-rates/get billing exchangeRateGet
+// ---
+// summary: Get an exchange rate
+// description: Retrieves an exchange rate by base and quote currency.
+// tags:
+//   - billing
+//   - exchange-rate
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     type: object
+//     properties:
+//     base_currency:
+//     type: string
+//     quote_currency:
+//     type: string
+//
+// responses:
+//
+//	200: ExchangeRate
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400: ErrorResponse
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422: ErrorResponse
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) GetExchangeRate(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -1020,6 +2393,37 @@ func (h *BillingAdminHandler) GetExchangeRate(c *fiber.Ctx) error {
 	return c.JSON(rate)
 }
 
+// swagger:route GET /billing-management/exchange-rates/list billing exchangeRateList
+// ---
+// summary: List exchange rates
+// description: Lists all exchange rates.
+// tags:
+//   - billing
+//   - exchange-rate
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// responses:
+//
+//	200: ExchangeRateListResponse
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400: ErrorResponse
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422: ErrorResponse
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) ListExchangeRates(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -1038,6 +2442,51 @@ func (h *BillingAdminHandler) ListExchangeRates(c *fiber.Ctx) error {
 
 // --- TenantCurrency Handlers ---
 
+// swagger:route POST /billing-management/tenant-currency/set billing tenantCurrencySet
+// ---
+// summary: Set tenant currency
+// description: Sets the currency for a tenant.
+// tags:
+//   - billing
+//   - tenant-currency
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     type: object
+//     properties:
+//     tenant_id:
+//     type: string
+//     currency:
+//     type: string
+//
+// responses:
+//
+//	201: TenantCurrencyResponse
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//
+//	400: ErrorResponse
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//
+//	422: ErrorResponse
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) SetTenantCurrency(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -1066,6 +2515,47 @@ func (h *BillingAdminHandler) SetTenantCurrency(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(curr)
 }
 
+// swagger:route GET /billing-management/tenant-currency/get billing tenantCurrencyGet
+// ---
+// summary: Get tenant currency
+// description: Retrieves the currency for a tenant.
+// tags:
+//   - billing
+//   - tenant-currency
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     type: object
+//     properties:
+//     tenant_id:
+//     type: string
+//
+// responses:
+//
+//	200: TenantCurrencyResponse
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	400: ErrorResponse
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
+//	422: ErrorResponse
+//	  headers:
+//	    X-Request-ID:
+//	      type: string
+//	      description: Unique request ID
 func (h *BillingAdminHandler) GetTenantCurrency(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := commonutil.GetActorID(c)
@@ -1153,6 +2643,42 @@ func generateInvoicePDF(pdfData map[string]interface{}) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// swagger:route POST /billing-management/invoice/download billing invoiceDownload
+// ---
+// summary: Download invoice PDF
+// description: Downloads the invoice PDF as an attachment. Only JSON body allowed.
+// tags:
+//   - billing
+//   - invoice
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/pdf
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     $ref: "#/definitions/InvoiceDownload"
+//
+// responses:
+//
+//	200:
+//	  description: PDF
+//	  schema:
+//	    type: string
+//	400:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+//	404:
+//	  description: ErrorResponse
+//	  schema:
+//	    $ref: "#/definitions/ErrorResponse"
+
 // DownloadInvoicePDF returns the invoice PDF as an attachment. Only JSON body allowed.
 func (h *BillingAdminHandler) DownloadInvoicePDF(c *fiber.Ctx) error {
 	if h.RBACService != nil {
@@ -1209,6 +2735,39 @@ func (h *BillingAdminHandler) DownloadInvoicePDF(c *fiber.Ctx) error {
 	return c.Send(pdfBytes)
 }
 
+// swagger:route POST /billing-management/stripe/webhook billing stripeWebhook
+// ---
+// summary: Stripe webhook handler
+// description: Handles Stripe webhook events (invoice.paid, payment_intent.succeeded, invoice.payment_failed, customer.subscription.deleted, invoice.upcoming, invoice.finalized, invoice.voided, invoice.marked_uncollectible, charge.refunded, etc.).
+// tags:
+//   - billing
+//   - webhook
+//   - stripe
+//
+// consumes:
+//   - application/json
+//
+// produces:
+//   - application/json
+//
+// parameters:
+//   - name: input
+//     in: body
+//     required: true
+//     schema:
+//     type: object
+//     properties:
+//     base_currency:
+//     type: string
+//     quote_currency:
+//     type: string
+//
+// responses:
+//
+//	200:
+//	  description: OK
+//	  schema:
+//	    type: string
 func (h *BillingAdminHandler) StripeWebhookHandler(c *fiber.Ctx) error {
 	const maxBodyBytes = int64(65536)
 	body := c.BodyRaw()
@@ -1231,7 +2790,6 @@ func (h *BillingAdminHandler) StripeWebhookHandler(c *fiber.Ctx) error {
 		logger.LogError("stripe.webhook.invalid_signature", logger.ErrorField(err))
 		return c.SendStatus(fiber.StatusOK)
 	}
-	// Idempotency: skip if already processed
 	processed, err := h.Store.IsStripeEventProcessed(c.Context(), event.ID)
 	if err != nil {
 		logger.LogError("stripe.webhook.idempotency_check_failed", logger.ErrorField(err), logger.String("event_id", event.ID))
@@ -1242,12 +2800,13 @@ func (h *BillingAdminHandler) StripeWebhookHandler(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	}
 	logger.LogInfo("stripe.webhook.event_received", logger.String("type", string(event.Type)))
-	if event.Type == "invoice.paid" {
+	switch event.Type {
+	case "invoice.paid":
 		invoiceObj := event.Data.Object
 		invoiceID, ok := invoiceObj["id"].(string)
 		if !ok || invoiceID == "" {
 			logger.LogError("stripe.webhook.invoice_paid.missing_id")
-			return c.SendStatus(fiber.StatusOK)
+			break
 		}
 		err := h.Store.UpdateInvoiceStatus(c.Context(), invoiceID, "paid")
 		if err != nil {
@@ -1256,8 +2815,7 @@ func (h *BillingAdminHandler) StripeWebhookHandler(c *fiber.Ctx) error {
 			logger.LogInfo("stripe.webhook.invoice_paid.updated", logger.String("invoice_id", invoiceID))
 			h.Store.MarkStripeEventProcessed(c.Context(), event.ID, string(event.Type))
 		}
-	}
-	if event.Type == "payment_intent.succeeded" {
+	case "payment_intent.succeeded":
 		intentObj := event.Data.Object
 		invoiceID, ok := intentObj["invoice"].(string)
 		if ok && invoiceID != "" {
@@ -1271,13 +2829,12 @@ func (h *BillingAdminHandler) StripeWebhookHandler(c *fiber.Ctx) error {
 		} else {
 			logger.LogInfo("stripe.webhook.payment_intent_succeeded.no_invoice")
 		}
-	}
-	if event.Type == "invoice.payment_failed" {
+	case "invoice.payment_failed":
 		invoiceObj := event.Data.Object
 		invoiceID, ok := invoiceObj["id"].(string)
 		if !ok || invoiceID == "" {
 			logger.LogError("stripe.webhook.invoice_payment_failed.missing_id")
-			return c.SendStatus(fiber.StatusOK)
+			break
 		}
 		err := h.Store.UpdateInvoiceStatus(c.Context(), invoiceID, "payment_failed")
 		if err != nil {
@@ -1286,87 +2843,148 @@ func (h *BillingAdminHandler) StripeWebhookHandler(c *fiber.Ctx) error {
 			logger.LogInfo("stripe.webhook.invoice_payment_failed.updated", logger.String("invoice_id", invoiceID))
 			h.Store.MarkStripeEventProcessed(c.Context(), event.ID, string(event.Type))
 		}
-	}
-	if event.Type == "customer.subscription.deleted" {
+	case "customer.subscription.deleted":
 		subObj := event.Data.Object
-		subscriptionID, ok := subObj["id"].(string)
-		if !ok || subscriptionID == "" {
+		subID, ok := subObj["id"].(string)
+		if !ok || subID == "" {
 			logger.LogError("stripe.webhook.subscription_deleted.missing_id")
-			return c.SendStatus(fiber.StatusOK)
+			break
 		}
-		err := h.Store.UpdateSubscriptionStatus(c.Context(), subscriptionID, "canceled")
+		err := h.Store.UpdateSubscriptionStatus(c.Context(), subID, "canceled")
 		if err != nil {
-			logger.LogError("stripe.webhook.subscription_deleted.update_failed", logger.ErrorField(err), logger.String("subscription_id", subscriptionID))
+			logger.LogError("stripe.webhook.subscription_deleted.update_failed", logger.ErrorField(err), logger.String("subscription_id", subID))
 		} else {
-			logger.LogInfo("stripe.webhook.subscription_deleted.updated", logger.String("subscription_id", subscriptionID))
+			logger.LogInfo("stripe.webhook.subscription_deleted.updated", logger.String("subscription_id", subID))
 			h.Store.MarkStripeEventProcessed(c.Context(), event.ID, string(event.Type))
 		}
+	case "invoice.upcoming", "invoice.finalized", "invoice.voided", "invoice.marked_uncollectible":
+		invoiceObj := event.Data.Object
+		invoiceID, ok := invoiceObj["id"].(string)
+		if !ok || invoiceID == "" {
+			logger.LogError("stripe.webhook.invoice_event.missing_id", logger.String("type", string(event.Type)))
+			break
+		}
+		status := ""
+		switch event.Type {
+		case "invoice.upcoming":
+			status = "upcoming"
+		case "invoice.finalized":
+			status = "finalized"
+		case "invoice.voided":
+			status = "voided"
+		case "invoice.marked_uncollectible":
+			status = "uncollectible"
+		}
+		if status != "" {
+			err := h.Store.UpdateInvoiceStatus(c.Context(), invoiceID, status)
+			if err != nil {
+				logger.LogError("stripe.webhook.invoice_event.update_failed", logger.ErrorField(err), logger.String("invoice_id", invoiceID), logger.String("status", status))
+			} else {
+				logger.LogInfo("stripe.webhook.invoice_event.updated", logger.String("invoice_id", invoiceID), logger.String("status", status))
+				h.Store.MarkStripeEventProcessed(c.Context(), event.ID, string(event.Type))
+			}
+		}
+	case "charge.refunded":
+		chargeObj := event.Data.Object
+		paymentID, ok := chargeObj["payment_intent"].(string)
+		if !ok || paymentID == "" {
+			logger.LogError("stripe.webhook.charge_refunded.missing_payment_intent")
+			break
+		}
+		err := h.PaymentStore.UpdatePaymentStatus(c.Context(), paymentID, "refunded")
+		if err != nil {
+			logger.LogError("stripe.webhook.charge_refunded.update_failed", logger.ErrorField(err), logger.String("payment_id", paymentID))
+		} else {
+			logger.LogInfo("stripe.webhook.charge_refunded.updated", logger.String("payment_id", paymentID))
+			h.Store.MarkStripeEventProcessed(c.Context(), event.ID, string(event.Type))
+		}
+	default:
+		logger.LogInfo("stripe.webhook.unhandled_event", logger.String("type", string(event.Type)))
 	}
 	return c.SendStatus(fiber.StatusOK)
 }
 
-// DunningWorker runs payment retries for failed invoices
+// swagger:route POST /billing-management/dunning/worker billing dunningWorker
+// ---
+// summary: Dunning worker
+// description: Runs payment retries for failed invoices (internal use only).
+// tags:
+//   - billing
+//   - dunning
+//
+// produces:
+//   - application/json
+//
+// responses:
+//
+//	200:
+//	  description: OK
+//	  schema:
+//	    type: string
 func DunningWorker(store *PostgresStore, paymentStore payment.StoreInterface, accountService account.AccountService, notificationService security_management.NotificationService) {
-	now := time.Now().UTC()
-	maxAttempts := 3
-	invoices, err := store.ListInvoicesForDunning(context.Background(), now, maxAttempts)
-	if err != nil {
-		logger.LogError("dunning.worker.list_invoices_failed", logger.ErrorField(err))
-		return
-	}
-	for _, inv := range invoices {
-		logger.LogInfo("dunning.worker.retrying_invoice", logger.String("invoice_id", inv.ID), logger.Int("attempts", inv.DunningAttempts))
-		failed := &payment.FailedPayment{ID: inv.ID}
-		result, err := payment.RetryPayment(context.Background(), paymentStore, failed)
-		inv.DunningAttempts++
-		inv.DunningNextAttemptAt = now.Add(24 * time.Hour)
+	ctx := context.Background()
+	logger.LogInfo("dunning.worker.starting")
+	for {
+		dunningConfig, err := store.GetDunningConfig(ctx, "") // pass tenantID if multi-tenant
+		if err != nil || dunningConfig == nil {
+			logger.LogError("dunning.worker.get_dunning_config_failed", logger.ErrorField(err))
+			time.Sleep(5 * time.Minute)
+			continue
+		}
+		invoices, err := store.ListInvoicesForDunning(ctx, time.Now().UTC(), dunningConfig.MaxAttempts)
 		if err != nil {
-			logger.LogError("dunning.worker.retry_failed", logger.ErrorField(err), logger.String("invoice_id", inv.ID))
-			if inv.DunningAttempts >= maxAttempts {
-				inv.DunningStatus = "failed"
-				// --- Dunning notification (non-blocking, only once) ---
-				if notificationService != nil && accountService != nil {
-					go func(inv Invoice) {
-						acct, accErr := accountService.GetAccount(inv.AccountID)
-						if accErr != nil || acct.Email == "" {
-							logger.LogError("dunning.worker.notify.account_not_found", logger.ErrorField(accErr), logger.String("account_id", inv.AccountID))
-							return
-						}
-						details := map[string]interface{}{
-							"invoice_id":    inv.ID,
-							"amount":        inv.Amount,
-							"currency":      inv.Currency,
-							"due_date":      inv.DueDate,
-							"status":        inv.Status,
-							"account_id":    acct.ID,
-							"account_email": acct.Email,
-							"tenant_id":     acct.TenantID,
-						}
-						err := notificationService.SendNotification(
-							context.Background(),
-							acct.TenantID,
-							security_management.NotificationEmail,
-							[]string{acct.Email},
-							"invoice.dunning_failed",
-							details,
-							3,
-						)
-						if err != nil {
-							logger.LogError("dunning.worker.notify.failed", logger.ErrorField(err), logger.String("account_id", acct.ID))
-						}
-					}(inv)
+			logger.LogError("dunning.worker.list_invoices_failed", logger.ErrorField(err))
+			time.Sleep(5 * time.Minute)
+			continue
+		}
+		for _, inv := range invoices {
+			acct, err := accountService.GetAccount(inv.AccountID)
+			if err != nil {
+				logger.LogError("dunning.worker.account_not_found", logger.ErrorField(err), logger.String("account_id", inv.AccountID))
+				continue
+			}
+			if acct.Email == "" {
+				logger.LogError("dunning.worker.account_no_email", logger.String("account_id", inv.AccountID))
+				continue
+			}
+			logger.LogInfo("dunning.worker.retrying_payment", logger.String("invoice_id", inv.ID), logger.String("account_id", inv.AccountID))
+			failedPayment := &payment.FailedPayment{ID: inv.ID, InvoiceID: inv.ID, DunningAttempts: inv.DunningAttempts, DunningState: inv.DunningStatus, LastDunningAttempt: inv.DunningNextAttemptAt}
+			result, payErr := payment.RetryPayment(ctx, paymentStore, failedPayment)
+			if payErr == nil && result != nil && result.Status == "succeeded" {
+				err := store.UpdateInvoiceStatus(ctx, inv.ID, "paid")
+				if err != nil {
+					logger.LogError("dunning.worker.update_invoice_status_failed", logger.ErrorField(err), logger.String("invoice_id", inv.ID))
 				}
+				details := map[string]interface{}{
+					"invoice_id":    inv.ID,
+					"amount":        inv.Amount,
+					"currency":      inv.Currency,
+					"status":        "paid",
+					"account_id":    acct.ID,
+					"account_email": acct.Email,
+				}
+				nErr := notificationService.SendNotification(ctx, acct.TenantID, security_management.NotificationEmail, []string{acct.Email}, "invoice.paid", details, 3)
+				if nErr != nil {
+					logger.LogError("dunning.worker.notify_paid_failed", logger.ErrorField(nErr), logger.String("account_id", acct.ID))
+				}
+				logger.LogInfo("dunning.worker.payment_success", logger.String("invoice_id", inv.ID))
+				continue
 			}
-		} else {
-			logger.LogInfo("dunning.worker.retry_success", logger.String("invoice_id", inv.ID), logger.String("status", result.Status))
-			if result.Status == "paid" {
-				inv.DunningStatus = "recovered"
+			logger.LogError("dunning.worker.payment_retry_failed", logger.ErrorField(payErr), logger.String("invoice_id", inv.ID))
+			details := map[string]interface{}{
+				"invoice_id":    inv.ID,
+				"amount":        inv.Amount,
+				"currency":      inv.Currency,
+				"status":        "payment_failed",
+				"account_id":    acct.ID,
+				"account_email": acct.Email,
 			}
+			nErr := notificationService.SendNotification(ctx, acct.TenantID, security_management.NotificationEmail, []string{acct.Email}, "invoice.payment_failed", details, 3)
+			if nErr != nil {
+				logger.LogError("dunning.worker.notify_failed_failed", logger.ErrorField(nErr), logger.String("account_id", acct.ID))
+			}
+			// Optionally: escalate after N failures, e.g. mark as "collections" or similar
 		}
-		// Update invoice dunning fields
-		_, err = store.UpdateInvoice(context.Background(), inv)
-		if err != nil {
-			logger.LogError("dunning.worker.update_invoice_failed", logger.ErrorField(err), logger.String("invoice_id", inv.ID))
-		}
+		time.Sleep(1 * time.Hour)
 	}
 }

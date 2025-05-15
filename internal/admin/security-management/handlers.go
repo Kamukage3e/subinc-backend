@@ -1343,41 +1343,6 @@ func (h *SecurityHandler) Consent(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// --- MFA Challenge/Verify ---
-func (h *SecurityHandler) MFAChallenge(c *fiber.Ctx) error {
-	userID := getActorID(c)
-	if userID == "" {
-		logger.LogError("MFAChallenge: unauthorized", logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
-	}
-	challenge, err := h.MFAService.GenerateChallenge(c.Context(), userID)
-	if err != nil {
-		logger.LogError("MFAChallenge: failed", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(challenge)
-}
-
-func (h *SecurityHandler) MFAVerify(c *fiber.Ctx) error {
-	userID := getActorID(c)
-	if userID == "" {
-		logger.LogError("MFAVerify: unauthorized", logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
-	}
-	var input struct {
-		Code string `json:"code"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.Code == "" {
-		logger.LogError("MFAVerify: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "code required"})
-	}
-	if err := h.MFAService.VerifyChallenge(c.Context(), userID, input.Code); err != nil {
-		logger.LogError("MFAVerify: failed", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid code"})
-	}
-	return c.SendStatus(fiber.StatusNoContent)
-}
-
 // --- Invite Send/Accept ---
 func (h *SecurityHandler) SendInvite(c *fiber.Ctx) error {
 	var input struct {
@@ -1778,31 +1743,6 @@ func (h *SecurityHandler) GetRateLimitConfig(c *fiber.Ctx) error {
 	return c.JSON(cfg)
 }
 
-// --- User Session CRUD Handlers (robust, prod-ready, Redis-backed) ---
-
-func (h *SecurityHandler) CreateUserSession(c *fiber.Ctx) error {
-	var input struct {
-		UserID string `json:"user_id"`
-		IP     string `json:"ip"`
-		Device string `json:"device"`
-		TTL    int64  `json:"ttl_seconds"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.UserID == "" {
-		logger.LogError("CreateUserSession: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id required"})
-	}
-	expiry := time.Duration(input.TTL) * time.Second
-	if expiry <= 0 {
-		expiry = 24 * time.Hour
-	}
-	sess, err := h.SessionService.CreateSession(c.Context(), input.UserID, input.IP, input.Device, expiry)
-	if err != nil {
-		logger.LogError("CreateUserSession: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create session"})
-	}
-	return c.Status(fiber.StatusCreated).JSON(sess)
-}
-
 func (h *SecurityHandler) DeleteUserSession(c *fiber.Ctx) error {
 	var input struct {
 		RefreshToken string `json:"refresh_token"`
@@ -1898,4 +1838,37 @@ func (h *SecurityHandler) BootstrapOwnerAdmin(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.Status(fiber.StatusCreated).JSON(user)
+}
+
+func (h *SecurityHandler) ResetUserPassword(c *fiber.Ctx) error {
+	var input struct {
+		UserID      string `json:"user_id"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.UserID == "" || input.NewPassword == "" {
+		logger.LogError("ResetUserPassword: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id and new_password required"})
+	}
+	if err := h.PasswordService.ResetUserPassword(c.Context(), input.UserID, input.NewPassword); err != nil {
+		logger.LogError("ResetUserPassword: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *SecurityHandler) ListSecurityAuditLogs(c *fiber.Ctx) error {
+	var input struct {
+		Page     int `json:"page"`
+		PageSize int `json:"page_size"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.Page <= 0 || input.PageSize <= 0 {
+		logger.LogError("ListSecurityAuditLogs: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid page or page_size"})
+	}
+	logs, err := h.SecurityAuditLogService.ListSecurityAuditLogs(c.Context(), input.Page, input.PageSize)
+	if err != nil {
+		logger.LogError("ListSecurityAuditLogs: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"audit_logs": logs, "page": input.Page, "page_size": input.PageSize})
 }

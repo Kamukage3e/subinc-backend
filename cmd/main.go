@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"sync"
 	"time"
 
@@ -88,6 +89,16 @@ func extractDBConfig(c *fiber.Ctx) (string, error) {
 // 	}
 // }
 
+// @title           Subinc Admin API
+// @version         1.0
+// @description     Unified admin API for Subinc platform (owner + client)
+// @contact.name    Subinc Dev Team
+// @contact.email   dev@subinc.com
+// @license.name    MIT
+// @license.url     https://opensource.org/licenses/MIT
+// @host            localhost:8080
+// @BasePath        /api/v1
+// @schemes         http
 func main() {
 
 	ownerDBDSN := "postgres://postgres:postgres@localhost:5432/subinc"
@@ -228,6 +239,12 @@ func main() {
 
 	// --- Serve Swagger/OpenAPI spec ---
 	// To generate: swagger generate spec -o ./swagger.json --scan-models
+	// @Summary      Get OpenAPI spec
+	// @Description  Returns the OpenAPI (Swagger) JSON spec for the API
+	// @Tags         docs
+	// @Produce      json
+	// @Success      200 {object} map[string]interface{}
+	// @Failure      404 {string} string "swagger.json not found"
 	app.Get("/swagger.json", func(c *fiber.Ctx) error {
 		data, err := os.ReadFile("swagger.json")
 		if err != nil {
@@ -236,8 +253,22 @@ func main() {
 		c.Set("Content-Type", "application/json")
 		return c.Send(data)
 	})
-	// Optionally serve Swagger UI if you have the static assets in ./swagger-ui
-	app.Static("/docs", "./swagger-ui")
+	// Serve Swagger UI and OpenAPI YAML
+	app.Static("/swagger.yaml", "./swagger.yaml")
+	app.Static("/docs", "./swagger-ui", fiber.Static{Index: "index.html"})
+	app.Get("/docs", func(c *fiber.Ctx) error {
+		return c.Redirect("/docs/index.html", fiber.StatusFound)
+	})
+	logger.LogInfo("Swagger UI available at http://localhost:8080/docs, spec at /swagger.yaml")
+
+	// Start go-swagger serve as a subprocess for Swagger UI (Swagger 2.0 only)
+	cmd := exec.Command("swagger", "serve", "--flavor=swagger", "./swagger.json", "--port=8090", "--no-open")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		log.Fatalf("Failed to start swagger UI: %v", err)
+	}
+	logger.LogInfo("Swagger UI available at http://localhost:8090/docs, spec at /swagger.json (Swagger 2.0 only)")
 
 	if err := app.Listen(fmt.Sprintf(":%s", serverPort)); err != nil {
 		log.Fatalf("Failed to start server: %v", err)

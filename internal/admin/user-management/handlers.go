@@ -25,7 +25,18 @@ func getActorID(c *fiber.Ctx) string {
 	return ""
 }
 
-// --- User Handlers ---
+// swagger:route POST /user-management/users/create user createUser
+// ---
+// summary: Create a user
+// description: Creates a new user.
+// tags:
+//   - user
+//
+// responses:
+//
+//	201: User
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *UserHandler) CreateUser(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := getActorID(c)
@@ -53,6 +64,18 @@ func (h *UserHandler) CreateUser(c *fiber.Ctx) error {
 	return c.Status(http.StatusCreated).JSON(created)
 }
 
+// swagger:route PUT /user-management/users/update user updateUser
+// ---
+// summary: Update a user
+// description: Updates an existing user.
+// tags:
+//   - user
+//
+// responses:
+//
+//	200: User
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
 	var input struct {
 		ID string `json:"id"`
@@ -75,6 +98,18 @@ func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
 	return c.JSON(updated)
 }
 
+// swagger:route DELETE /user-management/users/delete user deleteUser
+// ---
+// summary: Delete a user
+// description: Deletes a user by ID.
+// tags:
+//   - user
+//
+// responses:
+//
+//	204: EmptyResponse
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *UserHandler) DeleteUser(c *fiber.Ctx) error {
 	var input struct {
 		ID string `json:"id"`
@@ -89,6 +124,18 @@ func (h *UserHandler) DeleteUser(c *fiber.Ctx) error {
 	return c.SendStatus(http.StatusNoContent)
 }
 
+// swagger:route GET /user-management/users/get user getUser
+// ---
+// summary: Get a user
+// description: Retrieves a user by ID.
+// tags:
+//   - user
+//
+// responses:
+//
+//	200: User
+//	400: ErrorResponse
+//	404: ErrorResponse
 func (h *UserHandler) GetUser(c *fiber.Ctx) error {
 	var input struct {
 		ID string `json:"id"`
@@ -104,6 +151,18 @@ func (h *UserHandler) GetUser(c *fiber.Ctx) error {
 	return c.JSON(user)
 }
 
+// swagger:route GET /user-management/users/get-by-email user getUserByEmail
+// ---
+// summary: Get user by email
+// description: Retrieves a user by email address.
+// tags:
+//   - user
+//
+// responses:
+//
+//	200: User
+//	400: ErrorResponse
+//	404: ErrorResponse
 func (h *UserHandler) GetUserByEmail(c *fiber.Ctx) error {
 	var input struct {
 		Email string `json:"email"`
@@ -119,6 +178,18 @@ func (h *UserHandler) GetUserByEmail(c *fiber.Ctx) error {
 	return c.JSON(user)
 }
 
+// swagger:route GET /user-management/users/list user listUsers
+// ---
+// summary: List users
+// description: Lists users with optional filters.
+// tags:
+//   - user
+//
+// responses:
+//
+//	200: UserListResponse
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *UserHandler) ListUsers(c *fiber.Ctx) error {
 	var input struct {
 		Status   string `json:"status"`
@@ -143,6 +214,19 @@ func (h *UserHandler) ListUsers(c *fiber.Ctx) error {
 }
 
 // --- UserProfile Handlers ---
+// swagger:route POST /user-management/profiles/create user createProfile
+// ---
+// summary: Create a user profile
+// description: Creates a new user profile.
+// tags:
+//   - user
+//   - profile
+//
+// responses:
+//
+//	201: UserProfile
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *UserHandler) CreateProfile(c *fiber.Ctx) error {
 	var profile UserProfile
 	if err := c.BodyParser(&profile); err != nil {
@@ -158,6 +242,19 @@ func (h *UserHandler) CreateProfile(c *fiber.Ctx) error {
 	return c.Status(http.StatusCreated).JSON(created)
 }
 
+// swagger:route PUT /user-management/profiles/update user updateProfile
+// ---
+// summary: Update a user profile
+// description: Updates an existing user profile.
+// tags:
+//   - user
+//   - profile
+//
+// responses:
+//
+//	200: UserProfile
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	var input struct {
 		UserID string `json:"user_id"`
@@ -176,6 +273,19 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	return c.JSON(updated)
 }
 
+// swagger:route GET /user-management/profiles/get user getProfile
+// ---
+// summary: Get a user profile
+// description: Retrieves a user profile by user ID.
+// tags:
+//   - user
+//   - profile
+//
+// responses:
+//
+//	200: UserProfile
+//	400: ErrorResponse
+//	404: ErrorResponse
 func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	var input struct {
 		UserID string `json:"user_id"`
@@ -192,6 +302,19 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 }
 
 // --- UserSettings Handlers ---
+// swagger:route GET /user-management/settings/get user getSettings
+// ---
+// summary: Get user settings
+// description: Retrieves user settings by user ID.
+// tags:
+//   - user
+//   - settings
+//
+// responses:
+//
+//	200: UserSettings
+//	400: ErrorResponse
+//	404: ErrorResponse
 func (h *UserHandler) GetSettings(c *fiber.Ctx) error {
 	var input struct {
 		UserID string `json:"user_id"`
@@ -207,6 +330,19 @@ func (h *UserHandler) GetSettings(c *fiber.Ctx) error {
 	return c.JSON(settings)
 }
 
+// swagger:route PUT /user-management/settings/update user updateSettings
+// ---
+// summary: Update user settings
+// description: Updates user settings by user ID.
+// tags:
+//   - user
+//   - settings
+//
+// responses:
+//
+//	200: UpdateSettingsResponse
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *UserHandler) UpdateSettings(c *fiber.Ctx) error {
 	var input struct {
 		UserID   string                 `json:"user_id"`
@@ -225,6 +361,20 @@ func (h *UserHandler) UpdateSettings(c *fiber.Ctx) error {
 
 // --- Org/Project Membership/Invite Handlers ---
 
+// swagger:route POST /user-management/orgs/add-user user addUserToOrg
+// ---
+// summary: Add user to organization
+// description: Adds a user to an organization.
+// tags:
+//   - user
+//   - org
+//
+// responses:
+//
+//	204: EmptyResponse
+//	400: ErrorResponse
+//	403: ErrorResponse
+//	422: ErrorResponse
 func (h *UserHandler) AddUserToOrg(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := getActorID(c)
@@ -250,6 +400,20 @@ func (h *UserHandler) AddUserToOrg(c *fiber.Ctx) error {
 	return c.SendStatus(http.StatusNoContent)
 }
 
+// swagger:route DELETE /user-management/orgs/remove-user user removeUserFromOrg
+// ---
+// summary: Remove user from organization
+// description: Removes a user from an organization.
+// tags:
+//   - user
+//   - org
+//
+// responses:
+//
+//	204: EmptyResponse
+//	400: ErrorResponse
+//	403: ErrorResponse
+//	422: ErrorResponse
 func (h *UserHandler) RemoveUserFromOrg(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := getActorID(c)
@@ -273,6 +437,19 @@ func (h *UserHandler) RemoveUserFromOrg(c *fiber.Ctx) error {
 	return c.SendStatus(http.StatusNoContent)
 }
 
+// swagger:route GET /user-management/orgs/list-users user listOrgUsers
+// ---
+// summary: List organization users
+// description: Lists users in an organization.
+// tags:
+//   - user
+//   - org
+//
+// responses:
+//
+//	200: UserListResponse
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *UserHandler) ListOrgUsers(c *fiber.Ctx) error {
 	var input struct {
 		OrgID    string `json:"org_id"`
@@ -296,6 +473,20 @@ func (h *UserHandler) ListOrgUsers(c *fiber.Ctx) error {
 	return c.JSON(users)
 }
 
+// swagger:route POST /user-management/orgs/invite-user user inviteUserToOrg
+// ---
+// summary: Invite user to organization
+// description: Invites a user to an organization by email.
+// tags:
+//   - user
+//   - org
+//
+// responses:
+//
+//	204: EmptyResponse
+//	400: ErrorResponse
+//	403: ErrorResponse
+//	422: ErrorResponse
 func (h *UserHandler) InviteUserToOrg(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := getActorID(c)
@@ -321,6 +512,20 @@ func (h *UserHandler) InviteUserToOrg(c *fiber.Ctx) error {
 	return c.SendStatus(http.StatusNoContent)
 }
 
+// swagger:route POST /user-management/projects/add-user user addUserToProject
+// ---
+// summary: Add user to project
+// description: Adds a user to a project.
+// tags:
+//   - user
+//   - project
+//
+// responses:
+//
+//	204: EmptyResponse
+//	400: ErrorResponse
+//	403: ErrorResponse
+//	422: ErrorResponse
 func (h *UserHandler) AddUserToProject(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := getActorID(c)
@@ -346,6 +551,20 @@ func (h *UserHandler) AddUserToProject(c *fiber.Ctx) error {
 	return c.SendStatus(http.StatusNoContent)
 }
 
+// swagger:route DELETE /user-management/projects/remove-user user removeUserFromProject
+// ---
+// summary: Remove user from project
+// description: Removes a user from a project.
+// tags:
+//   - user
+//   - project
+//
+// responses:
+//
+//	204: EmptyResponse
+//	400: ErrorResponse
+//	403: ErrorResponse
+//	422: ErrorResponse
 func (h *UserHandler) RemoveUserFromProject(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := getActorID(c)
@@ -369,6 +588,19 @@ func (h *UserHandler) RemoveUserFromProject(c *fiber.Ctx) error {
 	return c.SendStatus(http.StatusNoContent)
 }
 
+// swagger:route GET /user-management/projects/list-users user listProjectUsers
+// ---
+// summary: List project users
+// description: Lists users in a project.
+// tags:
+//   - user
+//   - project
+//
+// responses:
+//
+//	200: UserListResponse
+//	400: ErrorResponse
+//	422: ErrorResponse
 func (h *UserHandler) ListProjectUsers(c *fiber.Ctx) error {
 	var input struct {
 		ProjectID string `json:"project_id"`
@@ -392,6 +624,20 @@ func (h *UserHandler) ListProjectUsers(c *fiber.Ctx) error {
 	return c.JSON(users)
 }
 
+// swagger:route POST /user-management/projects/invite-user user inviteUserToProject
+// ---
+// summary: Invite user to project
+// description: Invites a user to a project by email.
+// tags:
+//   - user
+//   - project
+//
+// responses:
+//
+//	204: EmptyResponse
+//	400: ErrorResponse
+//	403: ErrorResponse
+//	422: ErrorResponse
 func (h *UserHandler) InviteUserToProject(c *fiber.Ctx) error {
 	if h.RBACService != nil {
 		actorID := getActorID(c)

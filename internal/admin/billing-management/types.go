@@ -28,6 +28,7 @@ type BillingAdminHandler struct {
 	CreditService              discount.CreditService
 	TaxService                 tax.TaxInfoService
 	Store                      *PostgresStore
+	PaymentStore               payment.StoreInterface
 	AuditLogger                BillingAuditLogger                      // use interface for audit logging
 	RBACService                rbac_management.RBACService             // optional, may be nil
 	RateLimitService           security_management.RateLimitService    // for distributed rate limiting
