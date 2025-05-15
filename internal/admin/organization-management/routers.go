@@ -4,7 +4,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
+	auditutil "github.com/subinc/subinc-backend/internal/pkg/auditutil"
+	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
 func RegisterRoutes(router fiber.Router, handler *OrganizationHandler, jwtSecretName string, auditLogger security_management.AuditLogger) {
@@ -12,16 +13,16 @@ func RegisterRoutes(router fiber.Router, handler *OrganizationHandler, jwtSecret
 		"/organizations",
 		security_management.OIDCMiddleware(jwtSecretName),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, orgScopeExtractor),
-		auditmiddleware.AuditLoggerMiddleware(auditLogger),
+		auditutil.AuditLoggerMiddleware(auditLogger),
 	)
 
-	route.Post("/", handler.CreateOrganization)
-	route.Get("/", handler.ListOrganizations)
-	route.Get("/:id", handler.GetOrganization)
-	route.Put("/:id", handler.UpdateOrganization)
-	route.Delete("/:id", handler.DeleteOrganization)
-	route.Get("/:id/settings", handler.GetSettings)
-	route.Put("/:id/settings", handler.UpdateSettings)
+	route.Post("/", rbacmiddleware.RBACMiddleware("organization", "create", nil), handler.CreateOrganization)
+	route.Get("/", rbacmiddleware.RBACMiddleware("organization", "read", nil), handler.ListOrganizations)
+	route.Get("/:id", rbacmiddleware.RBACMiddleware("organization", "read", nil), handler.GetOrganization)
+	route.Put("/:id", rbacmiddleware.RBACMiddleware("organization", "update", nil), handler.UpdateOrganization)
+	route.Delete("/:id", rbacmiddleware.RBACMiddleware("organization", "delete", nil), handler.DeleteOrganization)
+	route.Get("/:id/settings", rbacmiddleware.RBACMiddleware("organization-settings", "read", nil), handler.GetSettings)
+	route.Put("/:id/settings", rbacmiddleware.RBACMiddleware("organization-settings", "update", nil), handler.UpdateSettings)
 }
 
 func orgScopeExtractor(c *fiber.Ctx) (string, string) {

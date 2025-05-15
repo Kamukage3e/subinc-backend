@@ -61,7 +61,29 @@ func (p *Policy) Validate() error {
 	return nil
 }
 
+// checkAccess enforces RBAC/ABAC for a handler. Returns error if not allowed.
+func (h *RBACHandler) checkAccess(c *fiber.Ctx, resource, action string, abacContext map[string]interface{}) error {
+	userID, ok := c.Locals("user_id").(string)
+	if !ok || userID == "" {
+		logger.LogError("checkAccess: user_id missing in context")
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: user_id missing"})
+	}
+	allowed, err := h.Store.CheckAccess(c.Context(), userID, resource, action, abacContext)
+	if err != nil {
+		logger.LogError("checkAccess: error in permission check", logger.ErrorField(err))
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "access denied: permission check failed"})
+	}
+	if !allowed {
+		logger.LogError("checkAccess: forbidden", logger.String("user_id", userID), logger.String("resource", resource), logger.String("action", action))
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden: insufficient permissions"})
+	}
+	return nil
+}
+
 func (h *RBACHandler) CreateRole(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "role", "create", nil); err != nil {
+		return err
+	}
 	var input Role
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateRole: invalid input", logger.ErrorField(err))
@@ -80,6 +102,9 @@ func (h *RBACHandler) CreateRole(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) GetRole(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "role", "read", nil); err != nil {
+		return err
+	}
 	id := c.Params("id")
 	tenantID := c.Query("tenant_id")
 	if id == "" || tenantID == "" {
@@ -95,6 +120,9 @@ func (h *RBACHandler) GetRole(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) UpdateRole(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "role", "update", nil); err != nil {
+		return err
+	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
@@ -114,6 +142,9 @@ func (h *RBACHandler) UpdateRole(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) DeleteRole(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "role", "delete", nil); err != nil {
+		return err
+	}
 	id := c.Params("id")
 	tenantID := c.Query("tenant_id")
 	if id == "" || tenantID == "" {
@@ -128,6 +159,9 @@ func (h *RBACHandler) DeleteRole(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) ListRoles(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "role", "read", nil); err != nil {
+		return err
+	}
 	tenantID := c.Query("tenant_id")
 	page := c.QueryInt("page", 1)
 	pageSize := c.QueryInt("page_size", 100)
@@ -140,6 +174,9 @@ func (h *RBACHandler) ListRoles(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) CreatePermission(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "permission", "create", nil); err != nil {
+		return err
+	}
 	var input Permission
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreatePermission: invalid input", logger.ErrorField(err))
@@ -158,6 +195,9 @@ func (h *RBACHandler) CreatePermission(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) GetPermission(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "permission", "read", nil); err != nil {
+		return err
+	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
@@ -171,6 +211,9 @@ func (h *RBACHandler) GetPermission(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) UpdatePermission(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "permission", "update", nil); err != nil {
+		return err
+	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
@@ -190,6 +233,9 @@ func (h *RBACHandler) UpdatePermission(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) DeletePermission(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "permission", "delete", nil); err != nil {
+		return err
+	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
@@ -202,6 +248,9 @@ func (h *RBACHandler) DeletePermission(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) ListPermissions(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "permission", "read", nil); err != nil {
+		return err
+	}
 	resource := c.Query("resource")
 	action := c.Query("action")
 	page := c.QueryInt("page", 1)
@@ -215,6 +264,9 @@ func (h *RBACHandler) ListPermissions(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) CreateRoleBinding(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "role_binding", "create", nil); err != nil {
+		return err
+	}
 	var input RoleBinding
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateRoleBinding: invalid input", logger.ErrorField(err))
@@ -233,6 +285,9 @@ func (h *RBACHandler) CreateRoleBinding(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) DeleteRoleBinding(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "role_binding", "delete", nil); err != nil {
+		return err
+	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
@@ -245,6 +300,9 @@ func (h *RBACHandler) DeleteRoleBinding(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) ListRoleBindings(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "role_binding", "read", nil); err != nil {
+		return err
+	}
 	tenantID := c.Query("tenant_id")
 	userID := c.Query("user_id")
 	page := c.QueryInt("page", 1)
@@ -258,6 +316,9 @@ func (h *RBACHandler) ListRoleBindings(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) CreatePolicy(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "policy", "create", nil); err != nil {
+		return err
+	}
 	var input Policy
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreatePolicy: invalid input", logger.ErrorField(err))
@@ -276,6 +337,9 @@ func (h *RBACHandler) CreatePolicy(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) GetPolicy(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "policy", "read", nil); err != nil {
+		return err
+	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
@@ -289,6 +353,9 @@ func (h *RBACHandler) GetPolicy(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) UpdatePolicy(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "policy", "update", nil); err != nil {
+		return err
+	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
@@ -308,6 +375,9 @@ func (h *RBACHandler) UpdatePolicy(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) DeletePolicy(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "policy", "delete", nil); err != nil {
+		return err
+	}
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
@@ -320,6 +390,9 @@ func (h *RBACHandler) DeletePolicy(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) ListPolicies(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "policy", "read", nil); err != nil {
+		return err
+	}
 	tenantID := c.Query("tenant_id")
 	page := c.QueryInt("page", 1)
 	pageSize := c.QueryInt("page_size", 100)
@@ -332,6 +405,9 @@ func (h *RBACHandler) ListPolicies(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) CreateAPIPermission(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "api_permission", "create", nil); err != nil {
+		return err
+	}
 	var input APIPermission
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateAPIPermission: invalid input", logger.ErrorField(err))
@@ -346,6 +422,9 @@ func (h *RBACHandler) CreateAPIPermission(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) DeleteAPIPermission(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "api_permission", "delete", nil); err != nil {
+		return err
+	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("DeleteAPIPermission: id required", logger.String("id", id))
@@ -359,6 +438,9 @@ func (h *RBACHandler) DeleteAPIPermission(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) ListAPIPermissions(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "api_permission", "read", nil); err != nil {
+		return err
+	}
 	tenantID := c.Query("tenant_id")
 	api := c.Query("api")
 	method := c.Query("method")
@@ -373,6 +455,9 @@ func (h *RBACHandler) ListAPIPermissions(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) CreateResource(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "resource", "create", nil); err != nil {
+		return err
+	}
 	var input Resource
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateResource: invalid input", logger.ErrorField(err))
@@ -387,6 +472,9 @@ func (h *RBACHandler) CreateResource(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) UpdateResource(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "resource", "update", nil); err != nil {
+		return err
+	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("UpdateResource: id required", logger.String("id", id))
@@ -411,6 +499,9 @@ func (h *RBACHandler) UpdateResource(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) DeleteResource(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "resource", "delete", nil); err != nil {
+		return err
+	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("DeleteResource: id required", logger.String("id", id))
@@ -424,6 +515,9 @@ func (h *RBACHandler) DeleteResource(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) GetResource(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "resource", "read", nil); err != nil {
+		return err
+	}
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetResource: id required", logger.String("id", id))
@@ -438,6 +532,9 @@ func (h *RBACHandler) GetResource(c *fiber.Ctx) error {
 }
 
 func (h *RBACHandler) ListResources(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "resource", "read", nil); err != nil {
+		return err
+	}
 	tenantID := c.Query("tenant_id")
 	typeParam := c.Query("type")
 	page := c.QueryInt("page", 1)

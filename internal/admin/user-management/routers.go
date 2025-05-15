@@ -3,7 +3,8 @@ package user_management
 import (
 	"github.com/gofiber/fiber/v2"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
+	auditutil "github.com/subinc/subinc-backend/internal/pkg/auditutil"
+	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
 func userScopeExtractor(c *fiber.Ctx) (string, string) {
@@ -21,34 +22,34 @@ func RegisterRoutes(router fiber.Router, handler *UserHandler, jwtSecret string,
 		"/user-management",
 		security_management.OIDCMiddleware(jwtSecret),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, userScopeExtractor),
-		auditmiddleware.AuditLoggerMiddleware(auditLogger),
+		auditutil.AuditLoggerMiddleware(auditLogger),
 	)
 	// Users resource
-	route.Post("/users", handler.CreateUser)                    // Create user
-	route.Put("/users/:id", handler.UpdateUser)                 // Update user
-	route.Delete("/users/:id", handler.DeleteUser)              // Delete user
-	route.Get("/users/:id", handler.GetUser)                    // Get user by ID
-	route.Get("/users", handler.ListUsers)                      // List/search users
-	route.Get("/users/by-email/:email", handler.GetUserByEmail) // Get user by email
+	route.Post("/users", rbacmiddleware.RBACMiddleware("user", "create", nil), handler.CreateUser)
+	route.Put("/users/:id", rbacmiddleware.RBACMiddleware("user", "update", nil), handler.UpdateUser)
+	route.Delete("/users/:id", rbacmiddleware.RBACMiddleware("user", "delete", nil), handler.DeleteUser)
+	route.Get("/users/:id", rbacmiddleware.RBACMiddleware("user", "read", nil), handler.GetUser)
+	route.Get("/users", rbacmiddleware.RBACMiddleware("user", "read", nil), handler.ListUsers)
+	route.Get("/users/by-email/:email", rbacmiddleware.RBACMiddleware("user", "read", nil), handler.GetUserByEmail)
 
 	// User profiles
-	route.Post("/users/:user_id/profiles", handler.CreateProfile) // Create profile
-	route.Put("/users/:user_id/profiles", handler.UpdateProfile)  // Update profile
-	route.Get("/users/:user_id/profiles", handler.GetProfile)     // Get profile
+	route.Post("/users/:user_id/profiles", rbacmiddleware.RBACMiddleware("profile", "create", nil), handler.CreateProfile)
+	route.Put("/users/:user_id/profiles", rbacmiddleware.RBACMiddleware("profile", "update", nil), handler.UpdateProfile)
+	route.Get("/users/:user_id/profiles", rbacmiddleware.RBACMiddleware("profile", "read", nil), handler.GetProfile)
 
 	// User settings
-	route.Get("/users/:user_id/settings", handler.GetSettings)    // Get settings
-	route.Put("/users/:user_id/settings", handler.UpdateSettings) // Update settings
+	route.Get("/users/:user_id/settings", rbacmiddleware.RBACMiddleware("user-settings", "read", nil), handler.GetSettings)
+	route.Put("/users/:user_id/settings", rbacmiddleware.RBACMiddleware("user-settings", "update", nil), handler.UpdateSettings)
 
 	// Organization users
-	route.Post("/organizations/:org_id/users", handler.AddUserToOrg)                 // Add user to org
-	route.Delete("/organizations/:org_id/users/:user_id", handler.RemoveUserFromOrg) // Remove user from org
-	route.Get("/organizations/:org_id/users", handler.ListOrgUsers)                  // List org users
-	route.Post("/organizations/:org_id/invites", handler.InviteUserToOrg)            // Invite user to org
+	route.Post("/organizations/:org_id/users", rbacmiddleware.RBACMiddleware("org-user", "create", nil), handler.AddUserToOrg)
+	route.Delete("/organizations/:org_id/users/:user_id", rbacmiddleware.RBACMiddleware("org-user", "delete", nil), handler.RemoveUserFromOrg)
+	route.Get("/organizations/:org_id/users", rbacmiddleware.RBACMiddleware("org-user", "read", nil), handler.ListOrgUsers)
+	route.Post("/organizations/:org_id/invites", rbacmiddleware.RBACMiddleware("org-invite", "create", nil), handler.InviteUserToOrg)
 
 	// Project users
-	route.Post("/projects/:project_id/users", handler.AddUserToProject)                 // Add user to project
-	route.Delete("/projects/:project_id/users/:user_id", handler.RemoveUserFromProject) // Remove user from project
-	route.Get("/projects/:project_id/users", handler.ListProjectUsers)                  // List project users
-	route.Post("/projects/:project_id/invites", handler.InviteUserToProject)            // Invite user to project
+	route.Post("/projects/:project_id/users", rbacmiddleware.RBACMiddleware("project-user", "create", nil), handler.AddUserToProject)
+	route.Delete("/projects/:project_id/users/:user_id", rbacmiddleware.RBACMiddleware("project-user", "delete", nil), handler.RemoveUserFromProject)
+	route.Get("/projects/:project_id/users", rbacmiddleware.RBACMiddleware("project-user", "read", nil), handler.ListProjectUsers)
+	route.Post("/projects/:project_id/invites", rbacmiddleware.RBACMiddleware("project-invite", "create", nil), handler.InviteUserToProject)
 }

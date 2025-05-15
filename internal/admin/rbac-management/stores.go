@@ -16,8 +16,6 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-
-
 // --- RoleService ---
 func (s *PostgresStore) CreateRole(ctx context.Context, role Role) (Role, error) {
 	const q = `INSERT INTO roles (id, tenant_id, name, desc, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, tenant_id, name, desc, created_at, updated_at`
@@ -958,4 +956,40 @@ func (s *PostgresStore) ListDistinctPermissionActions(ctx context.Context) ([]st
 		actions = append(actions, a)
 	}
 	return actions, nil
+}
+
+// CheckAccess implements PermissionChecker. Checks RBAC first, then ABAC if needed.
+func (s *PostgresStore) CheckAccess(ctx context.Context, userID, resource, action string, abacContext map[string]interface{}) (bool, error) {
+	if userID == "" || resource == "" || action == "" {
+		logger.LogError("CheckAccess invalid input", logger.String("user_id", userID), logger.String("resource", resource), logger.String("action", action))
+		return false, ErrInvalidRBACInput
+	}
+	// RBAC check
+	allowed, err := s.CheckPermission(ctx, userID, resource, action)
+	if err != nil {
+		return false, err
+	}
+	if allowed {
+		return true, nil
+	}
+	// ABAC check (if context provided)
+	if abacContext != nil {
+		// Try to extract tenantID if present
+		tenantID, _ := abacContext["tenant_id"].(string)
+		input := ABACEvaluationInput{
+			TenantID: tenantID,
+			UserID:   userID,
+			Action:   action,
+			Resource: resource,
+			Context:  abacContext,
+		}
+		res, err := s.EvaluateABAC(ctx, input)
+		if err != nil {
+			return false, err
+		}
+		if res.Allowed {
+			return true, nil
+		}
+	}
+	return false, nil
 }

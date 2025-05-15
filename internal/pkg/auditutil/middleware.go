@@ -8,52 +8,67 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-
-	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
 )
 
-// AuditLoggerMiddleware logs all mutating requests for security and compliance.
-func AuditLoggerMiddleware(auditLogger security_management.AuditLogger) fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		ctx := context.WithValue(c.UserContext(), "auditLogger", auditLogger)
-		c.SetUserContext(ctx)
-		err := c.Next()
+// getActorID extracts the user/actor ID from the context (customize as needed)
+func getActorID(c *fiber.Ctx) string {
+	id, _ := c.Locals("user_id").(string)
+	return id
+}
 
-		method := c.Method()
-		if method == fiber.MethodPost || method == fiber.MethodPut || method == fiber.MethodDelete {
-			route := c.Route().Path
-			actorID := commonutil.GetActorID(c)
-			var details map[string]interface{}
-			var targetID string
-			if c.Body() != nil && len(c.Body()) > 0 {
-				if err := json.Unmarshal(c.Body(), &details); err != nil {
-					details = map[string]interface{}{"body": string(c.Body())}
-				} else {
-					if id, ok := details["id"].(string); ok {
-						targetID = id
-					} else if tid, ok := details["target_id"].(string); ok {
-						targetID = tid
-					} else if aid, ok := details["account_id"].(string); ok {
-						targetID = aid
-					} else if rid, ok := details["req"].(map[string]interface{}); ok {
-						if ridVal, ok := rid["ID"].(string); ok {
-							targetID = ridVal
-						}
-					}
-				}
-			} else {
-				details = map[string]interface{}{}
+// getResourceAndID tries to extract resource and resourceID from route or params
+func getResourceAndID(c *fiber.Ctx) (string, string) {
+	params := c.AllParams()
+	resource := ""
+	resourceID := ""
+	if len(params) > 0 {
+		for k, v := range params {
+			if k == "id" || k == "resource_id" || k == "policy_id" {
+				resourceID = v
 			}
-			auditLog := security_management.SecurityAuditLog{
-				ID:        uuid.NewString(),
-				ActorID:   actorID,
-				Action:    route + ":" + method,
-				TargetID:  targetID,
-				Details:   AuditDetails(details),
-				CreatedAt: time.Now().UTC(),
-			}
-			_, _ = auditLogger.CreateSecurityAuditLog(ctx, auditLog)
 		}
+	}
+	// crude resource extraction: first path segment after /
+	parts := c.Route().Path
+	if len(parts) > 1 {
+		resource = parts[1:]
+	}
+	return resource, resourceID
+}
+
+// AuditLoggerMiddleware logs every request using the provided security_management.AuditLogger.
+func AuditLoggerMiddleware(logger security_management.AuditLogger) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		start := time.Now()
+		err := c.Next()
+		latency := time.Since(start)
+		userID := getActorID(c)
+		status := c.Response().StatusCode()
+		event := c.Method() + " " + c.Path()
+		resource, resourceID := getResourceAndID(c)
+		ip := c.IP()
+		userAgent := c.Get("User-Agent")
+		metadata := map[string]interface{}{
+			"status":     status,
+			"latency_ms": latency.Milliseconds(),
+		}
+		if c.Body() != nil && len(c.Body()) > 0 {
+			metadata["body"] = string(c.Body())
+		}
+		metadataJSON, _ := json.Marshal(metadata)
+		log := security_management.SecurityAuditLog{
+			ID:         uuid.NewString(),
+			UserID:     userID,
+			ActorID:    userID,
+			Action:     event,
+			Resource:   resource,
+			ResourceID: resourceID,
+			IP:         ip,
+			UserAgent:  userAgent,
+			CreatedAt:  time.Now().UTC(),
+			Details:    string(metadataJSON),
+		}
+		_, _ = logger.CreateSecurityAuditLog(context.Background(), log)
 		return err
 	}
 }

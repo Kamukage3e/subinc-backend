@@ -2,8 +2,6 @@ package rbac_management
 
 import (
 	"context"
-
-	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 )
 
 // RoleService manages roles for tenants and system
@@ -65,9 +63,6 @@ type AuditLogService interface {
 	ListAuditLogs(ctx context.Context, tenantID, actorID, action, resource string, page, pageSize int) ([]AuditLog, error)
 }
 
-// All audit logging must use AuditLogger for decoupling and optionality.
-type RBACAuditLogger = security_management.AuditLogger
-
 // RBACService provides full RBAC enforcement for all modules.
 // All methods must be robust, user-friendly, and never leak sensitive info.
 // This interface is required for SaaS-grade RBAC integration.
@@ -107,4 +102,15 @@ type RoleDelegationService interface {
 	DelegateRole(ctx context.Context, input RoleDelegationInput) error
 	RevokeDelegatedRole(ctx context.Context, input RoleDelegationInput) error
 	ListDelegatedRoles(ctx context.Context, tenantID, userID string, page, pageSize int) ([]DelegatedRole, error)
+}
+
+// PermissionChecker provides a unified interface for RBAC/ABAC checks
+// Returns true if access is allowed, false otherwise, with robust error handling
+// context: request context
+// userID: user identity
+// resource: resource string (e.g. "role", "permission")
+// action: action string (e.g. "create", "read", "update", "delete")
+// abacContext: optional attributes for ABAC (may be nil)
+type PermissionChecker interface {
+	CheckAccess(ctx context.Context, userID, resource, action string, abacContext map[string]interface{}) (bool, error)
 }
