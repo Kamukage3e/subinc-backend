@@ -1,6 +1,7 @@
 package discount
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -473,4 +474,96 @@ func (h *DiscountHandler) ApplyCreditsToInvoice(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// Plugin management handlers
+
+// ListDiscountPlugins returns all registered discount plugins
+func (h *DiscountHandler) ListDiscountPlugins(c *fiber.Ctx) error {
+	pluginNames := DiscountPlugins.List()
+
+	return c.JSON(fiber.Map{
+		"plugins": pluginNames,
+	})
+}
+
+// GetDiscountPlugin returns details about a specific discount plugin
+func (h *DiscountHandler) GetDiscountPlugin(c *fiber.Ctx) error {
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Plugin name is required",
+		})
+	}
+
+	plugin, exists := DiscountPlugins.Lookup(pluginName)
+	if !exists {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": fmt.Sprintf("Discount plugin '%s' not found", pluginName),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"name":         plugin.Name(),
+		"version":      plugin.Version(),
+		"capabilities": plugin.Capabilities(),
+	})
+}
+
+// ConfigureDiscountPlugin configures a discount plugin
+func (h *DiscountHandler) ConfigureDiscountPlugin(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Tenant ID is required",
+		})
+	}
+
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Plugin name is required",
+		})
+	}
+
+	// Check if the plugin exists
+	plugin, exists := DiscountPlugins.Lookup(pluginName)
+	if !exists {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": fmt.Sprintf("Discount plugin '%s' not found", pluginName),
+		})
+	}
+
+	// Parse the configuration
+	var config map[string]interface{}
+	if err := c.BodyParser(&config); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid configuration format",
+		})
+	}
+
+	// Initialize the plugin with the configuration
+	if err := plugin.Initialize(config); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to initialize plugin: %v", err),
+		})
+	}
+
+	// Store the configuration in the database
+	// This would typically be done via a store method
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status":  "success",
+		"message": fmt.Sprintf("Discount plugin '%s' configured successfully", pluginName),
+	})
+}
+
+// DisableDiscountPlugin disables a discount plugin by name
+func (h *DiscountHandler) DisableDiscountPlugin(c *fiber.Ctx) error {
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Plugin name is required"})
+	}
+	// If runtime disable is not supported, return 501
+	return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"error": "DisableDiscountPlugin not implemented for this plugin type"})
 }

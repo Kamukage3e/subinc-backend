@@ -9,18 +9,19 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/subinc/subinc-backend/internal/pkg/auth"
+	"github.com/subinc/subinc-backend/internal/pkg/auth/providers/jwt"
+	"github.com/subinc/subinc-backend/internal/pkg/auth/providers/session"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
-func NewSecurityHandler(store *PostgresStore) *SecurityHandler {
-	return &SecurityHandler{Store: store}
+func NewSecurityHandler(store *PostgresStore, auth *auth.AuthManager) *SecurityHandler {
+	return &SecurityHandler{Store: store, Auth: auth}
 }
 
 func getActorID(c *fiber.Ctx) string {
@@ -358,8 +359,6 @@ func (h *SecurityHandler) MFAVerify(c *fiber.Ctx) error {
 //   properties:
 //     code:
 //       type: string
-//   required:
-//     - code
 
 // --- Sessions ---
 // swagger:route POST /users/{user_id}/sessions sessions createUserSession
@@ -382,15 +381,25 @@ func (h *SecurityHandler) CreateUserSession(c *fiber.Ctx) error {
 	ip := c.IP()
 	device := c.Get("User-Agent")
 
-	// Optional duration parameter, default to 24 hours
-	var durationHours int = 24
-	if durationStr := c.Query("duration_hours"); durationStr != "" {
-		if parsed, err := strconv.Atoi(durationStr); err == nil && parsed > 0 {
-			durationHours = parsed
-		}
+	var input struct {
+		ExpiryHours int `json:"expiry_hours"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		input.ExpiryHours = 24 // Default to 24 hours
 	}
 
-	sess, err := h.SessionService.CreateSession(c.Context(), userID, ip, device, time.Duration(durationHours)*time.Hour)
+	durationHours := input.ExpiryHours
+	if durationHours <= 0 {
+		durationHours = 24
+	}
+
+	// Create session data map
+	sessionData := map[string]interface{}{
+		"ip":     ip,
+		"device": device,
+	}
+
+	sess, err := h.SessionService.CreateSession(c.Context(), userID, "", sessionData)
 	if err != nil {
 		logger.LogError("CreateUserSession: failed", logger.ErrorField(err), logger.String("user_id", userID))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create session"})
@@ -444,7 +453,7 @@ func (h *SecurityHandler) DeleteUserSession(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session_id parameter required"})
 	}
 
-	if err := h.SessionService.LogoutSession(c.Context(), sessionID); err != nil {
+	if err := h.SessionService.DeleteSession(c.Context(), sessionID); err != nil {
 		logger.LogError("DeleteUserSession: failed", logger.ErrorField(err), logger.String("session_id", sessionID))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete session"})
 	}
@@ -1630,11 +1639,18 @@ func (h *SecurityHandler) SetRateLimitConfig(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	401: ErrorResponse
 func (h *SecurityHandler) Login(c *fiber.Ctx) error {
+	// Get tenant-specific auth configuration
 	tenantID := getTenantID(c)
 	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
 	if err != nil || !cfg.PasswordEnabled {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "password login disabled"})
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeConfiguration,
+			"Password login disabled for this tenant",
+			"AUTH_LOGIN_001",
+			err,
+		))
 	}
+
 	var input struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
@@ -1643,113 +1659,327 @@ func (h *SecurityHandler) Login(c *fiber.Ctx) error {
 		logger.LogError("Login: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email and password required"})
 	}
+
+	// Use password service to validate credentials
 	user, err := h.PasswordService.AuthenticateUser(c.Context(), input.Email, input.Password)
 	if err != nil {
 		logger.LogError("Login: invalid credentials", logger.ErrorField(err), logger.String("email", input.Email))
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid credentials"})
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeAuthentication,
+			"Invalid credentials",
+			"AUTH_LOGIN_002",
+			err,
+		))
 	}
+
+	// Get IP and device info for logging/security
 	ip := c.IP()
 	device := c.Get("User-Agent")
-	sess, err := h.SessionService.CreateSession(c.Context(), user.ID, ip, device, 24*time.Hour)
+
+	// Get user profile to retrieve roles and other data
+	profile, err := h.PasswordService.GetProfile(c.Context(), user.ID)
 	if err != nil {
-		logger.LogError("Login: failed to create session", logger.ErrorField(err), logger.String("user_id", user.ID))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create session"})
+		logger.LogError("Login: failed to get user profile", logger.ErrorField(err), logger.String("user_id", user.ID))
+		// Continue anyway, we'll just use minimal user data
 	}
-	// --- JWT generation ---
-	jwtSecretCfg, err := h.Store.GetOwnerJWTSecretConfig(c.Context())
+
+	// Extract roles from profile if available
+	var roles []string
+	if profile != nil {
+		if rolesData, ok := profile["roles"]; ok {
+			if rolesList, ok := rolesData.([]string); ok {
+				roles = rolesList
+			}
+		}
+	}
+
+	// Use auth manager to select appropriate auth provider
+	var preferredProvider string
+	if cfg.Primary != "" {
+		preferredProvider = cfg.Primary
+	} else {
+		preferredProvider = "default"
+	}
+
+	authProvider, err := h.Auth.GetProvider(preferredProvider)
+	if err != nil || authProvider == nil {
+		// Fall back to default provider
+		authProvider, err = h.Auth.GetDefaultProvider()
+		if err != nil {
+			logger.LogError("Login: no auth provider available", logger.ErrorField(err))
+			return auth.ToFiberError(auth.NewAuthError(
+				auth.ErrorTypeInternal,
+				"Authentication service unavailable",
+				"AUTH_LOGIN_003",
+				err,
+			))
+		}
+	}
+
+	// Create standard session data
+	sessionData := map[string]interface{}{
+		"ip":            ip,
+		"device":        device,
+		"login_time":    time.Now().UTC(),
+		"login_method":  "password",
+		"tenant_id":     tenantID,
+		"email":         user.Email,
+		"user_status":   user.Status,
+		"last_activity": time.Now().UTC(),
+		"auth_provider": preferredProvider,
+	}
+
+	// Add security metadata
+	sessionData["security_metadata"] = map[string]interface{}{
+		"ip_address":    ip,
+		"user_agent":    device,
+		"login_time":    time.Now().UTC(),
+		"login_method":  "password",
+		"authenticated": true,
+	}
+
+	// Add profile data if available
+	if profile != nil {
+		for k, v := range profile {
+			// Don't overwrite critical fields
+			if k != "ip" && k != "device" && k != "login_time" && k != "login_method" &&
+				k != "tenant_id" && k != "security_metadata" && k != "auth_provider" {
+				sessionData[k] = v
+			}
+		}
+	}
+
+	// For session provider, create a new session
+	if authProvider.Name() == "session" {
+		// Check if we have a session provider with extended API
+		if sessionProvider, ok := authProvider.(*session.SessionProvider); ok {
+			result, err := sessionProvider.CreateSession(c.Context(), user.ID, tenantID, user.Email, roles, sessionData)
+			if err != nil {
+				logger.LogError("Login: failed to create session", logger.ErrorField(err), logger.String("user_id", user.ID))
+				return auth.ToFiberError(auth.NewAuthError(
+					auth.ErrorTypeInternal,
+					"Failed to create session",
+					"AUTH_LOGIN_004",
+					err,
+				))
+			}
+
+			return c.JSON(fiber.Map{
+				"refresh_token": result.Token.Token,
+				"expires_at":    result.Token.ExpiresAt,
+				"session_token": result.Token.Token,
+				"user_id":       user.ID,
+			})
+		}
+	}
+
+	// For JWT provider, create token pair
+	if authProvider.Name() == "jwt" {
+		// Check if we have a JWT provider with extended API
+		if jwtProvider, ok := authProvider.(*jwt.JWTProvider); ok {
+			// Generate token pair
+			accessToken, refreshToken, err := jwtProvider.GenerateTokenPair(user.ID, tenantID, user.Email, roles, sessionData)
+			if err != nil {
+				logger.LogError("Login: failed to generate JWT tokens", logger.ErrorField(err), logger.String("user_id", user.ID))
+				return auth.ToFiberError(auth.NewAuthError(
+					auth.ErrorTypeInternal,
+					"Failed to generate token",
+					"AUTH_LOGIN_005",
+					err,
+				))
+			}
+
+			return c.JSON(fiber.Map{
+				"access_token":  accessToken.Token,
+				"refresh_token": refreshToken.Token,
+				"expires_at":    accessToken.ExpiresAt,
+				"token_type":    "Bearer",
+				"user_id":       user.ID,
+			})
+		}
+	}
+
+	// Generic fallback using standard AuthProvider interface
+	result, err := authProvider.Authenticate(c.Context(), map[string]interface{}{
+		"user_id":    user.ID,
+		"tenant_id":  tenantID,
+		"email":      user.Email,
+		"roles":      roles,
+		"ip":         ip,
+		"device":     device,
+		"login_time": time.Now().UTC(),
+		"status":     user.Status,
+	})
 	if err != nil {
-		logger.LogError("Login: failed to get JWT secret config", logger.ErrorField(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "JWT secret config unavailable"})
+		logger.LogError("Login: authentication failed", logger.ErrorField(err), logger.String("user_id", user.ID))
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeInternal,
+			"Authentication failed",
+			"AUTH_LOGIN_006",
+			err,
+		))
 	}
-	if jwtSecretCfg.SecretName == "" {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "JWT secret config missing"})
-	}
-	claims := jwt.MapClaims{
-		"user_id":   user.ID,
-		"email":     user.Email,
-		"tenant_id": tenantID,
-		"exp":       time.Now().Add(24 * time.Hour).Unix(),
-		"iat":       time.Now().Unix(),
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString([]byte(jwtSecretCfg.SecretName))
-	if err != nil {
-		logger.LogError("Login: failed to sign JWT", logger.ErrorField(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to sign JWT"})
-	}
-	return c.JSON(fiber.Map{"refresh_token": sess.ID, "expires_at": sess.ExpiresAt, "session_token": tokenString})
+
+	return c.JSON(fiber.Map{
+		"access_token":  result.Token.Token,
+		"refresh_token": result.Token.RefreshToken,
+		"expires_at":    result.Token.ExpiresAt,
+		"token_type":    result.Token.TokenType,
+		"user_id":       user.ID,
+	})
 }
 
-// swagger:parameters login
-// in: body
-// name: body
-// schema:
-//   $ref: '#/components/schemas/LoginRequest'
-
-// swagger:route POST /auth/logout auth logout
-// ---
-// summary: Logout and invalidate session
-// description: Invalidate the current session token.
-// tags:
-//   - auth
-//
-// responses:
-//
-//	200: SuccessResponse
-//	400: ErrorResponse
-func (h *SecurityHandler) Logout(c *fiber.Ctx) error {
-	var input struct {
-		RefreshToken string `json:"refresh_token"`
-	}
-	if err := c.BodyParser(&input); err != nil || input.RefreshToken == "" {
-		logger.LogError("Logout: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "refresh_token required"})
-	}
-	if err := h.SessionService.LogoutSession(c.Context(), input.RefreshToken); err != nil {
-		logger.LogError("Logout: failed", logger.ErrorField(err), logger.String("refresh_token", input.RefreshToken))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to logout"})
-	}
-	return c.JSON(fiber.Map{"success": true})
-}
-
-// swagger:parameters logout
-// in: body
-// name: body
-// schema:
-//   $ref: '#/components/schemas/LogoutRequest'
-
-// swagger:route POST /auth/register auth register
-// ---
-// summary: Register a new user
-// description: Register a new user with email and password.
-// tags:
-//   - auth
-//
-// responses:
-//
-//	201: RegisterResponse
-//	400: ErrorResponse
-//	422: ErrorResponse
+// Register creates a new user account
 func (h *SecurityHandler) Register(c *fiber.Ctx) error {
+	// Get tenant-specific auth configuration
 	tenantID := getTenantID(c)
 	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
-	if err != nil || !cfg.PasswordEnabled {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "registration disabled"})
+	if err != nil || !cfg.PasswordEnabled { // Check if password auth is enabled, which implies registration is allowed
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeConfiguration,
+			"User registration is disabled for this tenant",
+			"AUTH_REG_001",
+			err,
+		))
 	}
+
 	var input struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
+		Name     string `json:"name"`
 	}
+
 	if err := c.BodyParser(&input); err != nil || input.Email == "" || input.Password == "" {
 		logger.LogError("Register: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email and password required"})
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeValidation,
+			"Email and password are required",
+			"AUTH_REG_002",
+			err,
+		))
 	}
+
+	// Create the user account
 	user, err := h.PasswordService.RegisterUser(c.Context(), input.Email, input.Password)
 	if err != nil {
-		logger.LogError("Register: failed", logger.ErrorField(err), logger.String("email", input.Email))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		// Check for duplicate email error
+		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "already exists") {
+			logger.LogError("Register: duplicate email", logger.ErrorField(err), logger.String("email", input.Email))
+			return auth.ToFiberError(auth.NewAuthError(
+				auth.ErrorTypeValidation,
+				"Email address is already registered",
+				"AUTH_REG_003",
+				err,
+			))
+		}
+
+		logger.LogError("Register: failed to create user", logger.ErrorField(err), logger.String("email", input.Email))
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeInternal,
+			"Failed to create user account",
+			"AUTH_REG_004",
+			err,
+		))
 	}
-	return c.Status(fiber.StatusCreated).JSON(user)
+
+	// Update user profile with name if provided
+	if input.Name != "" {
+		profile := map[string]interface{}{
+			"name": input.Name,
+		}
+
+		_, err = h.PasswordService.UpdateProfile(c.Context(), user.ID, profile)
+		if err != nil {
+			logger.LogError("Register: failed to update profile",
+				logger.ErrorField(err),
+				logger.String("user_id", user.ID),
+				logger.String("email", input.Email))
+			// Continue since we already created the user successfully
+		}
+	}
+
+	// Create security audit log
+	h.createAuditLog(c, "user_registered", "user", user.ID, input.Email)
+
+	// Return user info with verification status
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"user_id":   user.ID,
+		"email":     user.Email,
+		"verified":  false,
+		"status":    user.Status,
+		"tenant_id": tenantID,
+	})
+}
+
+// Logout invalidates the user's current session or token
+func (h *SecurityHandler) Logout(c *fiber.Ctx) error {
+	// Get session token from various possible locations
+	token := c.Get("Authorization")
+	if token == "" {
+		token = c.Cookies("session_id")
+	}
+	if token == "" {
+		token = c.Query("token")
+	}
+
+	// If no token found, consider it already logged out
+	if token == "" {
+		return c.SendStatus(fiber.StatusNoContent)
+	}
+
+	// Clean up Bearer prefix if present
+	if strings.HasPrefix(token, "Bearer ") {
+		token = strings.TrimPrefix(token, "Bearer ")
+	}
+
+	// Get auth type for the tenant
+	tenantID := getTenantID(c)
+	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
+	if err != nil {
+		logger.LogError("Logout: failed to get auth config", logger.ErrorField(err))
+		// Continue anyway with default behavior
+	}
+
+	// Get appropriate provider
+	var providerName string
+	if err == nil && cfg.Primary != "" {
+		providerName = cfg.Primary
+	} else {
+		providerName = "default"
+	}
+
+	// Try to revoke the token with the appropriate provider
+	var revocationErr error
+	if h.Auth != nil {
+		// Try with specified provider first
+		provider, err := h.Auth.GetProvider(providerName)
+		if err == nil && provider != nil {
+			revocationErr = provider.RevokeToken(c.Context(), token)
+			if revocationErr == nil {
+				logger.Default.Info("Logout: token revoked successfully",
+					logger.String("provider", provider.Name()))
+			}
+		}
+
+		// If that fails, try with session service directly
+		if revocationErr != nil && h.SessionService != nil {
+			// Treat the token as a session ID
+			err = h.SessionService.DeleteSession(c.Context(), token)
+			if err == nil {
+				logger.Default.Info("Logout: session deleted successfully")
+				revocationErr = nil
+			}
+		}
+	}
+
+	// Even if there was an error revoking the token, we still want to
+	// clear client-side session data
+
+	// Clear any session cookies
+	c.ClearCookie("session_id")
+
+	// Return success status
+	return c.SendStatus(fiber.StatusNoContent)
 }
 
 // swagger:parameters register
@@ -1879,19 +2109,50 @@ func (h *SecurityHandler) ChangePassword(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	401: ErrorResponse
 func (h *SecurityHandler) RefreshSession(c *fiber.Ctx) error {
-	var input struct {
-		RefreshToken string `json:"refresh_token"`
+	sessionID := c.Get("X-Session-ID", "")
+	if sessionID == "" {
+		sessionID = c.Cookies("session_id")
 	}
-	if err := c.BodyParser(&input); err != nil || input.RefreshToken == "" {
-		logger.LogError("RefreshSession: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "refresh_token required"})
+
+	if sessionID == "" {
+		logger.LogError("RefreshSession: missing session ID")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session ID required"})
 	}
-	sess, err := h.SessionService.RefreshSession(c.Context(), input.RefreshToken, 24*time.Hour)
+
+	// Default to 24 hours or parse from request
+	var duration time.Duration = 24 * time.Hour
+	if durationStr := c.Query("duration"); durationStr != "" {
+		if parsedDuration, err := time.ParseDuration(durationStr); err == nil && parsedDuration > 0 {
+			duration = parsedDuration
+		}
+	}
+
+	// Attempt to refresh the session
+	session, err := h.SessionService.RefreshUserSession(c.Context(), sessionID, duration)
 	if err != nil {
-		logger.LogError("RefreshSession: failed", logger.ErrorField(err), logger.String("refresh_token", input.RefreshToken))
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid refresh token"})
+		logger.LogError("RefreshSession: failed", logger.ErrorField(err), logger.String("session_id", sessionID))
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid or expired session"})
 	}
-	return c.JSON(fiber.Map{"refresh_token": sess.ID, "expires_at": sess.ExpiresAt})
+
+	// Set cookie if the client supports cookies
+	if c.Get("X-No-Cookies", "") != "true" {
+		cookie := new(fiber.Cookie)
+		cookie.Name = "session_id"
+		cookie.Value = session.ID
+		cookie.Expires = session.ExpiresAt
+		cookie.HTTPOnly = true
+		cookie.Secure = true
+		cookie.SameSite = "Strict"
+		c.Cookie(cookie)
+	}
+
+	return c.JSON(fiber.Map{
+		"session_id":  session.ID,
+		"user_id":     session.UserID,
+		"expires_at":  session.ExpiresAt,
+		"renewed_at":  session.LastAccessAt,
+		"valid_until": session.ExpiresAt,
+	})
 }
 
 // swagger:parameters refreshSession
@@ -2144,18 +2405,36 @@ func (h *SecurityHandler) AuthGoogleCallback(c *fiber.Ctx) error {
 	tenantID := getTenantID(c)
 	cfg, err := h.ConfigurationService.GetAuthTypeConfig(c.Context(), tenantID)
 	if err != nil || !cfg.OAuthEnabled {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "OAuth disabled"})
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeConfiguration,
+			"OAuth authentication is disabled for this tenant",
+			"AUTH_OAUTH_001",
+			err,
+		))
 	}
+
 	oauthCfg, err := h.ConfigurationService.GetOAuthConfig(c.Context(), tenantID)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "OAuth config not found"})
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeConfiguration,
+			"OAuth configuration not found",
+			"AUTH_OAUTH_002",
+			err,
+		))
 	}
+
 	state := c.Query("state")
 	code := c.Query("code")
 	cookieState := c.Cookies("oauth_state")
 	if state == "" || code == "" || state != cookieState {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid state or code"})
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeValidation,
+			"Invalid OAuth state or code",
+			"AUTH_OAUTH_003",
+			nil,
+		))
 	}
+
 	tokenResp, err := http.PostForm("https://oauth2.googleapis.com/token", url.Values{
 		"code":          {code},
 		"client_id":     {oauthCfg.ClientID},
@@ -2164,24 +2443,45 @@ func (h *SecurityHandler) AuthGoogleCallback(c *fiber.Ctx) error {
 		"grant_type":    {"authorization_code"},
 	})
 	if err != nil {
-		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": "token exchange failed"})
+		logger.LogError("AuthGoogleCallback: token exchange failed", logger.ErrorField(err))
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeInternal,
+			"Failed to exchange OAuth token",
+			"AUTH_OAUTH_004",
+			err,
+		))
 	}
 	defer tokenResp.Body.Close()
+
 	body, _ := ioutil.ReadAll(tokenResp.Body)
 	var tokenData struct {
 		AccessToken string `json:"access_token"`
 		IdToken     string `json:"id_token"`
 	}
 	if err := json.Unmarshal(body, &tokenData); err != nil || tokenData.AccessToken == "" {
-		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": "invalid token response"})
+		logger.LogError("AuthGoogleCallback: invalid token response", logger.ErrorField(err))
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeInternal,
+			"Invalid OAuth token response",
+			"AUTH_OAUTH_005",
+			err,
+		))
 	}
+
 	req, _ := http.NewRequest("GET", "https://www.googleapis.com/oauth2/v2/userinfo", nil)
 	req.Header.Set("Authorization", "Bearer "+tokenData.AccessToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": "userinfo fetch failed"})
+		logger.LogError("AuthGoogleCallback: userinfo fetch failed", logger.ErrorField(err))
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeInternal,
+			"Failed to fetch user info from OAuth provider",
+			"AUTH_OAUTH_006",
+			err,
+		))
 	}
 	defer resp.Body.Close()
+
 	userBody, _ := ioutil.ReadAll(resp.Body)
 	var userInfo struct {
 		Email string `json:"email"`
@@ -2189,29 +2489,63 @@ func (h *SecurityHandler) AuthGoogleCallback(c *fiber.Ctx) error {
 	}
 	if err := json.Unmarshal(userBody, &userInfo); err != nil || userInfo.Email == "" {
 		logger.LogError("AuthGoogleCallback: invalid userinfo", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": "invalid userinfo"})
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeInternal,
+			"Invalid user info from OAuth provider",
+			"AUTH_OAUTH_007",
+			err,
+		))
 	}
+
 	// Find or create user
 	user, err := h.PasswordService.RegisterUser(c.Context(), userInfo.Email, "")
 	if err != nil && !strings.Contains(err.Error(), "duplicate") {
 		logger.LogError("AuthGoogleCallback: user create failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "user create failed"})
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeInternal,
+			"Failed to create user",
+			"AUTH_OAUTH_008",
+			err,
+		))
 	}
+
 	if err != nil && strings.Contains(err.Error(), "duplicate") {
 		user, err = h.PasswordService.AuthenticateUser(c.Context(), userInfo.Email, "")
 		if err != nil {
 			logger.LogError("AuthGoogleCallback: user lookup failed", logger.ErrorField(err))
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "user lookup failed"})
+			return auth.ToFiberError(auth.NewAuthError(
+				auth.ErrorTypeInternal,
+				"Failed to authenticate existing user",
+				"AUTH_OAUTH_009",
+				err,
+			))
 		}
 	}
+
+	// Create session with proper metadata
 	ip := c.IP()
 	device := c.Get("User-Agent")
-	sess, err := h.SessionService.CreateSession(c.Context(), user.ID, ip, device, 24*time.Hour)
+	sessionData := map[string]interface{}{
+		"ip":        ip,
+		"device":    device,
+		"auth_type": "oauth_google",
+	}
+
+	sess, err := h.SessionService.CreateSession(c.Context(), user.ID, tenantID, sessionData)
 	if err != nil {
 		logger.LogError("AuthGoogleCallback: session create failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "session create failed"})
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeInternal,
+			"Failed to create session",
+			"AUTH_OAUTH_010",
+			err,
+		))
 	}
-	return c.JSON(fiber.Map{"token": sess.ID, "expires_at": sess.ExpiresAt})
+
+	return c.JSON(fiber.Map{
+		"token":      sess.ID,
+		"expires_at": sess.ExpiresAt,
+	})
 }
 
 // SAML SSO (minimal, robust, but assumes SAML config is correct and SAMLResponse is valid)
@@ -2246,18 +2580,38 @@ func (h *SecurityHandler) AuthSAMLCallback(c *fiber.Ctx) error {
 	tenantID := getTenantID(c)
 	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
 	if err != nil || !cfg.SAMLEnabled {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "SAML disabled"})
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeConfiguration,
+			"SAML authentication is disabled for this tenant",
+			"AUTH_SAML_001",
+			err,
+		))
 	}
+
 	samlResponse := c.FormValue("SAMLResponse")
 	relayState := c.FormValue("RelayState")
 	cookieRelay := c.Cookies("saml_relay_state")
 	if samlResponse == "" || relayState == "" || relayState != cookieRelay {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid relay state or SAMLResponse"})
+		logger.LogError("AuthSAMLCallback: invalid SAML response or relay state")
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeValidation,
+			"Invalid relay state or SAML response",
+			"AUTH_SAML_002",
+			nil,
+		))
 	}
+
 	decoded, err := base64.StdEncoding.DecodeString(samlResponse)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid SAMLResponse"})
+		logger.LogError("AuthSAMLCallback: failed to decode SAML response", logger.ErrorField(err))
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeValidation,
+			"Invalid SAML response format",
+			"AUTH_SAML_003",
+			err,
+		))
 	}
+
 	email := ""
 	if idx := strings.Index(string(decoded), "<Email>"); idx != -1 {
 		end := strings.Index(string(decoded)[idx:], "</Email>")
@@ -2265,26 +2619,64 @@ func (h *SecurityHandler) AuthSAMLCallback(c *fiber.Ctx) error {
 			email = string(decoded)[idx+len("<Email>") : idx+end]
 		}
 	}
+
 	if email == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email not found in SAMLResponse"})
+		logger.LogError("AuthSAMLCallback: no email found in SAML response")
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeValidation,
+			"Email not found in SAML response",
+			"AUTH_SAML_004",
+			nil,
+		))
 	}
+
 	user, err := h.PasswordService.RegisterUser(c.Context(), email, "")
 	if err != nil && !strings.Contains(err.Error(), "duplicate") {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "user create failed"})
+		logger.LogError("AuthSAMLCallback: user create failed", logger.ErrorField(err))
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeInternal,
+			"Failed to create user",
+			"AUTH_SAML_005",
+			err,
+		))
 	}
+
 	if err != nil && strings.Contains(err.Error(), "duplicate") {
 		user, err = h.PasswordService.AuthenticateUser(c.Context(), email, "")
 		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "user lookup failed"})
+			logger.LogError("AuthSAMLCallback: user lookup failed", logger.ErrorField(err))
+			return auth.ToFiberError(auth.NewAuthError(
+				auth.ErrorTypeInternal,
+				"Failed to authenticate existing user",
+				"AUTH_SAML_006",
+				err,
+			))
 		}
 	}
+
 	ip := c.IP()
 	device := c.Get("User-Agent")
-	sess, err := h.SessionService.CreateSession(c.Context(), user.ID, ip, device, 24*time.Hour)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "session create failed"})
+	sessionData := map[string]interface{}{
+		"ip":        ip,
+		"device":    device,
+		"auth_type": "saml",
 	}
-	return c.JSON(fiber.Map{"token": sess.ID, "expires_at": sess.ExpiresAt})
+
+	sess, err := h.SessionService.CreateSession(c.Context(), user.ID, tenantID, sessionData)
+	if err != nil {
+		logger.LogError("AuthSAMLCallback: session create failed", logger.ErrorField(err))
+		return auth.ToFiberError(auth.NewAuthError(
+			auth.ErrorTypeInternal,
+			"Failed to create session",
+			"AUTH_SAML_007",
+			err,
+		))
+	}
+
+	return c.JSON(fiber.Map{
+		"token":      sess.ID,
+		"expires_at": sess.ExpiresAt,
+	})
 }
 
 func (h *SecurityHandler) GetNotificationProvidersStatus(c *fiber.Ctx) error {

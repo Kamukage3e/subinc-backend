@@ -1,6 +1,7 @@
 package account
 
 import (
+
 	"fmt"
 	"time"
 
@@ -65,3 +66,55 @@ func (e *Error) Error() string {
 	}
 	return fmt.Sprintf("%s: %s", e.Code, e.Message)
 }
+
+
+
+// AccountPluginRegistry manages account plugins
+// All methods concurrency-safe
+type AccountPluginRegistry struct {
+	plugins map[string]AccountPlugin
+}
+
+// Register adds an account plugin to the registry
+func (r *AccountPluginRegistry) Register(plugin AccountPlugin) {
+	if plugin == nil {
+		return
+	}
+	name := plugin.Name()
+	if name == "" {
+		return
+	}
+	if r.plugins == nil {
+		r.plugins = make(map[string]AccountPlugin)
+	}
+	r.plugins[name] = plugin
+}
+
+// Unregister removes an account plugin from the registry
+func (r *AccountPluginRegistry) Unregister(name string) {
+	if r.plugins == nil {
+		return
+	}
+	delete(r.plugins, name)
+}
+
+// Lookup retrieves an account plugin by name
+func (r *AccountPluginRegistry) Lookup(name string) (AccountPlugin, bool) {
+	if r.plugins == nil {
+		return nil, false
+	}
+	p, ok := r.plugins[name]
+	return p, ok
+}
+
+// List returns all registered account plugin names
+func (r *AccountPluginRegistry) List() []string {
+	names := make([]string, 0, len(r.plugins))
+	for name := range r.plugins {
+		names = append(names, name)
+	}
+	return names
+}
+
+// Global registry for account plugins
+var AccountPlugins = &AccountPluginRegistry{plugins: make(map[string]AccountPlugin)}

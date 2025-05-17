@@ -163,3 +163,70 @@ func (h *AccountHandler) PerformAccountAction(c *fiber.Ctx) error {
 	}
 	return c.Status(fiber.StatusOK).JSON(result)
 }
+
+func (h *AccountHandler) DeleteAccount(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		logger.LogError("DeleteAccount: id required", logger.String("id", id))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+	err := h.AccountService.DeleteAccount(id)
+	if err != nil {
+		logger.LogError("DeleteAccount: failed", logger.ErrorField(err), logger.String("account_id", id))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// ListAccountPlugins returns all registered account plugins
+func (h *AccountHandler) ListAccountPlugins(c *fiber.Ctx) error {
+	pluginNames := AccountPlugins.List()
+	return c.JSON(fiber.Map{"plugins": pluginNames})
+}
+
+// GetAccountPlugin returns details about a specific account plugin
+func (h *AccountHandler) GetAccountPlugin(c *fiber.Ctx) error {
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Plugin name is required"})
+	}
+	plugin, exists := AccountPlugins.Lookup(pluginName)
+	if !exists {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Account plugin '" + pluginName + "' not found"})
+	}
+	return c.JSON(fiber.Map{
+		"name":         plugin.Name(),
+		"version":      plugin.Version(),
+		"capabilities": plugin.Capabilities(),
+	})
+}
+
+// ConfigureAccountPlugin configures an account plugin for a tenant
+func (h *AccountHandler) ConfigureAccountPlugin(c *fiber.Ctx) error {
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Plugin name is required"})
+	}
+	plugin, exists := AccountPlugins.Lookup(pluginName)
+	if !exists {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Account plugin '" + pluginName + "' not found"})
+	}
+	var config map[string]interface{}
+	if err := c.BodyParser(&config); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid configuration format"})
+	}
+	if err := plugin.Initialize(config); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to initialize plugin: " + err.Error()})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "message": "Account plugin '" + pluginName + "' configured successfully"})
+}
+
+// DisableAccountPlugin disables an account plugin (removes from registry)
+func (h *AccountHandler) DisableAccountPlugin(c *fiber.Ctx) error {
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Plugin name is required"})
+	}
+	AccountPlugins.Unregister(pluginName)
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "message": "Account plugin '" + pluginName + "' disabled"})
+}

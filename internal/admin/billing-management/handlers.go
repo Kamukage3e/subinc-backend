@@ -15,6 +15,10 @@ import (
 
 	"context"
 
+	"encoding/json"
+
+	"reflect"
+
 	"github.com/stripe/stripe-go/v75/webhook"
 	account "github.com/subinc/subinc-backend/internal/admin/billing-management/account"
 	"github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
@@ -27,7 +31,37 @@ import (
 // Payment, Refund, and PaymentMethod logic is now handled exclusively in internal/admin/billing-management/payment/handlers.go
 
 func NewBillingHandler(store *PostgresStore, paymentStore payment.StoreInterface) *BillingAdminHandler {
-	return &BillingAdminHandler{Store: store, PaymentStore: paymentStore}
+	// Validate inputs
+	if store == nil {
+		logger.LogError("NewBillingHandler: store is nil")
+		return nil
+	}
+
+	if paymentStore == nil {
+		logger.LogError("NewBillingHandler: paymentStore is nil")
+		return nil
+	}
+
+	// Create a production-grade logger for billing operations
+	logr := logger.NewProduction(logger.InfoLevel, "json", false, "billing", "prod")
+
+	// Initialize the plugin manager with the logger
+	pluginManager := NewPluginManager(logr)
+	if pluginManager == nil {
+		logr.Error("Failed to create plugin manager")
+		return nil
+	}
+
+	// Create the handler with necessary dependencies
+	handler := &BillingAdminHandler{
+		Store:         store,
+		PaymentStore:  paymentStore,
+		PluginManager: pluginManager,
+		Logger:        logr,
+	}
+
+	logr.Info("Billing admin handler initialized successfully")
+	return handler
 }
 
 // swagger:route POST /billing-management/webhook-events/create billing webhookEventCreate
@@ -1444,7 +1478,74 @@ func (h *BillingAdminHandler) CreateInvoiceWithFeesAndTax(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "invoice not found"})
 	}
-	out, err := h.Store.CreateInvoiceWithFeesAndTax(c.Context(), invoice, input.FixedFee, input.PercentFee, input.TaxRate)
+	accountObj, err := h.AccountService.GetAccount(invoice.AccountID)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "account not found"})
+	}
+	pluginName := "default"
+	if cfg, err := h.TaxService.GetTaxPluginConfig(c.Context(), accountObj.TenantID); err == nil && cfg.PluginName != "" {
+		pluginName = cfg.PluginName
+	}
+	plugin, ok := h.PluginManager.GetTaxPlugin(pluginName)
+	if !ok {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tax plugin not found: " + pluginName})
+	}
+	if pluginName == "manual" {
+		invoice.TaxRate = input.TaxRate
+	}
+	invoice.PluginName = pluginName
+
+	// Convert to tax.Invoice for the plugin
+	taxInvoice := tax.Invoice{
+		ID:               invoice.ID,
+		AccountID:        invoice.AccountID,
+		Amount:           invoice.Amount,
+		Currency:         invoice.Currency,
+		OriginalAmount:   invoice.OriginalAmount,
+		OriginalCurrency: invoice.OriginalCurrency,
+		Status:           invoice.Status,
+		DueDate:          invoice.DueDate,
+		CreatedAt:        invoice.CreatedAt,
+		UpdatedAt:        invoice.UpdatedAt,
+		TaxAmount:        invoice.TaxAmount,
+		TaxRate:          invoice.TaxRate,
+		Fees:             invoice.Fees,
+	}
+
+	// Convert to tax.Account for the plugin
+	taxAccount := tax.Account{
+		ID:        accountObj.ID,
+		TenantID:  accountObj.TenantID,
+		Email:     accountObj.Email,
+		Status:    accountObj.Status,
+		Currency:  accountObj.Currency,
+		CreatedAt: accountObj.CreatedAt,
+		UpdatedAt: accountObj.UpdatedAt,
+	}
+
+	taxAmount, taxRate, terr := plugin.CalculateTax(c.Context(), taxInvoice, taxAccount, accountObj.TenantID)
+	if terr != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": terr.Error()})
+	}
+	invoice.TaxAmount = taxAmount
+	invoice.TaxRate = taxRate
+	// Calculate fees
+	subtotal := invoice.Amount
+	feeTotal := input.FixedFee
+	if input.PercentFee > 0 {
+		feeTotal += subtotal * (input.PercentFee / 100)
+	}
+	fees := []map[string]interface{}{}
+	if input.FixedFee > 0 {
+		fees = append(fees, map[string]interface{}{"type": "fixed", "amount": input.FixedFee})
+	}
+	if input.PercentFee > 0 {
+		fees = append(fees, map[string]interface{}{"type": "percent", "amount": input.PercentFee})
+	}
+	feeBytes, _ := json.Marshal(fees)
+	invoice.Fees = string(feeBytes)
+	invoice.Amount = subtotal + feeTotal + taxAmount
+	out, err := h.Store.CreateInvoiceWithFeesAndTax(c.Context(), invoice, input.FixedFee, input.PercentFee, taxRate)
 	if err != nil {
 		errResp := fiber.Map{"error": err.Error()}
 		if apiErr, ok := err.(*Error); ok {
@@ -1514,38 +1615,63 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 		logger.LogError("CreateInvoice: validation failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
 	}
-	account, err := h.AccountService.GetAccount(input.AccountID)
+	accountObj, err := h.AccountService.GetAccount(input.AccountID)
 	if err != nil {
 		logger.LogError("CreateInvoice: account not found", logger.ErrorField(err), logger.String("account_id", input.AccountID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "account not found"})
 	}
 	currency := strings.ToUpper(strings.TrimSpace(input.Currency))
 	if currency == "" {
-		currency = strings.ToUpper(strings.TrimSpace(account.Currency))
+		currency = strings.ToUpper(strings.TrimSpace(accountObj.Currency))
 		if currency == "" {
 			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "no currency set for invoice or account"})
 		}
 		input.Currency = currency
 	}
-	if input.Currency != account.Currency && account.Currency != "" {
-		rate, rerr := h.Store.GetExchangeRate(c.Context(), input.Currency, account.Currency)
+	if input.Currency != accountObj.Currency && accountObj.Currency != "" {
+		rate, rerr := h.Store.GetExchangeRate(c.Context(), input.Currency, accountObj.Currency)
 		if rerr != nil || rate.Rate <= 0 {
-			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "no valid exchange rate from " + input.Currency + " to " + account.Currency})
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "no valid exchange rate from " + input.Currency + " to " + accountObj.Currency})
 		}
 		input.OriginalAmount = input.Amount
 		input.OriginalCurrency = input.Currency
 		input.Amount = input.Amount * rate.Rate
-		input.Currency = account.Currency
+		input.Currency = accountObj.Currency
 	}
-	// --- Tax plugin selection and calculation ---
 	pluginName := "default"
-	if cfg, err := h.TaxService.GetTaxPluginConfig(c.Context(), account.TenantID); err == nil && cfg.PluginName != "" {
+	if cfg, err := h.TaxService.GetTaxPluginConfig(c.Context(), accountObj.TenantID); err == nil && cfg.PluginName != "" {
 		pluginName = cfg.PluginName
 	}
-	plugin, ok := tax.TaxPlugins.Lookup(pluginName)
+
+	// Get the tax plugin from the plugin manager
+	plugin, ok := h.PluginManager.GetTaxPlugin(pluginName)
 	if !ok {
-		plugin = tax.DefaultTaxPlugin{}
+		// If not found in the plugin manager, check if we can find the default plugin
+		defaultPlugin, ok := h.PluginManager.GetTaxPlugin("default")
+		if !ok {
+			// Register the built-in default plugin if needed
+			defPlugin := tax.DefaultTaxPlugin{}
+			if h.PluginManager != nil {
+				_ = h.PluginManager.RegisterPlugin("tax", defPlugin)
+				plugin, _ = h.PluginManager.GetTaxPlugin("default")
+			} else {
+				// Last resort, use a direct instance
+				h.Logger.Warn("Using direct DefaultTaxPlugin instance as fallback")
+				plugin = defPlugin
+			}
+		} else {
+			plugin = defaultPlugin
+		}
 	}
+
+	if pluginName == "manual" {
+		if input.TaxRate < 0 || input.TaxRate > 100 {
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "manual tax rate must be between 0 and 100"})
+		}
+	}
+	input.PluginName = pluginName
+
+	// Convert to tax.Invoice for the plugin
 	taxInvoice := tax.Invoice{
 		ID:               input.ID,
 		AccountID:        input.AccountID,
@@ -1561,7 +1687,19 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 		TaxRate:          input.TaxRate,
 		Fees:             input.Fees,
 	}
-	taxAmount, taxRate, terr := plugin.CalculateTax(c.Context(), taxInvoice, tax.Account(account), account.TenantID)
+
+	// Convert to tax.Account for the plugin
+	taxAccount := tax.Account{
+		ID:        accountObj.ID,
+		TenantID:  accountObj.TenantID,
+		Email:     accountObj.Email,
+		Status:    accountObj.Status,
+		Currency:  accountObj.Currency,
+		CreatedAt: accountObj.CreatedAt,
+		UpdatedAt: accountObj.UpdatedAt,
+	}
+
+	taxAmount, taxRate, terr := plugin.CalculateTax(c.Context(), taxInvoice, taxAccount, accountObj.TenantID)
 	if terr != nil {
 		logger.LogError("CreateInvoice: tax plugin failed", logger.ErrorField(terr), logger.String("plugin", pluginName))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tax calculation failed: " + terr.Error()})
@@ -1579,9 +1717,7 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 		}
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
 	}
-
-	// --- Send notification (non-blocking) ---
-	if h.Notify != nil && account.Email != "" {
+	if h.Notify != nil && accountObj.Email != "" {
 		go func(inv Invoice) {
 			acct, accErr := h.AccountService.GetAccount(inv.AccountID)
 			if accErr != nil || acct.Email == "" {
@@ -1612,7 +1748,6 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 			}
 		}(invoice)
 	}
-
 	return c.Status(fiber.StatusCreated).JSON(invoice)
 }
 
@@ -2692,4 +2827,484 @@ func (h *BillingAdminHandler) DeleteInvoice(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// ListInvoicePlugins returns a list of registered invoice plugins
+func (h *BillingAdminHandler) ListInvoicePlugins(c *fiber.Ctx) error {
+	if h.PluginManager == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Plugin manager not initialized",
+		})
+	}
+
+	pluginNames := h.PluginManager.ListPlugins("invoice")
+	return c.JSON(fiber.Map{"plugins": pluginNames})
+}
+
+// RegisterInvoicePlugin registers a new invoice plugin
+func (h *BillingAdminHandler) RegisterInvoicePlugin(c *fiber.Ctx) error {
+	if h.PluginManager == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Plugin manager not initialized",
+		})
+	}
+
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Plugin name is required",
+		})
+	}
+
+	var config map[string]interface{}
+	if err := c.BodyParser(&config); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid configuration format",
+		})
+	}
+
+	// Plugins are registered via code, this endpoint just enables/configures them
+	plugin, exists := h.PluginManager.GetInvoicePlugin(pluginName)
+	if !exists {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": fmt.Sprintf("Invoice plugin '%s' not found", pluginName),
+		})
+	}
+
+	if err := plugin.Initialize(config); err != nil {
+		h.Logger.Error(fmt.Sprintf("Failed to initialize invoice plugin %s: %v", pluginName, err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to initialize plugin: %v", err),
+		})
+	}
+
+	h.Logger.Info(fmt.Sprintf("Invoice plugin '%s' registered and initialized", pluginName))
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status":  "success",
+		"message": fmt.Sprintf("Invoice plugin '%s' registered successfully", pluginName),
+	})
+}
+
+// UnregisterInvoicePlugin unregisters an invoice plugin
+func (h *BillingAdminHandler) UnregisterInvoicePlugin(c *fiber.Ctx) error {
+	if h.PluginManager == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Plugin manager not initialized",
+		})
+	}
+
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Plugin name is required",
+		})
+	}
+
+	if err := h.PluginManager.UnregisterPlugin("invoice", pluginName); err != nil {
+		h.Logger.Error(fmt.Sprintf("Failed to unregister invoice plugin %s: %v", pluginName, err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to unregister plugin: %v", err),
+		})
+	}
+
+	h.Logger.Info(fmt.Sprintf("Invoice plugin '%s' unregistered", pluginName))
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status":  "success",
+		"message": fmt.Sprintf("Invoice plugin '%s' unregistered successfully", pluginName),
+	})
+}
+
+// ListPaymentPlugins returns a list of registered payment plugins
+func (h *BillingAdminHandler) ListPaymentPlugins(c *fiber.Ctx) error {
+	if h.PluginManager == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Plugin manager not initialized",
+		})
+	}
+
+	pluginNames := h.PluginManager.ListPlugins("payment")
+	return c.JSON(fiber.Map{"plugins": pluginNames})
+}
+
+// RegisterPaymentPlugin registers a new payment plugin
+func (h *BillingAdminHandler) RegisterPaymentPlugin(c *fiber.Ctx) error {
+	if h.PluginManager == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Plugin manager not initialized",
+		})
+	}
+
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Plugin name is required",
+		})
+	}
+
+	var config map[string]interface{}
+	if err := c.BodyParser(&config); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid configuration format",
+		})
+	}
+
+	// Plugins are registered via code, this endpoint just enables/configures them
+	plugin, exists := h.PluginManager.GetPaymentPlugin(pluginName)
+	if !exists {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": fmt.Sprintf("Payment plugin '%s' not found", pluginName),
+		})
+	}
+
+	if err := plugin.Initialize(config); err != nil {
+		h.Logger.Error(fmt.Sprintf("Failed to initialize payment plugin %s: %v", pluginName, err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to initialize plugin: %v", err),
+		})
+	}
+
+	h.Logger.Info(fmt.Sprintf("Payment plugin '%s' registered and initialized", pluginName))
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status":  "success",
+		"message": fmt.Sprintf("Payment plugin '%s' registered successfully", pluginName),
+	})
+}
+
+// UnregisterPaymentPlugin unregisters a payment plugin
+func (h *BillingAdminHandler) UnregisterPaymentPlugin(c *fiber.Ctx) error {
+	if h.PluginManager == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Plugin manager not initialized",
+		})
+	}
+
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Plugin name is required",
+		})
+	}
+
+	if err := h.PluginManager.UnregisterPlugin("payment", pluginName); err != nil {
+		h.Logger.Error(fmt.Sprintf("Failed to unregister payment plugin %s: %v", pluginName, err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to unregister plugin: %v", err),
+		})
+	}
+
+	h.Logger.Info(fmt.Sprintf("Payment plugin '%s' unregistered", pluginName))
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status":  "success",
+		"message": fmt.Sprintf("Payment plugin '%s' unregistered successfully", pluginName),
+	})
+}
+
+// ListTaxPlugins returns a list of registered tax plugins
+func (h *BillingAdminHandler) ListTaxPlugins(c *fiber.Ctx) error {
+	if h.PluginManager == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Plugin manager not initialized",
+		})
+	}
+
+	pluginNames := h.PluginManager.ListPlugins("tax")
+	return c.JSON(fiber.Map{"plugins": pluginNames})
+}
+
+// RegisterTaxPlugin registers a new tax plugin
+func (h *BillingAdminHandler) RegisterTaxPlugin(c *fiber.Ctx) error {
+	if h.PluginManager == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Plugin manager not initialized",
+		})
+	}
+
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Plugin name is required",
+		})
+	}
+
+	var config map[string]interface{}
+	if err := c.BodyParser(&config); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid configuration format",
+		})
+	}
+
+	// Plugins are registered via code, this endpoint just enables/configures them
+	plugin, exists := h.PluginManager.GetTaxPlugin(pluginName)
+	if !exists {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": fmt.Sprintf("Tax plugin '%s' not found", pluginName),
+		})
+	}
+
+	if err := plugin.Initialize(config); err != nil {
+		h.Logger.Error(fmt.Sprintf("Failed to initialize tax plugin %s: %v", pluginName, err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to initialize plugin: %v", err),
+		})
+	}
+
+	h.Logger.Info(fmt.Sprintf("Tax plugin '%s' registered and initialized", pluginName))
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status":  "success",
+		"message": fmt.Sprintf("Tax plugin '%s' registered successfully", pluginName),
+	})
+}
+
+// UnregisterTaxPlugin unregisters a tax plugin
+func (h *BillingAdminHandler) UnregisterTaxPlugin(c *fiber.Ctx) error {
+	if h.PluginManager == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Plugin manager not initialized",
+		})
+	}
+
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Plugin name is required",
+		})
+	}
+
+	if err := h.PluginManager.UnregisterPlugin("tax", pluginName); err != nil {
+		h.Logger.Error(fmt.Sprintf("Failed to unregister tax plugin %s: %v", pluginName, err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to unregister plugin: %v", err),
+		})
+	}
+
+	h.Logger.Info(fmt.Sprintf("Tax plugin '%s' unregistered", pluginName))
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status":  "success",
+		"message": fmt.Sprintf("Tax plugin '%s' unregistered successfully", pluginName),
+	})
+}
+
+// Unified plugin management handlers
+func (h *BillingAdminHandler) ListPlugins(c *fiber.Ctx) error {
+	pluginType := c.Params("type")
+	if pluginType == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "plugin type is required"})
+	}
+	if h.PluginManager == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "plugin manager not initialized"})
+	}
+	plugins := h.PluginManager.ListPlugins(pluginType)
+	return c.JSON(fiber.Map{"plugins": plugins})
+}
+
+func (h *BillingAdminHandler) GetPlugin(c *fiber.Ctx) error {
+	pluginType := c.Params("type")
+	pluginName := c.Params("name")
+	if pluginType == "" || pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "plugin type and name are required"})
+	}
+	if h.PluginManager == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "plugin manager not initialized"})
+	}
+
+	// Use the generic plugin lookup for all types
+	plugin, found := h.PluginManager.GetPlugin(pluginType, pluginName)
+	if !found {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "plugin not found"})
+	}
+
+	// Use reflection to get plugin info
+	pluginValue := reflect.ValueOf(plugin)
+
+	// Get name
+	var name string
+	if nameMethod := pluginValue.MethodByName("Name"); nameMethod.IsValid() {
+		nameResult := nameMethod.Call([]reflect.Value{})
+		if len(nameResult) > 0 {
+			name = nameResult[0].String()
+		}
+	}
+
+	// Get version
+	var version string
+	if versionMethod := pluginValue.MethodByName("Version"); versionMethod.IsValid() {
+		versionResult := versionMethod.Call([]reflect.Value{})
+		if len(versionResult) > 0 {
+			version = versionResult[0].String()
+		}
+	}
+
+	// Get capabilities
+	var capabilities []string
+	if capabilitiesMethod := pluginValue.MethodByName("Capabilities"); capabilitiesMethod.IsValid() {
+		capabilitiesResult := capabilitiesMethod.Call([]reflect.Value{})
+		if len(capabilitiesResult) > 0 && !capabilitiesResult[0].IsNil() {
+			capabilitiesValue := capabilitiesResult[0]
+			if capabilitiesValue.Kind() == reflect.Slice {
+				capabilities = make([]string, capabilitiesValue.Len())
+				for i := 0; i < capabilitiesValue.Len(); i++ {
+					capabilities[i] = capabilitiesValue.Index(i).String()
+				}
+			}
+		}
+	}
+
+	return c.JSON(fiber.Map{
+		"name":         name,
+		"version":      version,
+		"capabilities": capabilities,
+		"type":         pluginType,
+	})
+}
+
+func (h *BillingAdminHandler) RegisterPlugin(c *fiber.Ctx) error {
+	pluginType := c.Params("type")
+	pluginName := c.Params("name")
+	if pluginType == "" || pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "plugin type and name are required"})
+	}
+	if h.PluginManager == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "plugin manager not initialized"})
+	}
+	var config map[string]interface{}
+	if err := c.BodyParser(&config); err != nil {
+		logger.LogError("RegisterPlugin: invalid config", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid configuration format"})
+	}
+
+	// Use the generic plugin lookup for all types
+	plugin, found := h.PluginManager.GetPlugin(pluginType, pluginName)
+	if !found {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "plugin not found"})
+	}
+
+	// Initialize the plugin with the provided configuration
+	pluginValue := reflect.ValueOf(plugin)
+	if initializeMethod := pluginValue.MethodByName("Initialize"); initializeMethod.IsValid() {
+		result := initializeMethod.Call([]reflect.Value{reflect.ValueOf(config)})
+		if len(result) > 0 && !result[0].IsNil() {
+			err := result[0].Interface().(error)
+			logger.LogError("RegisterPlugin: failed to initialize plugin",
+				logger.String("type", pluginType),
+				logger.String("plugin", pluginName),
+				logger.ErrorField(err))
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to initialize plugin: " + err.Error()})
+		}
+	} else {
+		logger.LogError("RegisterPlugin: plugin does not support initialization",
+			logger.String("type", pluginType),
+			logger.String("plugin", pluginName))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "plugin does not support initialization"})
+	}
+
+	logger.LogInfo("RegisterPlugin: plugin registered and initialized", logger.String("type", pluginType), logger.String("plugin", pluginName))
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "message": "plugin registered and initialized"})
+}
+
+func (h *BillingAdminHandler) UnregisterPlugin(c *fiber.Ctx) error {
+	pluginType := c.Params("type")
+	pluginName := c.Params("name")
+	if pluginType == "" || pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "plugin type and name are required"})
+	}
+	if h.PluginManager == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "plugin manager not initialized"})
+	}
+	if err := h.PluginManager.UnregisterPlugin(pluginType, pluginName); err != nil {
+		logger.LogError("UnregisterPlugin: failed", logger.String("type", pluginType), logger.String("plugin", pluginName), logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to unregister plugin"})
+	}
+	logger.LogInfo("UnregisterPlugin: plugin unregistered", logger.String("type", pluginType), logger.String("plugin", pluginName))
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "message": "plugin unregistered"})
+}
+
+func (h *BillingAdminHandler) DisablePlugin(c *fiber.Ctx) error {
+	pluginType := c.Params("type")
+	pluginName := c.Params("name")
+	tenantID := c.Query("tenant_id")
+	if pluginType == "" || pluginName == "" || tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "plugin type, name, and tenant_id are required"})
+	}
+	if h.PluginManager == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "plugin manager not initialized"})
+	}
+
+	var err error
+	switch pluginType {
+	case "invoice":
+		err = h.Store.DisableInvoicePluginConfig(c.Context(), tenantID, pluginName)
+	case "payment":
+		err = h.PaymentStore.DisablePaymentPlugin(c.Context(), tenantID, pluginName)
+	case "tax":
+		err = h.Store.DisableTaxPluginConfig(c.Context(), tenantID, pluginName)
+	case "subscription", "fee", "account":
+		// Get the plugin from plugin manager
+		plugin, found := h.PluginManager.GetPlugin(pluginType, pluginName)
+		if !found {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "plugin not found"})
+		}
+
+		// Use reflection to check if the plugin supports the Disable method
+		if disableMethod := reflect.ValueOf(plugin).MethodByName("Disable"); disableMethod.IsValid() {
+			result := disableMethod.Call([]reflect.Value{reflect.ValueOf(c.Context()), reflect.ValueOf(tenantID)})
+			if len(result) > 0 && !result[0].IsNil() {
+				err = result[0].Interface().(error)
+			}
+		} else {
+			err = fmt.Errorf("plugin does not support disable operation")
+		}
+	default:
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "unsupported plugin type"})
+	}
+
+	if err != nil {
+		logger.LogError("DisablePlugin: failed", logger.String("type", pluginType), logger.String("plugin", pluginName), logger.String("tenant_id", tenantID), logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "failed to disable plugin: " + err.Error()})
+	}
+
+	logger.LogInfo("DisablePlugin: plugin disabled", logger.String("type", pluginType), logger.String("plugin", pluginName), logger.String("tenant_id", tenantID))
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "message": "plugin disabled"})
+}
+
+func (h *BillingAdminHandler) ConfigurePlugin(c *fiber.Ctx) error {
+	pluginType := c.Params("type")
+	pluginName := c.Params("name")
+	if pluginType == "" || pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "plugin type and name are required"})
+	}
+	var config map[string]interface{}
+	if err := c.BodyParser(&config); err != nil {
+		logger.LogError("ConfigurePlugin: invalid config", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid configuration format"})
+	}
+	if h.PluginManager == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "plugin manager not initialized"})
+	}
+
+	// Use the generic plugin lookup for all types
+	plugin, found := h.PluginManager.GetPlugin(pluginType, pluginName)
+	if !found {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "plugin not found"})
+	}
+
+	// Use reflection to call Initialize method
+	if initializeMethod := reflect.ValueOf(plugin).MethodByName("Initialize"); initializeMethod.IsValid() {
+		result := initializeMethod.Call([]reflect.Value{reflect.ValueOf(config)})
+		if len(result) > 0 && !result[0].IsNil() {
+			err := result[0].Interface().(error)
+			logger.LogError("ConfigurePlugin: failed to configure plugin",
+				logger.String("type", pluginType),
+				logger.String("plugin", pluginName),
+				logger.ErrorField(err))
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to configure plugin: " + err.Error()})
+		}
+	} else {
+		logger.LogError("ConfigurePlugin: plugin does not support initialization",
+			logger.String("type", pluginType),
+			logger.String("plugin", pluginName))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "plugin does not support initialization"})
+	}
+
+	logger.LogInfo("ConfigurePlugin: plugin configured", logger.String("type", pluginType), logger.String("plugin", pluginName))
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "message": "plugin configured"})
 }

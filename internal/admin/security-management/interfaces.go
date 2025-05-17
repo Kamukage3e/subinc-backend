@@ -3,6 +3,8 @@ package security_management
 import (
 	"context"
 	"time"
+
+	"github.com/subinc/subinc-backend/internal/pkg/interfaces"
 )
 
 type SecurityEventService interface {
@@ -38,13 +40,24 @@ type PasswordService interface {
 	CountUsers(ctx context.Context) (int, error)
 }
 
+// SessionService defines the interface for session operations used in security management
+// This interface combines both the new and legacy session operations to support
+// the transition to the new unified session management
 type SessionService interface {
-	ListUserSessions(ctx context.Context, userID string) ([]Session, error)
-	RevokeUserSession(ctx context.Context, userID, sessionID string) error
-	CreateSession(ctx context.Context, userID, ip, device string, expiresIn time.Duration) (Session, error)
-	RefreshSession(ctx context.Context, sessionID string, expiresIn time.Duration) (Session, error)
+	// Core session operations (new interface)
+	CreateSession(ctx context.Context, userID, tenantID string, data map[string]interface{}) (interfaces.Session, error)
+	GetSession(ctx context.Context, sessionID string) (interfaces.Session, error)
+	DeleteSession(ctx context.Context, sessionID string) error
+	RefreshSession(ctx context.Context, sessionID string) (interfaces.Session, error)
+
+	// User session operations
+	ListUserSessions(ctx context.Context, userID string) ([]interfaces.Session, error)
+
+	// Legacy support methods for backward compatibility
+	CreateUserSession(ctx context.Context, userID, ip, device string, expiresIn time.Duration) (interfaces.Session, error)
+	RefreshUserSession(ctx context.Context, sessionID string, expiresIn time.Duration) (interfaces.Session, error)
 	LogoutSession(ctx context.Context, sessionID string) error
-	GetSession(ctx context.Context, sessionID string) (Session, error)
+	RevokeUserSession(ctx context.Context, userID, sessionID string) error
 }
 
 type SecurityAuditLogService interface {

@@ -89,6 +89,45 @@ func NewValidationError(field, msg string) *Error {
 	}
 }
 
+// SubscriptionPluginRegistry holds registered plugins by name.
+type SubscriptionPluginRegistry struct {
+	plugins map[string]SubscriptionPlugin
+}
+
+func (r *SubscriptionPluginRegistry) Register(name string, plugin SubscriptionPlugin) {
+	if r.plugins == nil {
+		r.plugins = make(map[string]SubscriptionPlugin)
+	}
+	r.plugins[name] = plugin
+}
+
+func (r *SubscriptionPluginRegistry) Lookup(name string) (SubscriptionPlugin, bool) {
+	p, ok := r.plugins[name]
+	return p, ok
+}
+
+func (r *SubscriptionPluginRegistry) Unregister(name string) {
+	if r.plugins == nil {
+		return
+	}
+	delete(r.plugins, name)
+}
+
+func (r *SubscriptionPluginRegistry) List() []string {
+	names := make([]string, 0, len(r.plugins))
+	for name := range r.plugins {
+		names = append(names, name)
+	}
+	return names
+}
+
+// SubscriptionPluginConfig stores per-tenant plugin selection.
+type SubscriptionPluginConfig struct {
+	TenantID   string    `json:"tenant_id"`
+	PluginName string    `json:"plugin_name"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
 type Subscription struct {
 	ID                 string     `json:"id"`
 	AccountID          string     `json:"account_id"`
@@ -108,6 +147,7 @@ type Subscription struct {
 	CreatedAt          time.Time  `json:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"`
 	Metadata           string     `json:"metadata"`
+	PluginName         string     `json:"plugin_name"`
 }
 
 func (s *Subscription) Validate() *Error {
@@ -121,4 +161,22 @@ func (s *Subscription) Validate() *Error {
 		return NewValidationError("status", "must not be empty")
 	}
 	return nil
+}
+
+// Global registry for subscription plugins
+var SubscriptionPlugins = &SubscriptionPluginRegistry{plugins: make(map[string]SubscriptionPlugin)}
+
+// RegisterSubscriptionPlugin registers a subscription plugin by name at runtime.
+func RegisterSubscriptionPlugin(name string, plugin SubscriptionPlugin) {
+	SubscriptionPlugins.Register(name, plugin)
+}
+
+// UnregisterSubscriptionPlugin removes a subscription plugin by name at runtime.
+func UnregisterSubscriptionPlugin(name string) {
+	SubscriptionPlugins.Unregister(name)
+}
+
+// ListSubscriptionPlugins returns all registered subscription plugin names.
+func ListSubscriptionPlugins() []string {
+	return SubscriptionPlugins.List()
 }

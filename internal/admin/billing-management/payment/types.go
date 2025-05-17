@@ -8,8 +8,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	paypal "github.com/plutov/paypal/v4"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
-	logger "github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
 const (
@@ -17,21 +15,6 @@ const (
 	PaymentMethodApplePay  = "apple_pay"
 	PaymentMethodGooglePay = "google_pay"
 )
-
-// PaymentHandler is the handler for payment-related routes
-type PaymentHandler struct {
-	PaymentService       PaymentService
-	RefundService        RefundService
-	PaymentMethodService PaymentMethodService
-	ManualRefundService  ManualRefundService
-	DisputeService       DisputeDataStoreInterface
-	EvidenceService      DisputeDataStoreInterface
-	RateLimitService     security_management.RateLimitService // for distributed rate limiting
-	ConfigService        *server_config.Service               // for fetching secrets, keys, and static configs from server-config
-	Logger               logger.Logger                        // add logger for webhook and handler logging
-	Notify               security_management.NotificationService
-	StoreRegistry        StoreInterface
-}
 
 // DisputeHandler handles dispute endpoints
 // Implements RESTful dispute and evidence management
@@ -98,6 +81,7 @@ type Payment struct {
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 	Metadata         string    `json:"metadata"`
+	PluginName       string    `json:"plugin_name"`
 }
 
 func (p *Payment) Validate() *Error {
@@ -376,4 +360,61 @@ type DisputeEvidence struct {
 	CreatedAt        time.Time   `json:"created_at"`
 	UpdatedAt        time.Time   `json:"updated_at"`
 	Raw              interface{} `json:"raw,omitempty"`
+}
+
+// PaymentPlugin defines a hot-pluggable interface for payment logic.
+
+// PaymentPluginRegistry is a registry for payment plugins
+// It provides a way to register and retrieve payment plugins at runtime
+type PaymentPluginRegistry struct {
+	plugins map[string]PaymentPlugin
+}
+
+// Global registry for payment plugins
+var PaymentPlugins = &PaymentPluginRegistry{
+	plugins: make(map[string]PaymentPlugin),
+}
+
+// Register adds a payment plugin to the registry
+func (r *PaymentPluginRegistry) Register(plugin PaymentPlugin) {
+	if plugin == nil {
+		return
+	}
+	name := plugin.Name()
+	if name == "" {
+		return
+	}
+	r.plugins[name] = plugin
+}
+
+// Lookup retrieves a payment plugin by name
+func (r *PaymentPluginRegistry) Lookup(name string) (PaymentPlugin, bool) {
+	plugin, exists := r.plugins[name]
+	return plugin, exists
+}
+
+// List returns all registered payment plugin names
+func (r *PaymentPluginRegistry) List() []string {
+	names := make([]string, 0, len(r.plugins))
+	for name := range r.plugins {
+		names = append(names, name)
+	}
+	return names
+}
+
+// Unregister removes a payment plugin from the registry
+func (r *PaymentPluginRegistry) Unregister(name string) {
+	delete(r.plugins, name)
+}
+
+// PaymentPluginConfig stores tenant-specific payment plugin configuration
+type PaymentPluginConfig struct {
+	ID         string                 `json:"id"`
+	TenantID   string                 `json:"tenant_id"`
+	PluginName string                 `json:"plugin_name"`
+	Config     map[string]interface{} `json:"config"`
+	Enabled    bool                   `json:"enabled"`
+	Default    bool                   `json:"default"`
+	CreatedAt  time.Time              `json:"created_at"`
+	UpdatedAt  time.Time              `json:"updated_at"`
 }

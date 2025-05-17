@@ -58,3 +58,62 @@ type CreditService interface {
 	// GetExchangeRate fetches the exchange rate for two currencies. Returns error if not found.
 	GetExchangeRate(ctx context.Context, base, quote string) (ExchangeRate, error)
 }
+
+// DiscountPlugin defines a hot-pluggable interface for discount providers
+// Each implementation can be dynamically loaded and configured at runtime
+type DiscountPlugin interface {
+	// Plugin identity
+	Name() string    // Unique name for the discount plugin
+	Version() string // Version in semver format
+
+	// Core discount operations
+	CalculateDiscount(ctx context.Context, invoice interface{}, account interface{}) (float64, error) // Calculate discount amount
+	ValidateCode(ctx context.Context, code string, accountID string) (bool, error)                    // Validate discount code
+	ApplyDiscount(ctx context.Context, discountID string, invoiceID string) (float64, error)          // Apply discount to invoice
+
+	// Plugin lifecycle
+	Initialize(config map[string]interface{}) error // Initialize plugin with configuration
+	Capabilities() []string                         // Return supported features
+}
+
+// DiscountPluginRegistry manages discount plugins
+type DiscountPluginRegistry struct {
+	plugins map[string]DiscountPlugin
+}
+
+// Global registry for discount plugins
+var DiscountPlugins = &DiscountPluginRegistry{
+	plugins: make(map[string]DiscountPlugin),
+}
+
+// Register adds a discount plugin to the registry
+func (r *DiscountPluginRegistry) Register(plugin DiscountPlugin) {
+	if plugin == nil {
+		return
+	}
+	name := plugin.Name()
+	if name == "" {
+		return
+	}
+	r.plugins[name] = plugin
+}
+
+// Lookup retrieves a discount plugin by name
+func (r *DiscountPluginRegistry) Lookup(name string) (DiscountPlugin, bool) {
+	plugin, exists := r.plugins[name]
+	return plugin, exists
+}
+
+// List returns all registered discount plugin names
+func (r *DiscountPluginRegistry) List() []string {
+	names := make([]string, 0, len(r.plugins))
+	for name := range r.plugins {
+		names = append(names, name)
+	}
+	return names
+}
+
+// Unregister removes a discount plugin from the registry
+func (r *DiscountPluginRegistry) Unregister(name string) {
+	delete(r.plugins, name)
+}

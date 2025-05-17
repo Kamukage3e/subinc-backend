@@ -335,3 +335,59 @@ func (h *SubscriptionHandler) UpgradeNowSubscription(c *fiber.Ctx) error {
 
 	return c.SendStatus(fiber.StatusNoContent)
 }
+
+// ListSubscriptionPlugins returns all registered subscription plugins
+func (h *SubscriptionHandler) ListSubscriptionPlugins(c *fiber.Ctx) error {
+	pluginNames := SubscriptionPlugins.List()
+	return c.JSON(fiber.Map{"plugins": pluginNames})
+}
+
+// GetSubscriptionPlugin returns details about a specific subscription plugin
+func (h *SubscriptionHandler) GetSubscriptionPlugin(c *fiber.Ctx) error {
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Plugin name is required"})
+	}
+	_, exists := SubscriptionPlugins.Lookup(pluginName)
+	if !exists {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Subscription plugin '" + pluginName + "' not found"})
+	}
+	return c.JSON(fiber.Map{
+		"name":         pluginName,
+		"capabilities": "custom", // Extend as needed
+	})
+}
+
+// ConfigureSubscriptionPlugin configures a subscription plugin
+func (h *SubscriptionHandler) ConfigureSubscriptionPlugin(c *fiber.Ctx) error {
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Plugin name is required"})
+	}
+	plugin, exists := SubscriptionPlugins.Lookup(pluginName)
+	if !exists {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Subscription plugin '" + pluginName + "' not found"})
+	}
+	var config map[string]interface{}
+	if err := c.BodyParser(&config); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid configuration format"})
+	}
+	if initializer, ok := plugin.(interface {
+		Initialize(map[string]interface{}) error
+	}); ok {
+		if err := initializer.Initialize(config); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to initialize plugin: " + err.Error()})
+		}
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "message": "Subscription plugin '" + pluginName + "' configured successfully"})
+}
+
+// DisableSubscriptionPlugin disables a subscription plugin (removes from registry)
+func (h *SubscriptionHandler) DisableSubscriptionPlugin(c *fiber.Ctx) error {
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Plugin name is required"})
+	}
+	SubscriptionPlugins.Unregister(pluginName)
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "message": "Subscription plugin '" + pluginName + "' disabled"})
+}

@@ -3,9 +3,11 @@ package billing_management
 import (
 	"github.com/gofiber/fiber/v2"
 
-	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
+
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
+	"github.com/subinc/subinc-backend/internal/pkg/logger"
+	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
 func billingScopeExtractor(c *fiber.Ctx) (string, string) {
@@ -13,6 +15,12 @@ func billingScopeExtractor(c *fiber.Ctx) (string, string) {
 }
 
 func RegisterRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret string, auditLogger security_management.AuditLogger) {
+	// Validate required parameters
+	if router == nil || handler == nil {
+		logger.LogError("RegisterRoutes: router or handler is nil")
+		return
+	}
+
 	route := router.Group(
 		"/billing-management",
 		security_management.OIDCMiddleware(jwtSecret),
@@ -20,6 +28,7 @@ func RegisterRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret
 		auditmiddleware.AuditLoggerMiddleware(auditLogger),
 	)
 
+	// Standard billing routes
 	route.Get("/accounts/invoice-preview", rbacmiddleware.RBACMiddleware("invoice", "read", nil), handler.GetInvoicePreview)
 
 	route.Get("/invoices", rbacmiddleware.RBACMiddleware("invoice", "read", nil), handler.ListInvoices)
@@ -58,6 +67,15 @@ func RegisterRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret
 
 	route.Post("/tenant-currency", rbacmiddleware.RBACMiddleware("tenant-currency", "update", nil), handler.SetTenantCurrency)
 	route.Get("/tenant-currency", rbacmiddleware.RBACMiddleware("tenant-currency", "read", nil), handler.GetTenantCurrency)
+
+	// Unified plugin management endpoints
+	pluginRoutes := route.Group("/plugins")
+	pluginRoutes.Get(":type", rbacmiddleware.RBACMiddleware("plugin", "read", nil), handler.ListPlugins)
+	pluginRoutes.Get(":type/:name", rbacmiddleware.RBACMiddleware("plugin", "read", nil), handler.GetPlugin)
+	pluginRoutes.Post(":type/:name/configure", rbacmiddleware.RBACMiddleware("plugin", "update", nil), handler.ConfigurePlugin)
+	pluginRoutes.Post(":type/:name/disable", rbacmiddleware.RBACMiddleware("plugin", "update", nil), handler.DisablePlugin)
+	pluginRoutes.Post(":type/:name/register", rbacmiddleware.RBACMiddleware("plugin", "create", nil), handler.RegisterPlugin)
+	pluginRoutes.Post(":type/:name/unregister", rbacmiddleware.RBACMiddleware("plugin", "delete", nil), handler.UnregisterPlugin)
 
 	route.Post("/stripe/webhook", handler.StripeWebhookHandler) // Stripe webhooks are public, do not wrap
 }

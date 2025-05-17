@@ -2,17 +2,22 @@ package account
 
 import (
 	"github.com/gofiber/fiber/v2"
-
-	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
-	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
+	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
-func RegisterRoutes(router fiber.Router, handler *AccountHandler, auditLogger security_management.AuditLogger) {
-	route := router.Group("/accounts", auditmiddleware.AuditLoggerMiddleware(auditLogger))
-	route.Post("/", rbac_management.RBACMiddleware("account", "create", nil), handler.CreateAccount)
-	route.Get("/", rbac_management.RBACMiddleware("account", "read", nil), handler.ListAccounts)
-	route.Get("/:id", rbac_management.RBACMiddleware("account", "read", nil), handler.GetAccount)
-	route.Put("/:id", rbac_management.RBACMiddleware("account", "update", nil), handler.UpdateAccount)
-	route.Post("/:id/action", rbac_management.RBACMiddleware("account", "action", nil), handler.PerformAccountAction)
+func RegisterRoutes(r fiber.Router, handler *AccountHandler) {
+	route := r.Group("/accounts")
+	route.Post("/", rbacmiddleware.RBACMiddleware("account", "create", nil), handler.CreateAccount)
+	route.Get("/:id", rbacmiddleware.RBACMiddleware("account", "read", nil), handler.GetAccount)
+	route.Put("/:id", rbacmiddleware.RBACMiddleware("account", "update", nil), handler.UpdateAccount)
+	route.Delete("/:id", rbacmiddleware.RBACMiddleware("account", "delete", nil), handler.DeleteAccount)
+	route.Get("/", rbacmiddleware.RBACMiddleware("account", "read", nil), handler.ListAccounts)
+	route.Post("/:id/action", rbacmiddleware.RBACMiddleware("account", "action", nil), handler.PerformAccountAction)
+
+	// Unified plugin management endpoints
+	pluginRoutes := r.Group("/plugins/account")
+	pluginRoutes.Get("/", rbacmiddleware.RBACMiddleware("account-plugin", "read", nil), handler.ListAccountPlugins)
+	pluginRoutes.Get(":name", rbacmiddleware.RBACMiddleware("account-plugin", "read", nil), handler.GetAccountPlugin)
+	pluginRoutes.Post(":name/configure", rbacmiddleware.RBACMiddleware("account-plugin", "update", nil), handler.ConfigureAccountPlugin)
+	pluginRoutes.Post(":name/disable", rbacmiddleware.RBACMiddleware("account-plugin", "update", nil), handler.DisableAccountPlugin)
 }

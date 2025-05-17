@@ -4,7 +4,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
@@ -34,4 +33,11 @@ func RegisterRoutes(router fiber.Router, handler *DiscountHandler, jwtSecret str
 	route.Patch("/credits/:id", rbacmiddleware.RBACMiddleware("credit", "update", nil), handler.PatchCredit)
 	route.Delete("/credits/:id", rbacmiddleware.RBACMiddleware("credit", "delete", nil), handler.DeleteCredit)
 	route.Post("/credits/:id/apply", rbacmiddleware.RBACMiddleware("credit", "apply", nil), handler.ApplyCreditsToInvoice)
+
+	// Unified plugin management endpoints
+	pluginRoutes := router.Group("/plugins/discount")
+	pluginRoutes.Get("/", rbacmiddleware.RBACMiddleware("discount-plugin", "read", nil), handler.ListDiscountPlugins)
+	pluginRoutes.Get(":name", rbacmiddleware.RBACMiddleware("discount-plugin", "read", nil), handler.GetDiscountPlugin)
+	pluginRoutes.Post(":name/configure", rbacmiddleware.RBACMiddleware("discount-plugin", "update", nil), handler.ConfigureDiscountPlugin)
+	pluginRoutes.Post(":name/disable", rbacmiddleware.RBACMiddleware("discount-plugin", "update", nil), handler.DisableDiscountPlugin)
 }

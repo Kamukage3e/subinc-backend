@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+
 	"strconv"
 	"time"
 
@@ -21,6 +23,21 @@ import (
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
+
+// PaymentHandler handles payment-related operations
+type PaymentHandler struct {
+	PaymentService       PaymentService
+	RefundService        RefundService
+	PaymentMethodService PaymentMethodService
+	ManualRefundService  ManualRefundService
+	DisputeService       DisputeDataStoreInterface // For dispute management
+	EvidenceService      DisputeDataStoreInterface // For dispute evidence management
+	Store                StoreInterface
+	RateLimitService     security_management.RateLimitService
+	ConfigService        *server_config.Service
+	Logger               logger.Logger
+	Notify               security_management.NotificationService
+}
 
 // NewPaymentHandler creates a new payment handler
 func NewPaymentHandler(
@@ -43,7 +60,7 @@ func NewPaymentHandler(
 		ConfigService:        configService,
 		Logger:               logger,
 		Notify:               notify,
-		StoreRegistry:        storeRegistry,
+		Store:                storeRegistry,
 	}
 }
 
@@ -1230,4 +1247,145 @@ func (h *PaymentHandler) DeleteEvidence(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete dispute evidence"})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// Plugin management handlers
+
+// ListPaymentPlugins returns all registered payment plugins
+func (h *PaymentHandler) ListPaymentPlugins(c *fiber.Ctx) error {
+	pluginNames := PaymentPlugins.List()
+
+	return c.JSON(fiber.Map{
+		"plugins": pluginNames,
+	})
+}
+
+// GetPaymentPlugin returns details about a specific payment plugin
+func (h *PaymentHandler) GetPaymentPlugin(c *fiber.Ctx) error {
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Plugin name is required",
+		})
+	}
+
+	plugin, exists := PaymentPlugins.Lookup(pluginName)
+	if !exists {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": fmt.Sprintf("Payment plugin '%s' not found", pluginName),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"name":         plugin.Name(),
+		"version":      plugin.Version(),
+		"capabilities": plugin.Capabilities(),
+	})
+}
+
+// ConfigurePaymentPlugin configures a payment plugin for a tenant
+func (h *PaymentHandler) ConfigurePaymentPlugin(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Tenant ID is required",
+		})
+	}
+
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Plugin name is required",
+		})
+	}
+
+	// Check if the plugin exists
+	plugin, exists := PaymentPlugins.Lookup(pluginName)
+	if !exists {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": fmt.Sprintf("Payment plugin '%s' not found", pluginName),
+		})
+	}
+
+	// Parse the configuration
+	var config map[string]interface{}
+	if err := c.BodyParser(&config); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid configuration format",
+		})
+	}
+
+	// Initialize the plugin with the configuration
+	if err := plugin.Initialize(config); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to initialize plugin: %v", err),
+		})
+	}
+
+	// Save the configuration to the database
+	pluginConfig := PaymentPluginConfig{
+		TenantID:   tenantID,
+		PluginName: pluginName,
+		Config:     config,
+		Enabled:    true,
+		Default:    c.QueryBool("default", false),
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+
+	// Save the configuration to the database
+	// This is typically done by the store
+	if h.Store != nil {
+		ctx := c.Context()
+		if err := h.Store.SavePaymentPluginConfig(ctx, &pluginConfig); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": fmt.Sprintf("Failed to save plugin configuration: %v", err),
+			})
+		}
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status":  "success",
+		"message": fmt.Sprintf("Payment plugin '%s' configured successfully for tenant '%s'", pluginName, tenantID),
+	})
+}
+
+// DisablePaymentPlugin disables a payment plugin for a tenant
+func (h *PaymentHandler) DisablePaymentPlugin(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Tenant ID is required",
+		})
+	}
+
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Plugin name is required",
+		})
+	}
+
+	// Check if the plugin exists
+	_, exists := PaymentPlugins.Lookup(pluginName)
+	if !exists {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": fmt.Sprintf("Payment plugin '%s' not found", pluginName),
+		})
+	}
+
+	// Disable the plugin in the database
+	if h.Store != nil {
+		ctx := c.Context()
+		if err := h.Store.DisablePaymentPlugin(ctx, tenantID, pluginName); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": fmt.Sprintf("Failed to disable plugin: %v", err),
+			})
+		}
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status":  "success",
+		"message": fmt.Sprintf("Payment plugin '%s' disabled successfully for tenant '%s'", pluginName, tenantID),
+	})
 }

@@ -7,7 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
-	"github.com/subinc/subinc-backend/pkg/session"
+	"github.com/subinc/subinc-backend/internal/pkg/interfaces"
 )
 
 // Config holds RBAC middleware config
@@ -24,7 +24,7 @@ import (
 type Config struct {
 	Enable              bool
 	RBACService         rbac_management.RBACService
-	SessionManager      *session.SessionManager
+	SessionManager      interfaces.SessionService
 	ResourceResolver    func(*fiber.Ctx) (resource, action string, err error)
 	RoutePermissionMap  map[string]map[string]Permission // Method -> Path -> Permission
 	ValidateJWT         bool
@@ -62,10 +62,12 @@ func Middleware(cfg Config) fiber.Handler {
 		if sessionID == "" {
 			return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: session_id cookie required"})
 		}
-		sess, err := cfg.SessionManager.Get(c.Context(), sessionID, true)
-		if err != nil || sess == nil {
+
+		sess, err := cfg.SessionManager.GetSession(c.Context(), sessionID)
+		if err != nil {
 			return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: invalid or expired session"})
 		}
+
 		userID := sess.UserID
 		if userID == "" {
 			return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: user required"})

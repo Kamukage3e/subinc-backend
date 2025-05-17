@@ -142,9 +142,9 @@ func main() {
 	// --- Unified admin routes (owner + client) ---
 	adminAPI := app.Group("/api/v1/")
 	securityStore := security_management.NewPostgresStore(ownerDBPool, serverConfigService, nil)
-	store := &rbac_management.PostgresStore{DB: ownerDBPool, AuditLogger: securityStore}
+	store := &rbac_management.PostgresStore{DB: ownerDBPool}
 	rbacHandler := rbac_management.NewRBACHandler(store)
-	rbac_management.RegisterAdminRBACRoutes(adminAPI, rbacHandler, jwtCfg.SecretName, securityStore)
+	rbac_management.RegisterAdminRBACRoutes(adminAPI, rbacHandler, jwtCfg.SecretName)
 
 	// Initialize RBAC configurator for centralized RBAC control
 	redisAddr := os.Getenv("REDIS_ADDR")
@@ -216,6 +216,10 @@ func main() {
 	paymentStore := &payment.PostgresStore{DB: ownerDBPool}
 	billingHandler := billing_management.NewBillingHandler(billingStore, paymentStore)
 	billingHandler.Notify = securityStore
+
+	// Initialize billing plugin system
+	initializeBillingPlugins(billingHandler, serverConfigService, logr)
+
 	billing_management.RegisterRoutes(protectedAPI, billingHandler, jwtCfg.SecretName, securityStore)
 
 	// Dunning worker setup
@@ -309,4 +313,43 @@ func getAuditLogger() security_management.AuditLogger {
 	dbStateMu.RLock()
 	defer dbStateMu.RUnlock()
 	return dbState.auditLogger
+}
+
+// initializeBillingPlugins loads and configures the billing plugins
+func initializeBillingPlugins(handler *billing_management.BillingAdminHandler, configService *server_config.Service, logger *logger.Logger) {
+	if handler == nil || handler.PluginManager == nil {
+		logger.Error("Cannot initialize billing plugins: handler or plugin manager is nil")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Get billing configuration from server config
+	billingCfg, err := configService.GetOwnerBillingConfig(ctx)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to load billing config: %v", err))
+		return
+	}
+
+	// Convert to map for plugin manager
+	config := map[string]interface{}{
+		"tax_rate":    billingCfg.TaxRate,
+		"fixed_fee":   billingCfg.FixedFee,
+		"percent_fee": billingCfg.PercentFee,
+	}
+
+	// Initialize plugins with configuration
+	if err := handler.PluginManager.InitializePlugins(config); err != nil {
+		logger.Error(fmt.Sprintf("Failed to initialize billing plugins: %v", err))
+		return
+	}
+
+	// Log available plugins
+	invoicePlugins := handler.PluginManager.ListPlugins("invoice")
+	paymentPlugins := handler.PluginManager.ListPlugins("payment")
+	taxPlugins := handler.PluginManager.ListPlugins("tax")
+
+	logger.Info(fmt.Sprintf("Billing plugin system initialized with %d invoice, %d payment, and %d tax plugins",
+		len(invoicePlugins), len(paymentPlugins), len(taxPlugins)))
 }

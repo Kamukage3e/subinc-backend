@@ -563,3 +563,73 @@ func (s *PostgresStore) ListInvoicesForDunning(ctx context.Context, now time.Tim
 	}
 	return out, nil
 }
+
+// --- InvoicePluginConfig CRUD ---
+func (s *PostgresStore) SetInvoicePluginConfig(ctx context.Context, tenantID, pluginName string) (InvoicePluginConfig, error) {
+	if tenantID == "" {
+		return InvoicePluginConfig{}, NewValidationError("tenant_id", "must not be empty")
+	}
+	if pluginName == "" {
+		return InvoicePluginConfig{}, NewValidationError("plugin_name", "must not be empty")
+	}
+	updatedAt := time.Now().UTC()
+	const q = `INSERT INTO invoice_plugin_config (tenant_id, plugin_name, updated_at)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (tenant_id) DO UPDATE SET plugin_name = $2, updated_at = $3
+		RETURNING tenant_id, plugin_name, updated_at`
+	row := s.DB.QueryRow(ctx, q, tenantID, pluginName, updatedAt)
+	var out InvoicePluginConfig
+	if err := row.Scan(&out.TenantID, &out.PluginName, &out.UpdatedAt); err != nil {
+		logger.LogError("SetInvoicePluginConfig failed", logger.ErrorField(err), logger.String("tenant_id", tenantID), logger.String("plugin_name", pluginName))
+		return InvoicePluginConfig{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) GetInvoicePluginConfig(ctx context.Context, tenantID string) (InvoicePluginConfig, error) {
+	if tenantID == "" {
+		return InvoicePluginConfig{}, NewValidationError("tenant_id", "must not be empty")
+	}
+	const q = `SELECT tenant_id, plugin_name, updated_at FROM invoice_plugin_config WHERE tenant_id = $1`
+	row := s.DB.QueryRow(ctx, q, tenantID)
+	var out InvoicePluginConfig
+	if err := row.Scan(&out.TenantID, &out.PluginName, &out.UpdatedAt); err != nil {
+		logger.LogError("GetInvoicePluginConfig failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return InvoicePluginConfig{}, err
+	}
+	return out, nil
+}
+
+// DisableInvoicePluginConfig disables an invoice plugin for a tenant
+func (s *PostgresStore) DisableInvoicePluginConfig(ctx context.Context, tenantID, pluginName string) error {
+	if tenantID == "" || pluginName == "" {
+		return NewValidationError("tenant_id/plugin_name", "must not be empty")
+	}
+	const q = `UPDATE invoice_plugin_config SET enabled = false, updated_at = $1 WHERE tenant_id = $2 AND plugin_name = $3`
+	result, err := s.DB.Exec(ctx, q, time.Now().UTC(), tenantID, pluginName)
+	if err != nil {
+		logger.LogError("DisableInvoicePluginConfig failed", logger.ErrorField(err), logger.String("tenant_id", tenantID), logger.String("plugin_name", pluginName))
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return NewNotFoundError("invoice plugin config")
+	}
+	return nil
+}
+
+// DisableTaxPluginConfig disables a tax plugin for a tenant
+func (s *PostgresStore) DisableTaxPluginConfig(ctx context.Context, tenantID, pluginName string) error {
+	if tenantID == "" || pluginName == "" {
+		return NewValidationError("tenant_id/plugin_name", "must not be empty")
+	}
+	const q = `UPDATE tax_plugin_config SET enabled = false, updated_at = $1 WHERE tenant_id = $2 AND plugin_name = $3`
+	result, err := s.DB.Exec(ctx, q, time.Now().UTC(), tenantID, pluginName)
+	if err != nil {
+		logger.LogError("DisableTaxPluginConfig failed", logger.ErrorField(err), logger.String("tenant_id", tenantID), logger.String("plugin_name", pluginName))
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return NewNotFoundError("tax plugin config")
+	}
+	return nil
+}

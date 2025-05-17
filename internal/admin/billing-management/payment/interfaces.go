@@ -29,6 +29,13 @@ type StoreInterface interface {
 	UpdateInvoiceStatus(ctx context.Context, invoiceID, status string) error
 	MarkPaymentsPaidForInvoice(ctx context.Context, invoiceID string) error
 	UpdatePaymentStatus(ctx context.Context, paymentID, status string) error
+
+	// Plugin management
+	SavePaymentPluginConfig(ctx context.Context, config *PaymentPluginConfig) error
+	GetPaymentPluginConfig(ctx context.Context, tenantID, pluginName string) (*PaymentPluginConfig, error)
+	ListPaymentPluginConfigs(ctx context.Context, tenantID string) ([]*PaymentPluginConfig, error)
+	DisablePaymentPlugin(ctx context.Context, tenantID, pluginName string) error
+	GetDefaultPaymentPlugin(ctx context.Context, tenantID string) (*PaymentPluginConfig, error)
 }
 
 // DisputeDataStoreInterface abstracts dispute and evidence storage for testability and multi-tenant support
@@ -90,4 +97,26 @@ type PaymentMethodService interface {
 
 type ManualRefundService interface {
 	CreateManualRefund(paymentID, reason string, amount float64, currency string) error
+}
+
+// PaymentPlugin defines a hot-pluggable interface for payment providers
+// Each implementation can be dynamically loaded and configured at runtime
+type PaymentPlugin interface {
+	// Plugin identity
+	Name() string    // Unique name for the payment plugin (e.g., "stripe", "paypal")
+	Version() string // Version in semver format
+
+	// Core payment operations
+	Create(ctx context.Context, p Payment) (Payment, error)                        // Process a payment
+	Refund(ctx context.Context, paymentID string, amount float64) (Payment, error) // Process a refund
+	Update(ctx context.Context, p Payment) (Payment, error)                        // Update payment status
+	GetStatus(ctx context.Context, paymentID string) (string, error)               // Check payment status
+
+	// Plugin lifecycle
+	Initialize(config map[string]interface{}) error                                // Initialize plugin with configuration
+	Capabilities() []string                                                        // Return supported features (e.g., "cards", "ach", "crypto")
+	ValidatePaymentMethod(ctx context.Context, method PaymentMethod) (bool, error) // Validate if payment method is supported
+
+	// Webhook handling
+	HandleWebhook(ctx context.Context, payload []byte, signature string) (interface{}, error) // Process provider webhook events
 }

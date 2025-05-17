@@ -8,9 +8,39 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
+const (
+	qGetExchangeRate = `SELECT id, base_currency, quote_currency, rate, source, updated_at FROM exchange_rates WHERE base_currency = $1 AND quote_currency = $2`
+	qCreateCredit = `INSERT INTO credits (id, account_id, invoice_id, amount, currency, original_amount, original_currency, type, status, created_at, updated_at, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		RETURNING id, account_id, invoice_id, amount, currency, original_amount, original_currency, type, status, created_at, updated_at, metadata`
+	qUpdateCredit = `UPDATE credits SET account_id = $2, invoice_id = $3, amount = $4, currency = $5, original_amount = $6, original_currency = $7, type = $8, status = $9, updated_at = $10, metadata = $11 WHERE id = $1
+		RETURNING id, account_id, invoice_id, amount, currency, original_amount, original_currency, type, status, created_at, updated_at, metadata`
+	qListCredits = `SELECT id, account_id, invoice_id, amount, currency, original_amount, original_currency, type, status, created_at, updated_at, metadata FROM credits WHERE 1=1`
+	qGetCoupon = `SELECT id, max_redemptions, redeemed, is_active, start_at, end_at FROM coupons WHERE code = $1`
+	qUpdateCoupon = `UPDATE coupons SET redeemed = redeemed + 1 WHERE code = $1 RETURNING id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata`
+	qCreateDiscount = `INSERT INTO discounts (id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		RETURNING id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata`
+	qListDiscounts = `SELECT id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM discounts WHERE 1=1`
+	qCreateCoupon = `INSERT INTO coupons (id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		RETURNING id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata`
+	qUpdateDiscount = `UPDATE discounts SET code=$2, type=$3, value=$4, max_redemptions=$5, redeemed=$6, start_at=$7, end_at=$8, is_active=$9, updated_at=$10, metadata=$11 WHERE id=$1
+		RETURNING id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata`
+	qDeleteDiscount = `DELETE FROM discounts WHERE id = $1`
+	qGetDiscount = `SELECT id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM discounts WHERE id = $1`
+	qGetDiscountByCode = `SELECT id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM discounts WHERE code = $1`
+	qDeleteCoupon = `DELETE FROM coupons WHERE id = $1`
+	qListCoupons = `SELECT id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM coupons WHERE 1=1`
+	qUpdateCreditConsume = `UPDATE credits SET amount = amount - $2, status = $3, updated_at = NOW() WHERE id = $1 AND status = $4 AND amount >= $2`
+	qUpdateCreditExpire = `UPDATE credits SET status = $2, updated_at = NOW() WHERE id = $1 AND status = $3`
+	qDeleteCredit = `DELETE FROM credits WHERE id = $1`
+	qGetCouponByCode = `SELECT id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM coupons WHERE code = $1`
+	qListCreditsForInvoice = `SELECT id, amount FROM credits WHERE invoice_id = $1 AND status = $2 ORDER BY created_at ASC`
+)
+
 func (s *PostgresStore) GetExchangeRate(ctx context.Context, base, quote string) (ExchangeRate, error) {
-	const q = `SELECT id, base_currency, quote_currency, rate, source, updated_at FROM exchange_rates WHERE base_currency = $1 AND quote_currency = $2`
-	row := s.DB.QueryRow(ctx, q, base, quote)
+	row := s.DB.QueryRow(ctx, qGetExchangeRate, base, quote)
 	var out ExchangeRate
 	if err := row.Scan(&out.ID, &out.BaseCurrency, &out.QuoteCurrency, &out.Rate, &out.Source, &out.UpdatedAt); err != nil {
 		logger.LogError("GetExchangeRate failed", logger.ErrorField(err), logger.String("base", base), logger.String("quote", quote))
@@ -21,10 +51,7 @@ func (s *PostgresStore) GetExchangeRate(ctx context.Context, base, quote string)
 
 // --- Credit CRUD ---
 func (s *PostgresStore) CreateCredit(ctx context.Context, c Credit) (Credit, error) {
-	const q = `INSERT INTO credits (id, account_id, invoice_id, amount, currency, original_amount, original_currency, type, status, created_at, updated_at, metadata)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-		RETURNING id, account_id, invoice_id, amount, currency, original_amount, original_currency, type, status, created_at, updated_at, metadata`
-	row := s.DB.QueryRow(ctx, q, c.ID, c.AccountID, c.InvoiceID, c.Amount, c.Currency, c.OriginalAmount, c.OriginalCurrency, c.Type, c.Status, c.CreatedAt, c.UpdatedAt, c.Metadata)
+	row := s.DB.QueryRow(ctx, qCreateCredit, c.ID, c.AccountID, c.InvoiceID, c.Amount, c.Currency, c.OriginalAmount, c.OriginalCurrency, c.Type, c.Status, c.CreatedAt, c.UpdatedAt, c.Metadata)
 	var out Credit
 	if err := row.Scan(&out.ID, &out.AccountID, &out.InvoiceID, &out.Amount, &out.Currency, &out.OriginalAmount, &out.OriginalCurrency, &out.Type, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
 		logger.LogError("CreateCredit failed", logger.ErrorField(err), logger.Any("credit", c))
@@ -49,9 +76,7 @@ func (s *PostgresStore) GetCredit(ctx context.Context, id string) (Credit, error
 }
 
 func (s *PostgresStore) UpdateCredit(ctx context.Context, c Credit) (Credit, error) {
-	const q = `UPDATE credits SET account_id = $2, invoice_id = $3, amount = $4, currency = $5, original_amount = $6, original_currency = $7, type = $8, status = $9, updated_at = $10, metadata = $11 WHERE id = $1
-		RETURNING id, account_id, invoice_id, amount, currency, original_amount, original_currency, type, status, created_at, updated_at, metadata`
-	row := s.DB.QueryRow(ctx, q, c.ID, c.AccountID, c.InvoiceID, c.Amount, c.Currency, c.OriginalAmount, c.OriginalCurrency, c.Type, c.Status, c.UpdatedAt, c.Metadata)
+	row := s.DB.QueryRow(ctx, qUpdateCredit, c.ID, c.AccountID, c.InvoiceID, c.Amount, c.Currency, c.OriginalAmount, c.OriginalCurrency, c.Type, c.Status, c.UpdatedAt, c.Metadata)
 	var out Credit
 	if err := row.Scan(&out.ID, &out.AccountID, &out.InvoiceID, &out.Amount, &out.Currency, &out.OriginalAmount, &out.OriginalCurrency, &out.Type, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
 		logger.LogError("UpdateCredit failed", logger.ErrorField(err), logger.Any("credit", c))
@@ -67,7 +92,7 @@ func (s *PostgresStore) ListCredits(ctx context.Context, accountID, invoiceID, s
 	if pageSize < 1 || pageSize > 1000 {
 		pageSize = 100
 	}
-	q := `SELECT id, account_id, invoice_id, amount, currency, original_amount, original_currency, type, status, created_at, updated_at, metadata FROM credits WHERE 1=1`
+	q := qListCredits
 	args := []interface{}{}
 	if accountID != "" {
 		q += " AND account_id = $1"
@@ -107,8 +132,7 @@ func (s *PostgresStore) RedeemCoupon(ctx context.Context, code, accountID string
 		return Coupon{}, NewValidationError("code/account_id", "must not be empty")
 	}
 	// Check coupon validity
-	const checkQ = `SELECT id, max_redemptions, redeemed, is_active, start_at, end_at FROM coupons WHERE code = $1`
-	row := s.DB.QueryRow(ctx, checkQ, code)
+	row := s.DB.QueryRow(ctx, qGetCoupon, code)
 	var id string
 	var maxRedemptions, redeemed int
 	var isActive bool
@@ -124,8 +148,7 @@ func (s *PostgresStore) RedeemCoupon(ctx context.Context, code, accountID string
 		return Coupon{}, NewValidationError("coupon", "max redemptions reached")
 	}
 	// Mark coupon as redeemed for account
-	const q = `UPDATE coupons SET redeemed = redeemed + 1 WHERE code = $1 RETURNING id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata`
-	row2 := s.DB.QueryRow(ctx, q, code)
+	row2 := s.DB.QueryRow(ctx, qUpdateCoupon, code)
 	var out Coupon
 	if err := row2.Scan(&out.ID, &out.Code, &out.DiscountID, &out.MaxRedemptions, &out.Redeemed, &out.StartAt, &out.EndAt, &out.IsActive, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
 		logger.LogError("RedeemCoupon failed", logger.ErrorField(err), logger.String("code", code))
@@ -136,10 +159,7 @@ func (s *PostgresStore) RedeemCoupon(ctx context.Context, code, accountID string
 
 // --- Discount CRUD ---
 func (s *PostgresStore) CreateDiscount(ctx context.Context, d Discount) (Discount, error) {
-	const q = `INSERT INTO discounts (id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-		RETURNING id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata`
-	row := s.DB.QueryRow(ctx, q, d.ID, d.Code, d.Type, d.Value, d.MaxRedemptions, d.Redeemed, d.StartAt, d.EndAt, d.IsActive, d.CreatedAt, d.UpdatedAt, d.Metadata)
+	row := s.DB.QueryRow(ctx, qCreateDiscount, d.ID, d.Code, d.Type, d.Value, d.MaxRedemptions, d.Redeemed, d.StartAt, d.EndAt, d.IsActive, d.CreatedAt, d.UpdatedAt, d.Metadata)
 	var out Discount
 	if err := row.Scan(&out.ID, &out.Code, &out.Type, &out.Value, &out.MaxRedemptions, &out.Redeemed, &out.StartAt, &out.EndAt, &out.IsActive, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
 		logger.LogError("CreateDiscount failed", logger.ErrorField(err), logger.Any("discount", d))
@@ -149,9 +169,7 @@ func (s *PostgresStore) CreateDiscount(ctx context.Context, d Discount) (Discoun
 }
 
 func (s *PostgresStore) UpdateDiscount(ctx context.Context, d Discount) (Discount, error) {
-	const q = `UPDATE discounts SET code=$2, type=$3, value=$4, max_redemptions=$5, redeemed=$6, start_at=$7, end_at=$8, is_active=$9, updated_at=$10, metadata=$11 WHERE id=$1
-		RETURNING id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata`
-	row := s.DB.QueryRow(ctx, q, d.ID, d.Code, d.Type, d.Value, d.MaxRedemptions, d.Redeemed, d.StartAt, d.EndAt, d.IsActive, d.UpdatedAt, d.Metadata)
+	row := s.DB.QueryRow(ctx, qUpdateDiscount, d.ID, d.Code, d.Type, d.Value, d.MaxRedemptions, d.Redeemed, d.StartAt, d.EndAt, d.IsActive, d.UpdatedAt, d.Metadata)
 	var out Discount
 	if err := row.Scan(&out.ID, &out.Code, &out.Type, &out.Value, &out.MaxRedemptions, &out.Redeemed, &out.StartAt, &out.EndAt, &out.IsActive, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
 		logger.LogError("UpdateDiscount failed", logger.ErrorField(err), logger.Any("discount", d))
@@ -161,8 +179,7 @@ func (s *PostgresStore) UpdateDiscount(ctx context.Context, d Discount) (Discoun
 }
 
 func (s *PostgresStore) DeleteDiscount(ctx context.Context, id string) error {
-	const q = `DELETE FROM discounts WHERE id = $1`
-	_, err := s.DB.Exec(ctx, q, id)
+	_, err := s.DB.Exec(ctx, qDeleteDiscount, id)
 	if err != nil {
 		logger.LogError("DeleteDiscount failed", logger.ErrorField(err), logger.String("id", id))
 	}
@@ -170,8 +187,7 @@ func (s *PostgresStore) DeleteDiscount(ctx context.Context, id string) error {
 }
 
 func (s *PostgresStore) GetDiscount(ctx context.Context, id string) (Discount, error) {
-	const q = `SELECT id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM discounts WHERE id = $1`
-	row := s.DB.QueryRow(ctx, q, id)
+	row := s.DB.QueryRow(ctx, qGetDiscount, id)
 	var out Discount
 	if err := row.Scan(&out.ID, &out.Code, &out.Type, &out.Value, &out.MaxRedemptions, &out.Redeemed, &out.StartAt, &out.EndAt, &out.IsActive, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -185,8 +201,7 @@ func (s *PostgresStore) GetDiscount(ctx context.Context, id string) (Discount, e
 }
 
 func (s *PostgresStore) GetDiscountByCode(ctx context.Context, code string) (Discount, error) {
-	const q = `SELECT id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM discounts WHERE code = $1`
-	row := s.DB.QueryRow(ctx, q, code)
+	row := s.DB.QueryRow(ctx, qGetDiscountByCode, code)
 	var out Discount
 	if err := row.Scan(&out.ID, &out.Code, &out.Type, &out.Value, &out.MaxRedemptions, &out.Redeemed, &out.StartAt, &out.EndAt, &out.IsActive, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -206,7 +221,7 @@ func (s *PostgresStore) ListDiscounts(ctx context.Context, activeOnly bool, page
 	if pageSize < 1 || pageSize > 1000 {
 		pageSize = 100
 	}
-	q := `SELECT id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM discounts WHERE 1=1`
+	q := qListDiscounts
 	args := []interface{}{}
 	if activeOnly {
 		q += " AND is_active = $1"
@@ -234,10 +249,7 @@ func (s *PostgresStore) ListDiscounts(ctx context.Context, activeOnly bool, page
 
 // --- Coupon CRUD ---
 func (s *PostgresStore) CreateCoupon(ctx context.Context, c Coupon) (Coupon, error) {
-	const q = `INSERT INTO coupons (id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-		RETURNING id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata`
-	row := s.DB.QueryRow(ctx, q, c.ID, c.Code, c.DiscountID, c.MaxRedemptions, c.Redeemed, c.StartAt, c.EndAt, c.IsActive, c.CreatedAt, c.UpdatedAt, c.Metadata)
+	row := s.DB.QueryRow(ctx, qCreateCoupon, c.ID, c.Code, c.DiscountID, c.MaxRedemptions, c.Redeemed, c.StartAt, c.EndAt, c.IsActive, c.CreatedAt, c.UpdatedAt, c.Metadata)
 	var out Coupon
 	if err := row.Scan(&out.ID, &out.Code, &out.DiscountID, &out.MaxRedemptions, &out.Redeemed, &out.StartAt, &out.EndAt, &out.IsActive, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
 		logger.LogError("CreateCoupon failed", logger.ErrorField(err), logger.Any("coupon", c))
@@ -247,9 +259,7 @@ func (s *PostgresStore) CreateCoupon(ctx context.Context, c Coupon) (Coupon, err
 }
 
 func (s *PostgresStore) UpdateCoupon(ctx context.Context, c Coupon) (Coupon, error) {
-	const q = `UPDATE coupons SET code=$2, discount_id=$3, max_redemptions=$4, redeemed=$5, start_at=$6, end_at=$7, is_active=$8, updated_at=$9, metadata=$10 WHERE id=$1
-		RETURNING id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata`
-	row := s.DB.QueryRow(ctx, q, c.ID, c.Code, c.DiscountID, c.MaxRedemptions, c.Redeemed, c.StartAt, c.EndAt, c.IsActive, c.UpdatedAt, c.Metadata)
+	row := s.DB.QueryRow(ctx, qUpdateCoupon, c.ID, c.Code, c.DiscountID, c.MaxRedemptions, c.Redeemed, c.StartAt, c.EndAt, c.IsActive, c.UpdatedAt, c.Metadata)
 	var out Coupon
 	if err := row.Scan(&out.ID, &out.Code, &out.DiscountID, &out.MaxRedemptions, &out.Redeemed, &out.StartAt, &out.EndAt, &out.IsActive, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
 		logger.LogError("UpdateCoupon failed", logger.ErrorField(err), logger.Any("coupon", c))
@@ -259,8 +269,7 @@ func (s *PostgresStore) UpdateCoupon(ctx context.Context, c Coupon) (Coupon, err
 }
 
 func (s *PostgresStore) DeleteCoupon(ctx context.Context, id string) error {
-	const q = `DELETE FROM coupons WHERE id = $1`
-	_, err := s.DB.Exec(ctx, q, id)
+	_, err := s.DB.Exec(ctx, qDeleteCoupon, id)
 	if err != nil {
 		logger.LogError("DeleteCoupon failed", logger.ErrorField(err), logger.String("id", id))
 	}
@@ -268,8 +277,7 @@ func (s *PostgresStore) DeleteCoupon(ctx context.Context, id string) error {
 }
 
 func (s *PostgresStore) GetCoupon(ctx context.Context, id string) (Coupon, error) {
-	const q = `SELECT id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM coupons WHERE id = $1`
-	row := s.DB.QueryRow(ctx, q, id)
+	row := s.DB.QueryRow(ctx, qGetCoupon, id)
 	var out Coupon
 	if err := row.Scan(&out.ID, &out.Code, &out.DiscountID, &out.MaxRedemptions, &out.Redeemed, &out.StartAt, &out.EndAt, &out.IsActive, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -283,8 +291,7 @@ func (s *PostgresStore) GetCoupon(ctx context.Context, id string) (Coupon, error
 }
 
 func (s *PostgresStore) GetCouponByCode(ctx context.Context, code string) (Coupon, error) {
-	const q = `SELECT id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM coupons WHERE code = $1`
-	row := s.DB.QueryRow(ctx, q, code)
+	row := s.DB.QueryRow(ctx, qGetCouponByCode, code)
 	var out Coupon
 	if err := row.Scan(&out.ID, &out.Code, &out.DiscountID, &out.MaxRedemptions, &out.Redeemed, &out.StartAt, &out.EndAt, &out.IsActive, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -304,7 +311,7 @@ func (s *PostgresStore) ListCoupons(ctx context.Context, discountID string, isAc
 	if pageSize < 1 || pageSize > 1000 {
 		pageSize = 100
 	}
-	q := `SELECT id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM coupons WHERE 1=1`
+	q := qListCoupons
 	args := []interface{}{}
 	if discountID != "" {
 		q += " AND discount_id = $1"
@@ -341,8 +348,7 @@ func (s *PostgresStore) PatchCredit(ctx context.Context, id, action string, amou
 	}
 	switch action {
 	case "consume":
-		const q = `UPDATE credits SET amount = amount - $2, status = $3, updated_at = NOW() WHERE id = $1 AND status = $4 AND amount >= $2`
-		res, err := s.DB.Exec(ctx, q, id, amount, CreditStatusConsumed, CreditStatusActive)
+		res, err := s.DB.Exec(ctx, qUpdateCreditConsume, id, amount, CreditStatusConsumed, CreditStatusActive)
 		if err != nil {
 			logger.LogError("PatchCredit: consume failed", logger.ErrorField(err), logger.String("id", id))
 			return err
@@ -352,8 +358,7 @@ func (s *PostgresStore) PatchCredit(ctx context.Context, id, action string, amou
 		}
 		return nil
 	case "expire":
-		const q = `UPDATE credits SET status = $2, updated_at = NOW() WHERE id = $1 AND status = $3`
-		res, err := s.DB.Exec(ctx, q, id, CreditStatusExpired, CreditStatusActive)
+		res, err := s.DB.Exec(ctx, qUpdateCreditExpire, id, CreditStatusExpired, CreditStatusActive)
 		if err != nil {
 			logger.LogError("PatchCredit: expire failed", logger.ErrorField(err), logger.String("id", id))
 			return err
@@ -368,8 +373,7 @@ func (s *PostgresStore) PatchCredit(ctx context.Context, id, action string, amou
 }
 
 func (s *PostgresStore) DeleteCredit(ctx context.Context, id string) error {
-	const q = `DELETE FROM credits WHERE id = $1`
-	_, err := s.DB.Exec(ctx, q, id)
+	_, err := s.DB.Exec(ctx, qDeleteCredit, id)
 	if err != nil {
 		logger.LogError("DeleteCredit failed", logger.ErrorField(err), logger.String("id", id))
 	}
@@ -382,8 +386,7 @@ func (s *PostgresStore) ApplyCreditsToInvoice(ctx context.Context, invoiceID str
 		return NewValidationError("invoice_id", "must not be empty")
 	}
 	// Get all active credits for this invoice
-	const q = `SELECT id, amount FROM credits WHERE invoice_id = $1 AND status = $2 ORDER BY created_at ASC`
-	rows, err := s.DB.Query(ctx, q, invoiceID, CreditStatusActive)
+	rows, err := s.DB.Query(ctx, qListCreditsForInvoice, invoiceID, CreditStatusActive)
 	if err != nil {
 		logger.LogError("ApplyCreditsToInvoice: query failed", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
 		return err
@@ -410,8 +413,7 @@ func (s *PostgresStore) ApplyCreditsToInvoice(ctx context.Context, invoiceID str
 	}
 	// Mark all as consumed
 	for _, c := range credits {
-		const uq = `UPDATE credits SET status = $2, updated_at = NOW() WHERE id = $1 AND status = $3`
-		_, err := s.DB.Exec(ctx, uq, c.id, CreditStatusConsumed, CreditStatusActive)
+		_, err := s.DB.Exec(ctx, qUpdateCreditConsume, c.id, CreditStatusConsumed, CreditStatusActive)
 		if err != nil {
 			logger.LogError("ApplyCreditsToInvoice: update failed", logger.ErrorField(err), logger.String("id", c.id))
 			return err

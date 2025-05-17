@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/subinc/subinc-backend/internal/pkg/auth"
+	"github.com/subinc/subinc-backend/internal/pkg/interfaces"
 )
 
 // To avoid import cycles, define a minimal local interface for ServerConfigService
@@ -57,6 +59,7 @@ type SecurityHandler struct {
 	ConfigurationService        ConfigurationService
 	NotificationQueueService    NotificationQueueService
 	OwnerJWTSecretConfigService OwnerJWTSecretConfigService
+	Auth                        *auth.AuthManager
 }
 
 type SecurityEvent struct {
@@ -85,14 +88,8 @@ type LoginHistory struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-type Session struct {
-	ID        string    `json:"id"`
-	UserID    string    `json:"user_id"`
-	IP        string    `json:"ip"`
-	Device    string    `json:"device"`
-	CreatedAt time.Time `json:"created_at"`
-	ExpiresAt time.Time `json:"expires_at"`
-}
+// Use the Session type from interfaces
+type Session = interfaces.Session
 
 // SecurityAuditLog represents a security-related audit log entry
 type SecurityAuditLog struct {

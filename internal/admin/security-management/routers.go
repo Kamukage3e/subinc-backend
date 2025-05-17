@@ -126,9 +126,9 @@ func RegisterRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretName
 	route.Post("/accept", rbacmiddleware.RBACMiddleware("invite", "create", nil), generalLimiter.middleware(), handler.AcceptInvite) // Accept invite doesn't need session auth
 
 	// --- Notifications Resource ---
-	route = router.Group("/notifications", securityHeadersMiddleware())
-	route.Get("/providers/status", rbacmiddleware.RBACMiddleware("notification", "read", nil), handler.GetNotificationProvidersStatus)
-	route.Post("/queue/retry", rbacmiddleware.RBACMiddleware("notification", "create", nil), handler.RetryNotificationQueue)
+	route = router.Group("/notifications", securityHeadersMiddleware(), sessionAuth)
+	route.Get("/providers/status", rbacmiddleware.RBACMiddleware("notification", "read", nil), generalLimiter.middleware(), handler.GetNotificationProvidersStatus)
+	route.Post("/queue/retry", rbacmiddleware.RBACMiddleware("notification", "create", nil), generalLimiter.middleware(), handler.RetryNotificationQueue)
 	route.Get("/tenants/:tenant_id/config", rbacmiddleware.RBACMiddleware("notification", "read", nil), generalLimiter.middleware(), handler.GetNotificationConfig)
 	route.Put("/tenants/:tenant_id/config", rbacmiddleware.RBACMiddleware("notification", "update", nil), strictLimiter.middleware(), handler.UpdateNotificationConfig)
 	route.Post("/tenants/:tenant_id/test", rbacmiddleware.RBACMiddleware("notification", "create", nil), strictLimiter.middleware(), handler.SendTestNotification)
@@ -139,7 +139,7 @@ func RegisterRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretName
 
 	// --- Config Resources ---
 	// Module config
-	route = router.Group("/configs", securityHeadersMiddleware())
+	route = router.Group("/configs", securityHeadersMiddleware(), sessionAuth)
 	route.Get("/tenants/:tenant_id/security", rbacmiddleware.RBACMiddleware("config", "read", nil), generalLimiter.middleware(), handler.GetSecurityModuleConfig)
 	route.Put("/tenants/:tenant_id/security", rbacmiddleware.RBACMiddleware("config", "update", nil), strictLimiter.middleware(), handler.SetSecurityModuleConfig)
 
@@ -152,7 +152,7 @@ func RegisterRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretName
 	route.Put("/tenants/:tenant_id/session", rbacmiddleware.RBACMiddleware("config", "update", nil), strictLimiter.middleware(), handler.SetSessionConfig)
 
 	// --- Self Service Resource ---
-	route = router.Group("/self-service", securityHeadersMiddleware())
+	route = router.Group("/self-service", securityHeadersMiddleware(), sessionAuth)
 	route.Get("/security", rbacmiddleware.RBACMiddleware("self-service", "read", nil), generalLimiter.middleware(), handler.GetSelfServiceSecurity)
 
 	// --- Security Analytics Resource ---

@@ -376,6 +376,42 @@ func (s *PostgresStore) UpgradeNowSubscription(ctx context.Context, id, planID s
 	return nil
 }
 
+// --- SubscriptionPluginConfig CRUD ---
+func (s *PostgresStore) SetSubscriptionPluginConfig(ctx context.Context, tenantID, pluginName string) (SubscriptionPluginConfig, error) {
+	if tenantID == "" {
+		return SubscriptionPluginConfig{}, NewValidationError("tenant_id", "must not be empty")
+	}
+	if pluginName == "" {
+		return SubscriptionPluginConfig{}, NewValidationError("plugin_name", "must not be empty")
+	}
+	updatedAt := time.Now().UTC()
+	const q = `INSERT INTO subscription_plugin_config (tenant_id, plugin_name, updated_at)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (tenant_id) DO UPDATE SET plugin_name = $2, updated_at = $3
+		RETURNING tenant_id, plugin_name, updated_at`
+	row := s.DB.QueryRow(ctx, q, tenantID, pluginName, updatedAt)
+	var out SubscriptionPluginConfig
+	if err := row.Scan(&out.TenantID, &out.PluginName, &out.UpdatedAt); err != nil {
+		logger.LogError("SetSubscriptionPluginConfig failed", logger.ErrorField(err), logger.String("tenant_id", tenantID), logger.String("plugin_name", pluginName))
+		return SubscriptionPluginConfig{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) GetSubscriptionPluginConfig(ctx context.Context, tenantID string) (SubscriptionPluginConfig, error) {
+	if tenantID == "" {
+		return SubscriptionPluginConfig{}, NewValidationError("tenant_id", "must not be empty")
+	}
+	const q = `SELECT tenant_id, plugin_name, updated_at FROM subscription_plugin_config WHERE tenant_id = $1`
+	row := s.DB.QueryRow(ctx, q, tenantID)
+	var out SubscriptionPluginConfig
+	if err := row.Scan(&out.TenantID, &out.PluginName, &out.UpdatedAt); err != nil {
+		logger.LogError("GetSubscriptionPluginConfig failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return SubscriptionPluginConfig{}, err
+	}
+	return out, nil
+}
+
 // Helper for dynamic SQL arg numbering
 func itoa(i int) string {
 	return fmt.Sprintf("%d", i)

@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	// rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
+
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
@@ -33,4 +34,11 @@ func RegisterRoutes(router fiber.Router, handler *SubscriptionHandler, auditLogg
 	route.Post("/:id/cancel-now", rbacmiddleware.RBACMiddleware("subscription", "cancel", nil), handler.CancelSubscriptionNow)
 	route.Post("/:id/resume", rbacmiddleware.RBACMiddleware("subscription", "resume", nil), handler.ResumeSubscription)
 	route.Post("/:id/upgrade-now", rbacmiddleware.RBACMiddleware("subscription", "upgrade", nil), handler.UpgradeNowSubscription)
+
+	// Unified plugin management endpoints
+	pluginRoutes := router.Group("/plugins/subscription")
+	pluginRoutes.Get("/", rbacmiddleware.RBACMiddleware("subscription-plugin", "read", nil), handler.ListSubscriptionPlugins)
+	pluginRoutes.Get(":name", rbacmiddleware.RBACMiddleware("subscription-plugin", "read", nil), handler.GetSubscriptionPlugin)
+	pluginRoutes.Post(":name/configure", rbacmiddleware.RBACMiddleware("subscription-plugin", "update", nil), handler.ConfigureSubscriptionPlugin)
+	pluginRoutes.Post(":name/disable", rbacmiddleware.RBACMiddleware("subscription-plugin", "update", nil), handler.DisableSubscriptionPlugin)
 }
