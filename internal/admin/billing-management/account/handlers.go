@@ -10,55 +10,67 @@ import (
 )
 
 func (h *AccountHandler) CreateAccount(c *fiber.Ctx) error {
-	var input ProjectBillingAccount
-	if err := c.BodyParser(&input); err != nil {
+	accountType := c.Query("type", "project")
+	ctx := c.Context()
+	var input interface{}
+	switch accountType {
+	case "user":
+		input = &UserBillingAccount{}
+	case "organization":
+		input = &OrganizationBillingAccount{}
+	default:
+		input = &ProjectBillingAccount{}
+	}
+	if err := c.BodyParser(input); err != nil {
 		logger.LogError("CreateAccount: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	if err := input.Validate(); err != nil {
-		logger.LogError("CreateAccount: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
-	}
-	account, err := h.ProjectBillingAccountService.CreateProjectBillingAccount(c.Context(), input)
-	if err != nil {
-		logger.LogError("CreateAccount: failed", logger.ErrorField(err), logger.Any("input", input))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(interface {
-			Message() string
-			Code() string
-			Field() string
-		}); ok {
-			errResp["error"] = apiErr.Message()
-			errResp["code"] = apiErr.Code()
-			errResp["field"] = apiErr.Field()
+	// Validate
+	if v, ok := input.(interface{ Validate() *Error }); ok {
+		if err := v.Validate(); err != nil {
+			logger.LogError("CreateAccount: validation failed", logger.ErrorField(err))
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
 		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
 	}
-
-	// --- Send onboarding notification (non-blocking) ---
-	if h.NotificationService != nil && account.Email != "" {
-		go func(acct ProjectBillingAccount) {
-			details := map[string]interface{}{
-				"account_id":    acct.ID,
-				"account_email": acct.Email,
-				"status":        acct.Status,
-				"created_at":    acct.CreatedAt,
+	account, err := h.BillingAccountService.Create(ctx, BillingAccountType(accountType), input)
+	if err != nil {
+		logger.LogError("CreateAccount: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.NotificationService != nil && account != nil {
+		go func(acct interface{}) {
+			var email, id, status string
+			var createdAt any
+			switch a := acct.(type) {
+			case *ProjectBillingAccount:
+				email, id, status, createdAt = a.Email, a.ID, a.Status, a.CreatedAt
+			case *UserBillingAccount:
+				email, id, status, createdAt = a.Email, a.ID, a.Status, a.CreatedAt
+			case *OrganizationBillingAccount:
+				email, id, status, createdAt = a.Email, a.ID, a.Status, a.CreatedAt
 			}
-			err := h.NotificationService.SendNotification(
-				context.Background(),
-				"", // No tenant_id in ProjectBillingAccount
-				security_management.NotificationEmail,
-				[]string{acct.Email},
-				"account.created",
-				details,
-				3,
-			)
-			if err != nil {
-				logger.LogError("CreateAccount: onboarding notification failed", logger.ErrorField(err), logger.String("account_id", acct.ID))
+			if email != "" {
+				details := map[string]any{
+					"account_id":    id,
+					"account_email": email,
+					"status":        status,
+					"created_at":    createdAt,
+				}
+				err := h.NotificationService.SendNotification(
+					context.Background(),
+					"",
+					security_management.NotificationEmail,
+					[]string{email},
+					"account.created",
+					details,
+					3,
+				)
+				if err != nil {
+					logger.LogError("CreateAccount: onboarding notification failed", logger.ErrorField(err), logger.String("account_id", id))
+				}
 			}
 		}(account)
 	}
-
 	return c.Status(fiber.StatusCreated).JSON(account)
 }
 
@@ -68,42 +80,53 @@ func (h *AccountHandler) UpdateAccount(c *fiber.Ctx) error {
 		logger.LogError("UpdateAccount: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	var input ProjectBillingAccount
-	if err := c.BodyParser(&input); err != nil {
+	accountType := c.Query("type", "project")
+	ctx := c.Context()
+	var input interface{}
+	switch accountType {
+	case "user":
+		input = &UserBillingAccount{}
+	case "organization":
+		input = &OrganizationBillingAccount{}
+	default:
+		input = &ProjectBillingAccount{}
+	}
+	if err := c.BodyParser(input); err != nil {
 		logger.LogError("UpdateAccount: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	input.ID = id
-	if err := input.Validate(); err != nil {
-		logger.LogError("UpdateAccount: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
+	// Set ID
+	switch v := input.(type) {
+	case *UserBillingAccount:
+		v.ID = id
+	case *OrganizationBillingAccount:
+		v.ID = id
+	case *ProjectBillingAccount:
+		v.ID = id
 	}
-	account, err := h.ProjectBillingAccountService.UpdateProjectBillingAccount(c.Context(), input)
-	if err != nil {
-		logger.LogError("UpdateAccount: failed", logger.ErrorField(err), logger.Any("input", input))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(interface {
-			Message() string
-			Code() string
-			Field() string
-		}); ok {
-			errResp["error"] = apiErr.Message()
-			errResp["code"] = apiErr.Code()
-			errResp["field"] = apiErr.Field()
+	if v, ok := input.(interface{ Validate() *Error }); ok {
+		if err := v.Validate(); err != nil {
+			logger.LogError("UpdateAccount: validation failed", logger.ErrorField(err))
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
 		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+	}
+	account, err := h.BillingAccountService.Update(ctx, BillingAccountType(accountType), input)
+	if err != nil {
+		logger.LogError("UpdateAccount: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(account)
 }
 
 func (h *AccountHandler) GetAccount(c *fiber.Ctx) error {
-
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetAccount: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	account, err := h.ProjectBillingAccountService.GetProjectBillingAccount(context.Background(), id)
+	accountType := c.Query("type", "project")
+	ctx := c.Context()
+	account, err := h.BillingAccountService.Get(ctx, BillingAccountType(accountType), id)
 	if err != nil {
 		logger.LogError("GetAccount: not found", logger.ErrorField(err))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
@@ -112,53 +135,39 @@ func (h *AccountHandler) GetAccount(c *fiber.Ctx) error {
 }
 
 func (h *AccountHandler) ListAccounts(c *fiber.Ctx) error {
-
-	tenantID := c.Query("tenant_id")
+	accountType := c.Query("type", "project")
+	ownerID := c.Query("tenant_id")
 	page := c.QueryInt("page", 1)
 	pageSize := c.QueryInt("page_size", 100)
-	accounts, err := h.ProjectBillingAccountService.ListProjectBillingAccounts(c.Context(), tenantID, page, pageSize)
+	ctx := c.Context()
+	accounts, err := h.BillingAccountService.List(ctx, BillingAccountType(accountType), ownerID, page, pageSize)
 	if err != nil {
-		logger.LogError("ListAccounts: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(interface {
-			Message() string
-			Code() string
-			Field() string
-		}); ok {
-			errResp["error"] = apiErr.Message()
-			errResp["code"] = apiErr.Code()
-			errResp["field"] = apiErr.Field()
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+		logger.LogError("ListAccounts: failed", logger.ErrorField(err), logger.String("owner_id", ownerID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"accounts": accounts, "page": page, "page_size": pageSize})
 }
 
 func (h *AccountHandler) PerformAccountAction(c *fiber.Ctx) error {
-
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("PerformAccountAction: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
+	accountType := c.Query("type", "project")
 	var input struct {
-		Action string                 `json:"action"`
-		Params map[string]interface{} `json:"params"`
+		Action string         `json:"action"`
+		Params map[string]any `json:"params"`
 	}
 	if err := c.BodyParser(&input); err != nil || input.Action == "" {
 		logger.LogError("PerformAccountAction: action required", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "action required"})
 	}
-	result, err := h.ProjectBillingAccountService.PerformProjectBillingAccountAction(c.Context(), id, input.Action, input.Params)
+	ctx := c.Context()
+	result, err := h.BillingAccountService.PerformAction(ctx, BillingAccountType(accountType), id, input.Action, input.Params)
 	if err != nil {
 		logger.LogError("PerformAccountAction: failed", logger.ErrorField(err), logger.String("account_id", id), logger.String("action", input.Action))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.Status(fiber.StatusOK).JSON(result)
 }
@@ -169,8 +178,9 @@ func (h *AccountHandler) DeleteAccount(c *fiber.Ctx) error {
 		logger.LogError("DeleteAccount: id required", logger.String("id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	err := h.ProjectBillingAccountService.DeleteProjectBillingAccount(context.Background(), id)
-	if err != nil {
+	accountType := c.Query("type", "project")
+	ctx := c.Context()
+	if err := h.BillingAccountService.Delete(ctx, BillingAccountType(accountType), id); err != nil {
 		logger.LogError("DeleteAccount: failed", logger.ErrorField(err), logger.String("account_id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}

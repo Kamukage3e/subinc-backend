@@ -155,7 +155,7 @@ func (s *PostgresStore) GetSettings(ctx context.Context, orgID string) (map[stri
 	var settings map[string]interface{}
 	if err := json.Unmarshal([]byte(cfg.Value), &settings); err != nil {
 		logger.LogError("invalid org settings json", logger.ErrorField(err), logger.String("org_id", orgID))
-		return nil, errors.New("invalid org settings json")
+		return map[string]interface{}{}, nil
 	}
 	return settings, nil
 }

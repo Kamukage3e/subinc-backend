@@ -44,13 +44,18 @@ func AuditLoggerMiddleware(logger security_management.AuditLogger) fiber.Handler
 		latency := time.Since(start)
 		userID := getActorID(c)
 		status := c.Response().StatusCode()
-		event := c.Method() + " " + c.Path()
+
+		// The action column has a 64 char limit - use just the HTTP method as the action
+		action := c.Method()
+
+		// Store the full path in metadata instead of action field
 		resource, resourceID := getResourceAndID(c)
 		ip := c.IP()
 		userAgent := c.Get("User-Agent")
 		metadata := map[string]interface{}{
 			"status":     status,
 			"latency_ms": latency.Milliseconds(),
+			"path":       c.Path(), // Store the full path in metadata
 		}
 		if c.Body() != nil && len(c.Body()) > 0 {
 			metadata["body"] = string(c.Body())
@@ -60,13 +65,14 @@ func AuditLoggerMiddleware(logger security_management.AuditLogger) fiber.Handler
 			ID:         uuid.NewString(),
 			UserID:     userID,
 			ActorID:    userID,
-			Action:     event,
+			Action:     action,
 			Resource:   resource,
 			ResourceID: resourceID,
 			IP:         ip,
 			UserAgent:  userAgent,
 			CreatedAt:  time.Now().UTC(),
 			Details:    string(metadataJSON),
+			Metadata:   metadata,
 		}
 		_, _ = logger.CreateSecurityAuditLog(context.Background(), log)
 		return err

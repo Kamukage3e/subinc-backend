@@ -10,7 +10,7 @@ table "projects" {
   }
   column "org_id" {
     type = uuid
-    null = false
+    null = true
   }
   column "name" {
     type = varchar(128)
@@ -25,6 +25,8 @@ table "projects" {
   }
   column "tags" {
     type = jsonb
+    null = false
+    default = sql("'{}'::jsonb")
   }
   column "created_at" {
     type    = timestamptz

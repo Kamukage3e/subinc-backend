@@ -15,8 +15,8 @@ type ProjectService interface {
 }
 
 type ProjectSettingsService interface {
-	GetSettings(ctx context.Context, projectID string) (ProjectSettings, error)
-	UpdateSettings(ctx context.Context, projectID, settings string) error
+	GetSettings(ctx context.Context, projectID string) (map[string]interface{}, error)
+	UpdateSettings(ctx context.Context, projectID string, settings map[string]interface{}) error
 }
 
 type ProjectAuditLogger = security_management.AuditLogger

@@ -15,8 +15,8 @@ type OrganizationService interface {
 }
 
 type OrgSettingsService interface {
-	GetSettings(ctx context.Context, orgID string) (OrgSettings, error)
-	UpdateSettings(ctx context.Context, orgID, settings string) error
+	GetSettings(ctx context.Context, orgID string) (map[string]interface{}, error)
+	UpdateSettings(ctx context.Context, orgID string, settings map[string]interface{}) error
 }
 
 // All audit logging must use OrgAuditLogger for decoupling and optionality. Never depend on a concrete implementation.

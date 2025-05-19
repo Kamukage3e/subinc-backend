@@ -9,7 +9,13 @@ import (
 )
 
 func NewOrganizationHandler(store *PostgresStore) *OrganizationHandler {
-	return &OrganizationHandler{Store: store}
+	return &OrganizationHandler{
+		Store:               store,
+		OrganizationService: store,
+		OrgSettingsService:  store,
+		OrgAuditLogger:      store.AuditLogger,
+		RateLimitService:    nil,
+	}
 }
 
 func (o *Organization) Validate() error {
@@ -119,7 +125,7 @@ func (h *OrganizationHandler) GetSettings(c *fiber.Ctx) error {
 		logger.LogError("GetSettings: org_id required", logger.String("org_id", orgID))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org_id required"})
 	}
-	settings, err := h.Store.GetSettings(c.Context(), orgID)
+	settings, err := h.OrgSettingsService.GetSettings(c.Context(), orgID)
 	if err != nil {
 		logger.LogError("GetSettings: failed", logger.ErrorField(err), logger.String("org_id", orgID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
@@ -145,7 +151,7 @@ func (h *OrganizationHandler) UpdateSettings(c *fiber.Ctx) error {
 		logger.LogError("UpdateSettings: missing required fields", logger.String("org_id", orgID))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "settings required"})
 	}
-	if err := h.Store.UpdateSettings(c.Context(), orgID, input.Settings); err != nil {
+	if err := h.OrgSettingsService.UpdateSettings(c.Context(), orgID, input.Settings); err != nil {
 		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.String("org_id", orgID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}

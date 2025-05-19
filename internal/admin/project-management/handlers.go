@@ -1,8 +1,6 @@
 package project_management
 
 import (
-
-
 	"errors"
 
 	"github.com/gofiber/fiber/v2"
@@ -10,7 +8,13 @@ import (
 )
 
 func NewProjectHandler(store *PostgresStore) *ProjectHandler {
-	return &ProjectHandler{Store: store}
+	return &ProjectHandler{
+		Store:                  store,
+		ProjectService:         store,
+		ProjectSettingsService: store,
+		SecurityAuditLogger:    store.AuditLogger,
+		RateLimitService:       nil, // This will be set by the router
+	}
 }
 
 func (p *Project) Validate() error {
@@ -19,9 +23,6 @@ func (p *Project) Validate() error {
 	}
 	if len(p.Name) > 128 {
 		return errors.New("project name too long")
-	}
-	if p.OrgID == "" {
-		return errors.New("org_id must not be empty")
 	}
 	return nil
 }
@@ -37,6 +38,17 @@ func (h *ProjectHandler) CreateProject(c *fiber.Ctx) error {
 		logger.LogError("CreateProject: validation failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+
+	// Initialize tags if nil
+	if input.Tags == nil {
+		input.Tags = make(map[string]string)
+	}
+
+	// Set default status if empty
+	if input.Status == "" {
+		input.Status = "active"
+	}
+
 	proj, err := h.ProjectService.CreateProject(c.Context(), input)
 	if err != nil {
 		logger.LogError("CreateProject: failed", logger.ErrorField(err), logger.Any("input", input))
@@ -105,10 +117,6 @@ func (h *ProjectHandler) GetProject(c *fiber.Ctx) error {
 func (h *ProjectHandler) ListProjects(c *fiber.Ctx) error {
 
 	orgID := c.Query("org_id")
-	if orgID == "" {
-		logger.LogError("ListProjects: org_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org_id required"})
-	}
 	page := c.QueryInt("page", 1)
 	pageSize := c.QueryInt("page_size", 100)
 	projs, err := h.ProjectService.ListProjects(c.Context(), orgID, page, pageSize)
@@ -126,7 +134,7 @@ func (h *ProjectHandler) GetSettings(c *fiber.Ctx) error {
 		logger.LogError("GetSettings: project_id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project_id required"})
 	}
-	settings, err := h.Store.GetSettings(c.Context(), id)
+	settings, err := h.ProjectSettingsService.GetSettings(c.Context(), id)
 	if err != nil {
 		logger.LogError("GetSettings: failed", logger.ErrorField(err), logger.String("project_id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
@@ -148,7 +156,7 @@ func (h *ProjectHandler) UpdateSettings(c *fiber.Ctx) error {
 		logger.LogError("UpdateSettings: missing required fields", logger.String("project_id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "settings required"})
 	}
-	err := h.Store.UpdateSettings(c.Context(), id, input.Settings)
+	err := h.ProjectSettingsService.UpdateSettings(c.Context(), id, input.Settings)
 	if err != nil {
 		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.String("project_id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})

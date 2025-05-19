@@ -2,20 +2,12 @@ package account
 
 import "context"
 
-type ProjectBillingAccountService interface {
-	CreateProjectBillingAccount(ctx context.Context, input ProjectBillingAccount) (ProjectBillingAccount, error)
-	UpdateProjectBillingAccount(ctx context.Context, input ProjectBillingAccount) (ProjectBillingAccount, error)
-	GetProjectBillingAccount(ctx context.Context, id string) (ProjectBillingAccount, error)
-	ListProjectBillingAccounts(ctx context.Context, projectID string, page, pageSize int) ([]ProjectBillingAccount, error)
-	PerformProjectBillingAccountAction(ctx context.Context, accountID, action string, params map[string]interface{}) (map[string]interface{}, error)
-	DeleteProjectBillingAccount(ctx context.Context, id string) error
-}
-
-type OrgBillingAccountService interface {
-	CreateOrgBillingAccount(ctx context.Context, input OrgBillingAccount) (OrgBillingAccount, error)
-	UpdateOrgBillingAccount(ctx context.Context, input OrgBillingAccount) (OrgBillingAccount, error)
-	GetOrgBillingAccount(ctx context.Context, id string) (OrgBillingAccount, error)
-	ListOrgBillingAccounts(ctx context.Context, orgID string, page, pageSize int) ([]OrgBillingAccount, error)
-	PerformOrgBillingAccountAction(ctx context.Context, accountID, action string, params map[string]interface{}) (map[string]interface{}, error)
-	DeleteOrgBillingAccount(ctx context.Context, id string) error
+// BillingAccountService provides dynamic, type-agnostic account operations for user, project, and organization billing accounts.
+type BillingAccountService interface {
+	Create(ctx context.Context, accountType BillingAccountType, input interface{}) (interface{}, error)
+	Get(ctx context.Context, accountType BillingAccountType, id string) (interface{}, error)
+	Update(ctx context.Context, accountType BillingAccountType, input interface{}) (interface{}, error)
+	List(ctx context.Context, accountType BillingAccountType, ownerID string, page, pageSize int) ([]interface{}, error)
+	PerformAction(ctx context.Context, accountType BillingAccountType, accountID, action string, params map[string]interface{}) (map[string]interface{}, error)
+	Delete(ctx context.Context, accountType BillingAccountType, id string) error
 }

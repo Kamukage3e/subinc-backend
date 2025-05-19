@@ -1,26 +1,62 @@
 package account
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
-type ProjectBillingAccountServiceAdapter struct {
+// BillingAccountServiceAdapter provides dynamic, type-agnostic account operations.
+type BillingAccountServiceAdapter struct {
 	Store *PostgresStore
 }
 
-func (a *ProjectBillingAccountServiceAdapter) CreateProjectBillingAccount(ctx context.Context, acct ProjectBillingAccount) (ProjectBillingAccount, error) {
-	return a.Store.CreateProjectBillingAccount(ctx, acct)
+// Create creates an account of any type.
+func (a *BillingAccountServiceAdapter) Create(ctx context.Context, accountType BillingAccountType, acct interface{}) (interface{}, error) {
+	return a.Store.CreateBillingAccount(ctx, accountType, acct)
 }
-func (a *ProjectBillingAccountServiceAdapter) GetProjectBillingAccount(ctx context.Context, id string) (ProjectBillingAccount, error) {
-	return a.Store.GetProjectBillingAccount(ctx, id)
+
+// Get fetches an account of any type by ID.
+func (a *BillingAccountServiceAdapter) Get(ctx context.Context, accountType BillingAccountType, id string) (interface{}, error) {
+	return a.Store.GetBillingAccount(ctx, accountType, id)
 }
-func (a *ProjectBillingAccountServiceAdapter) UpdateProjectBillingAccount(ctx context.Context, acct ProjectBillingAccount) (ProjectBillingAccount, error) {
-	return a.Store.UpdateProjectBillingAccount(ctx, acct)
+
+// Update updates an account of any type.
+func (a *BillingAccountServiceAdapter) Update(ctx context.Context, accountType BillingAccountType, acct interface{}) (interface{}, error) {
+	return a.Store.UpdateBillingAccount(ctx, accountType, acct)
 }
-func (a *ProjectBillingAccountServiceAdapter) ListProjectBillingAccounts(ctx context.Context, projectID string, page, pageSize int) ([]ProjectBillingAccount, error) {
-	return a.Store.ListProjectBillingAccounts(ctx, projectID, page, pageSize)
+
+// List lists accounts of any type, returns []interface{} of the correct struct.
+func (a *BillingAccountServiceAdapter) List(ctx context.Context, accountType BillingAccountType, ownerID string, page, pageSize int) ([]interface{}, error) {
+	res, err := a.Store.ListBillingAccounts(ctx, accountType, ownerID, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	var list []interface{}
+	switch v := res.(type) {
+	case []ProjectBillingAccount:
+		for i := range v {
+			list = append(list, v[i])
+		}
+	case []UserBillingAccount:
+		for i := range v {
+			list = append(list, v[i])
+		}
+	case []OrganizationBillingAccount:
+		for i := range v {
+			list = append(list, v[i])
+		}
+	default:
+		return nil, fmt.Errorf("unexpected type in List: %T", res)
+	}
+	return list, nil
 }
-func (a *ProjectBillingAccountServiceAdapter) PerformProjectBillingAccountAction(ctx context.Context, accountID, action string, params map[string]interface{}) (map[string]interface{}, error) {
-	return a.Store.PerformProjectBillingAccountAction(ctx, accountID, action, params)
+
+// PerformAction performs an action on any account type.
+func (a *BillingAccountServiceAdapter) PerformAction(ctx context.Context, accountType BillingAccountType, accountID, action string, params map[string]interface{}) (map[string]interface{}, error) {
+	return a.Store.PerformBillingAccountAction(ctx, accountType, accountID, action, params)
 }
-func (a *ProjectBillingAccountServiceAdapter) DeleteProjectBillingAccount(ctx context.Context, id string) error {
-	return a.Store.DeleteProjectBillingAccount(ctx, id)
+
+// Delete deletes an account of any type by ID.
+func (a *BillingAccountServiceAdapter) Delete(ctx context.Context, accountType BillingAccountType, id string) error {
+	return a.Store.DeleteBillingAccount(ctx, accountType, id)
 }

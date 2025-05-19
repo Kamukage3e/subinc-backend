@@ -146,6 +146,15 @@ func main() {
 
 	app := fiber.New()
 
+	// Add a health check endpoint
+	app.Get("/api/v1/health", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"status":  "ok",
+			"time":    time.Now().Format(time.RFC3339),
+			"service": "subinc-backend",
+		})
+	})
+
 	// Log every request to stdout
 	app.Use(func(c *fiber.Ctx) error {
 		start := time.Now()
@@ -304,7 +313,7 @@ func main() {
 		&discount.DiscountServiceAdapter{Store: discountStore}, // DiscountService
 		&discount.CouponServiceAdapter{Store: discountStore},   // CouponService
 		&discount.CreditServiceAdapter{Store: discountStore},   // CreditService
-		&account.ProjectBillingAccountServiceAdapter{Store: accountStore},
+		&account.BillingAccountServiceAdapter{Store: accountStore},
 		*logr,
 	)
 	discount.RegisterRoutes(billingRoute, discountHandler, jwtCfg.SecretName, securityStore)
@@ -333,9 +342,9 @@ func main() {
 
 	// --- ACCOUNT ---
 	accountHandler := &account.AccountHandler{
-		ProjectBillingAccountService: &account.ProjectBillingAccountServiceAdapter{Store: accountStore},
-		NotificationService:          securityStore,
-		RateLimitService:             &billingHandler.RateLimitService,
+		BillingAccountService: &account.BillingAccountServiceAdapter{Store: accountStore},
+		NotificationService:   securityStore,
+		RateLimitService:      &billingHandler.RateLimitService,
 	}
 	account.RegisterRoutes(billingRoute, accountHandler, jwtCfg.SecretName, billingHandler.RateLimitService)
 

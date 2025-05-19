@@ -12,8 +12,20 @@ table "org_billing_accounts" {
     type = uuid
     null = false
   }
+  column "tenant_id" {
+    type = uuid
+    null = false
+  }
+  column "email" {
+    type = varchar(255)
+    null = false
+  }
   column "status" {
     type = varchar(32)
+    null = false
+  }
+  column "currency" {
+    type = varchar(16)
     null = false
   }
   column "default_method_id" {
@@ -31,9 +43,7 @@ table "org_billing_accounts" {
     default = sql("now()")
   }
   primary_key {
-    columns = [
-      column.id
-    ]
+    columns = [column.id]
   }
   unique "uq_org_billing_accounts_id" {
     columns = [column.id]
@@ -44,7 +54,7 @@ table "org_billing_accounts" {
     on_delete   = CASCADE
   }
   index "idx_org_billing_accounts_org_id" {
-    columns = [column.id]
+    columns = [column.org_id]
   }
 }
 
@@ -58,8 +68,20 @@ table "project_billing_accounts" {
     type = uuid
     null = false
   }
+  column "tenant_id" {
+    type = uuid
+    null = false
+  }
+  column "email" {
+    type = varchar(255)
+    null = false
+  }
   column "status" {
     type = varchar(32)
+    null = false
+  }
+  column "currency" {
+    type = varchar(16)
     null = false
   }
   column "default_method_id" {
@@ -88,7 +110,63 @@ table "project_billing_accounts" {
     on_delete   = CASCADE
   }
   index "idx_project_billing_accounts_project_id" {
+    columns = [column.project_id]
+  }
+}
+
+table "user_billing_accounts" {
+  schema = schema.public
+  column "id" {
+    type = uuid
+    null = false
+  }
+  column "user_id" {
+    type = uuid
+    null = false
+  }
+  column "tenant_id" {
+    type = uuid
+    null = false
+  }
+  column "email" {
+    type = varchar(255)
+    null = false
+  }
+  column "status" {
+    type = varchar(32)
+    null = false
+  }
+  column "currency" {
+    type = varchar(16)
+    null = false
+  }
+  column "default_method_id" {
+    type = uuid
+    null = true
+  }
+  column "created_at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+  column "updated_at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+  primary_key {
     columns = [column.id]
+  }
+  unique "uq_user_billing_accounts_id" {
+    columns = [column.id]
+  }
+  foreign_key "fk_user_billing_accounts_user_id" {
+    columns     = [column.user_id]
+    ref_columns = [table.users.column.id]
+    on_delete   = CASCADE
+  }
+  index "idx_user_billing_accounts_user_id" {
+    columns = [column.user_id]
   }
 }
 
@@ -1340,7 +1418,7 @@ table "projects" {
   }
   column "org_id" {
     type = uuid
-    null = false
+    null = true
   }
   column "name" {
     type = varchar(128)

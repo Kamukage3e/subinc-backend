@@ -21,7 +21,7 @@ type ProjectHandler struct {
 
 type Project struct {
 	ID          string            `json:"id"`
-	OrgID       string            `json:"org_id"`
+	OrgID       string            `json:"org_id,omitempty"`
 	Name        string            `json:"name"`
 	Description string            `json:"description"`
 	Status      string            `json:"status"`

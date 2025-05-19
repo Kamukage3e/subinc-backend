@@ -64,53 +64,6 @@ func NewBillingHandler(store *PostgresStore, paymentStore payment.StoreInterface
 	return handler
 }
 
-// swagger:route POST /billing-management/webhook-events/create billing webhookEventCreate
-// ---
-// summary: Create a webhook event
-// description: Creates a new webhook event.
-// tags:
-//   - billing
-//   - webhook
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     $ref: "#/definitions/WebhookEvent"
-//
-// responses:
-//
-//	201:
-//	  description: WebhookEvent
-//	  schema:
-//	    $ref: "#/definitions/WebhookEvent"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) CreateWebhookEvent(c *fiber.Ctx) error {
 	var input WebhookEvent
 	if err := c.BodyParser(&input); err != nil {
@@ -129,53 +82,6 @@ func (h *BillingAdminHandler) CreateWebhookEvent(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(event)
 }
 
-// swagger:route PUT /billing-management/webhook-events/update billing webhookEventUpdate
-// ---
-// summary: Update a webhook event
-// description: Updates an existing webhook event.
-// tags:
-//   - billing
-//   - webhook
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     $ref: "#/definitions/WebhookEvent"
-//
-// responses:
-//
-//	200:
-//	  description: WebhookEvent
-//	  schema:
-//	    $ref: "#/definitions/WebhookEvent"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) UpdateWebhookEvent(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
@@ -199,54 +105,6 @@ func (h *BillingAdminHandler) UpdateWebhookEvent(c *fiber.Ctx) error {
 	return c.JSON(event)
 }
 
-// swagger:route DELETE /billing-management/webhook-events/delete billing webhookEventDelete
-// ---
-// summary: Delete a webhook event
-// description: Deletes a webhook event by ID.
-// tags:
-//   - billing
-//   - webhook
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     type: object
-//     properties:
-//     id:
-//     type: string
-//
-// responses:
-//
-//	204:
-//	  description: EmptyResponse
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) DeleteWebhookEvent(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
@@ -264,56 +122,6 @@ func (h *BillingAdminHandler) DeleteWebhookEvent(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// swagger:route GET /billing-management/webhook-events/get billing webhookEventGet
-// ---
-// summary: Get a webhook event
-// description: Retrieves a webhook event by ID.
-// tags:
-//   - billing
-//   - webhook
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     type: object
-//     properties:
-//     id:
-//     type: string
-//
-// responses:
-//
-//	200:
-//	  description: WebhookEvent
-//	  schema:
-//	    $ref: "#/definitions/WebhookEvent"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	404:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) GetWebhookEvent(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
@@ -328,62 +136,6 @@ func (h *BillingAdminHandler) GetWebhookEvent(c *fiber.Ctx) error {
 	return c.JSON(event)
 }
 
-// swagger:route GET /billing-management/webhook-events/list billing webhookEventList
-// ---
-// summary: List webhook events
-// description: Lists webhook events with optional filters.
-// tags:
-//   - billing
-//   - webhook
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: false
-//     schema:
-//     type: object
-//     properties:
-//     account_id:
-//     type: string
-//     status:
-//     type: string
-//     page:
-//     type: integer
-//     page_size:
-//     type: integer
-//
-// responses:
-//
-//	200:
-//	  description: WebhookEventListResponse
-//	  schema:
-//	    $ref: "#/definitions/WebhookEventListResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) ListWebhookEvents(c *fiber.Ctx) error {
 	accountID := c.Query("account_id")
 	status := c.Query("status")
@@ -397,53 +149,6 @@ func (h *BillingAdminHandler) ListWebhookEvents(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"events": events, "page": page, "page_size": pageSize})
 }
 
-// swagger:route POST /billing-management/invoice-adjustments/create billing invoiceAdjustmentCreate
-// ---
-// summary: Create an invoice adjustment
-// description: Creates a new invoice adjustment.
-// tags:
-//   - billing
-//   - invoice-adjustment
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     $ref: "#/definitions/InvoiceAdjustment"
-//
-// responses:
-//
-//	201:
-//	  description: InvoiceAdjustment
-//	  schema:
-//	    $ref: "#/definitions/InvoiceAdjustment"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) CreateInvoiceAdjustment(c *fiber.Ctx) error {
 	var input InvoiceAdjustment
 	if err := c.BodyParser(&input); err != nil {
@@ -475,53 +180,6 @@ func (h *BillingAdminHandler) CreateInvoiceAdjustment(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(adj)
 }
 
-// swagger:route PUT /billing-management/invoice-adjustments/update billing invoiceAdjustmentUpdate
-// ---
-// summary: Update an invoice adjustment
-// description: Updates an existing invoice adjustment.
-// tags:
-//   - billing
-//   - invoice-adjustment
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     $ref: "#/definitions/InvoiceAdjustment"
-//
-// responses:
-//
-//	200:
-//	  description: InvoiceAdjustment
-//	  schema:
-//	    $ref: "#/definitions/InvoiceAdjustment"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) UpdateInvoiceAdjustment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
@@ -548,54 +206,6 @@ func (h *BillingAdminHandler) UpdateInvoiceAdjustment(c *fiber.Ctx) error {
 	return c.JSON(adj)
 }
 
-// swagger:route DELETE /billing-management/invoice-adjustments/delete billing invoiceAdjustmentDelete
-// ---
-// summary: Delete an invoice adjustment
-// description: Deletes an invoice adjustment by ID.
-// tags:
-//   - billing
-//   - invoice-adjustment
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     type: object
-//     properties:
-//     id:
-//     type: string
-//
-// responses:
-//
-//	204:
-//	  description: EmptyResponse
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) DeleteInvoiceAdjustment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
@@ -615,56 +225,6 @@ func (h *BillingAdminHandler) DeleteInvoiceAdjustment(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// swagger:route GET /billing-management/invoice-adjustments/get billing invoiceAdjustmentGet
-// ---
-// summary: Get an invoice adjustment
-// description: Retrieves an invoice adjustment by ID.
-// tags:
-//   - billing
-//   - invoice-adjustment
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     type: object
-//     properties:
-//     id:
-//     type: string
-//
-// responses:
-//
-//	200:
-//	  description: InvoiceAdjustment
-//	  schema:
-//	    $ref: "#/definitions/InvoiceAdjustment"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	404:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) GetInvoiceAdjustment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
@@ -679,60 +239,6 @@ func (h *BillingAdminHandler) GetInvoiceAdjustment(c *fiber.Ctx) error {
 	return c.JSON(adj)
 }
 
-// swagger:route GET /billing-management/invoice-adjustments/list billing invoiceAdjustmentList
-// ---
-// summary: List invoice adjustments
-// description: Lists invoice adjustments with optional filters.
-// tags:
-//   - billing
-//   - invoice-adjustment
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: false
-//     schema:
-//     type: object
-//     properties:
-//     invoice_id:
-//     type: string
-//     page:
-//     type: integer
-//     page_size:
-//     type: integer
-//
-// responses:
-//
-//	200:
-//	  description: InvoiceAdjustmentListResponse
-//	  schema:
-//	    $ref: "#/definitions/InvoiceAdjustmentListResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) ListInvoiceAdjustments(c *fiber.Ctx) error {
 	invoiceID := c.Query("invoice_id")
 	page := c.QueryInt("page", 1)
@@ -751,51 +257,6 @@ func (h *BillingAdminHandler) ListInvoiceAdjustments(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"invoice_adjustments": adjs, "page": page, "page_size": pageSize})
 }
 
-// swagger:route POST /billing-management/manual-adjustment/create billing manualAdjustmentCreate
-// ---
-// summary: Create a manual adjustment
-// description: Creates a manual adjustment for an invoice.
-// tags:
-//   - billing
-//   - manual-adjustment
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     $ref: "#/definitions/InvoiceAdjustment"
-//
-// responses:
-//
-//	201:
-//	  description: EmptyResponse
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) CreateManualAdjustment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
@@ -830,54 +291,6 @@ func (h *BillingAdminHandler) CreateManualAdjustment(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusCreated)
 }
 
-// swagger:route GET /billing-management/accounts/invoice-preview billing invoicePreviewGet
-// ---
-// summary: Get invoice preview
-// description: Returns a preview of an invoice by ID.
-// tags:
-//   - billing
-//   - invoice
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     type: object
-//     properties:
-//     id:
-//     type: string
-//
-// responses:
-//
-//	204:
-//	  description: EmptyResponse
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) GetInvoicePreview(c *fiber.Ctx) error {
 	var input struct {
 		ID string `json:"id"`
@@ -900,55 +313,6 @@ func (h *BillingAdminHandler) GetInvoicePreview(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// swagger:route POST /billing-management/invoices/apply-credits billing invoiceApplyCredits
-// ---
-// summary: Apply credits to invoice
-// description: Applies available credits to an invoice.
-// tags:
-//   - billing
-//   - invoice
-//   - credit
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     type: object
-//     properties:
-//     invoice_id:
-//     type: string
-//
-// responses:
-//
-//	204:
-//	  description: EmptyResponse
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) ApplyCreditsToInvoice(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
@@ -967,38 +331,6 @@ func (h *BillingAdminHandler) ApplyCreditsToInvoice(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// swagger:route GET /billing-management/billing/config/get billing billingConfigGet
-// ---
-// summary: Get billing config
-// description: Retrieves the current billing configuration.
-// tags:
-//   - billing
-//   - config
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// responses:
-//
-//	200:
-//	  description: BillingConfigResponse
-//	  schema:
-//	    $ref: "#/definitions/BillingConfigResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) GetBillingConfig(c *fiber.Ctx) error {
 	var input struct{}
 	_ = c.BodyParser(&input) // Accepts empty body for consistency
@@ -1017,51 +349,6 @@ func (h *BillingAdminHandler) GetBillingConfig(c *fiber.Ctx) error {
 	return c.JSON(cfg)
 }
 
-// swagger:route POST /billing-management/billing/config/set billing billingConfigSet
-// ---
-// summary: Set billing config
-// description: Sets the billing configuration.
-// tags:
-//   - billing
-//   - config
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     type: object
-//
-// responses:
-//
-//	204:
-//	  description: EmptyResponse
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) SetBillingConfig(c *fiber.Ctx) error {
 	var input map[string]interface{}
 	if err := c.BodyParser(&input); err != nil {
@@ -1082,52 +369,6 @@ func (h *BillingAdminHandler) SetBillingConfig(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// swagger:route POST /billing-management/webhook-subscriptions/create billing webhookSubscriptionCreate
-// ---
-// summary: Create a webhook subscription
-// description: Creates a new webhook subscription.
-// tags:
-//   - billing
-//   - webhook-subscription
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     type: object
-//     properties:
-//     url:
-//     type: string
-//     secret:
-//     type: string
-//     description:
-//     type: string
-//     events:
-//     type: array
-//     items:
-//     type: string
-//
-// responses:
-//
-//	201:
-//	  description: Created
-//	  schema:
-//	    type: string
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
 func (h *BillingAdminHandler) CreateWebhookSubscription(c *fiber.Ctx) error {
 	var input struct {
 		URL         string   `json:"url"`
@@ -1151,60 +392,6 @@ func (h *BillingAdminHandler) CreateWebhookSubscription(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusCreated)
 }
 
-// swagger:route GET /billing-management/webhook-subscriptions/list billing webhookSubscriptionList
-// ---
-// summary: List webhook subscriptions
-// description: Lists webhook subscriptions for a tenant.
-// tags:
-//   - billing
-//   - webhook-subscription
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: false
-//     schema:
-//     type: object
-//     properties:
-//     tenant_id:
-//     type: string
-//     page:
-//     type: integer
-//     page_size:
-//     type: integer
-//
-// responses:
-//
-//	200:
-//	  description: List of webhook subscriptions
-//	  schema:
-//	    type: object
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) ListWebhookSubscriptions(c *fiber.Ctx) error {
 	tenantID := c.Query("tenant_id")
 	page := c.QueryInt("page", 1)
@@ -1222,42 +409,6 @@ func (h *BillingAdminHandler) ListWebhookSubscriptions(c *fiber.Ctx) error {
 	return c.JSON(out)
 }
 
-// swagger:route DELETE /billing-management/webhook-subscriptions/delete billing webhookSubscriptionDelete
-// ---
-// summary: Delete a webhook subscription
-// description: Deletes a webhook subscription by ID.
-// tags:
-//   - billing
-//   - webhook-subscription
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     type: object
-//     properties:
-//     id:
-//     type: string
-//
-// responses:
-//
-//	204:
-//	  description: No Content
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
 func (h *BillingAdminHandler) DeleteWebhookSubscription(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
@@ -1275,35 +426,6 @@ func (h *BillingAdminHandler) DeleteWebhookSubscription(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// swagger:route GET /billing-management/reports/revenue billing revenueReportGet
-// ---
-// summary: Get revenue report
-// description: Retrieves the revenue report.
-// tags:
-//   - billing
-//   - report
-//
-// produces:
-//   - application/json
-//
-// responses:
-//
-//	200:
-//	  description: Revenue report
-//	  schema:
-//	    type: object
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) GetRevenueReport(c *fiber.Ctx) error {
 	var input struct{}
 	_ = c.BodyParser(&input)
@@ -1321,31 +443,6 @@ func (h *BillingAdminHandler) GetRevenueReport(c *fiber.Ctx) error {
 	return c.JSON(out)
 }
 
-// swagger:route GET /billing-management/reports/ar billing arReportGet
-// ---
-// summary: Get accounts receivable report
-// description: Retrieves the accounts receivable report.
-// tags:
-//   - billing
-//   - report
-//
-// produces:
-//   - application/json
-//
-// responses:
-//
-//	200:
-//	  description: Accounts receivable report
-//	  schema:
-//	    type: object
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) GetARReport(c *fiber.Ctx) error {
 	var input struct{}
 	_ = c.BodyParser(&input)
@@ -1363,31 +460,6 @@ func (h *BillingAdminHandler) GetARReport(c *fiber.Ctx) error {
 	return c.JSON(out)
 }
 
-// swagger:route GET /billing-management/reports/churn billing churnReportGet
-// ---
-// summary: Get churn report
-// description: Retrieves the churn report.
-// tags:
-//   - billing
-//   - report
-//
-// produces:
-//   - application/json
-//
-// responses:
-//
-//	200:
-//	  description: Churn report
-//	  schema:
-//	    type: object
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) GetChurnReport(c *fiber.Ctx) error {
 	var input struct{}
 	_ = c.BodyParser(&input)
@@ -1405,62 +477,6 @@ func (h *BillingAdminHandler) GetChurnReport(c *fiber.Ctx) error {
 	return c.JSON(out)
 }
 
-// swagger:route POST /billing-management/invoices/create-with-fees billing invoiceCreateWithFees
-// ---
-// summary: Create invoice with fees and tax
-// description: Creates an invoice with additional fees and tax.
-// tags:
-//   - billing
-//   - invoice
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     type: object
-//     properties:
-//     invoice:
-//     $ref: "#/definitions/Invoice"
-//     fixed_fee:
-//     type: number
-//     percent_fee:
-//     type: number
-//     tax_rate:
-//     type: number
-//
-// responses:
-//
-//	201:
-//	  description: Invoice
-//	  schema:
-//	    $ref: "#/definitions/Invoice"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) CreateInvoiceWithFeesAndTax(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
@@ -1478,12 +494,13 @@ func (h *BillingAdminHandler) CreateInvoiceWithFeesAndTax(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "invoice not found"})
 	}
-	accountObj, err := h.AccountService.GetProjectBillingAccount(c.Context(), invoice.AccountID)
+	res, err := h.AccountService.Get(c.Context(), account.AccountTypeProject, invoice.AccountID)
 	if err != nil {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "account not found"})
 	}
+	accountObj, _ := res.(account.ProjectBillingAccount)
 	pluginName := "default"
-	if cfg, err := h.TaxService.GetTaxPluginConfig(c.Context(), acct.TenantID); err == nil && cfg.PluginName != "" {
+	if cfg, err := h.TaxService.GetTaxPluginConfig(c.Context(), accountObj.TenantID); err == nil && cfg.PluginName != "" {
 		pluginName = cfg.PluginName
 	}
 	plugin, ok := h.PluginManager.GetTaxPlugin(pluginName)
@@ -1558,53 +575,6 @@ func (h *BillingAdminHandler) CreateInvoiceWithFeesAndTax(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(out)
 }
 
-// swagger:route POST /billing-management/invoices/create billing invoiceCreate
-// ---
-// summary: Create an invoice
-// description: Creates a new invoice.
-// tags:
-//   - billing
-//   - invoice
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     $ref: "#/definitions/Invoice"
-//
-// responses:
-//
-//	201:
-//	  description: Invoice
-//	  schema:
-//	    $ref: "#/definitions/Invoice"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 	var input Invoice
 	if err := c.BodyParser(&input); err != nil {
@@ -1615,11 +585,12 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 		logger.LogError("CreateInvoice: validation failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
 	}
-	accountObj, err := h.AccountService.GetProjectBillingAccount(c.Context(), input.AccountID)
+	res, err := h.AccountService.Get(c.Context(), account.AccountTypeProject, input.AccountID)
 	if err != nil {
 		logger.LogError("CreateInvoice: account not found", logger.ErrorField(err), logger.String("account_id", input.AccountID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "account not found"})
 	}
+	accountObj, _ := res.(account.ProjectBillingAccount)
 	currency := strings.ToUpper(strings.TrimSpace(input.Currency))
 	if currency == "" {
 		currency = strings.ToUpper(strings.TrimSpace(accountObj.Currency))
@@ -1691,7 +662,7 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 	// Convert to tax.Account for the plugin
 	taxAccount := tax.Account{
 		ID:        accountObj.ID,
-		TenantID:  accountObj.TenantID, 
+		TenantID:  accountObj.TenantID,
 		Email:     accountObj.Email,
 		Status:    accountObj.Status,
 		Currency:  accountObj.Currency,
@@ -1699,7 +670,7 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 		UpdatedAt: accountObj.UpdatedAt,
 	}
 
-	taxAmount, taxRate, terr := plugin.CalculateTax(c.Context(), taxInvoice, taxAccount, acct.TenantID)
+	taxAmount, taxRate, terr := plugin.CalculateTax(c.Context(), taxInvoice, taxAccount, accountObj.TenantID)
 	if terr != nil {
 		logger.LogError("CreateInvoice: tax plugin failed", logger.ErrorField(terr), logger.String("plugin", pluginName))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tax calculation failed: " + terr.Error()})
@@ -1719,85 +690,76 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 	}
 	if h.Notify != nil && accountObj.Email != "" {
 		go func(inv Invoice) {
-			acct, accErr := h.AccountService.GetProjectBillingAccount(c.Context(), inv.AccountID)
-			if accErr != nil || acct.Email == "" {
+			res, accErr := h.AccountService.Get(c.Context(), account.AccountTypeProject, inv.AccountID)
+			if accErr != nil || res == nil {
 				logger.LogError("dunning.worker.notify.account_not_found", logger.ErrorField(accErr), logger.String("account_id", inv.AccountID))
 				return
 			}
+			acct, _ := res.(account.ProjectBillingAccount)
+			if acct.Email == "" {
+				logger.LogError("dunning.worker.account_no_email", logger.String("account_id", inv.AccountID))
+				return
+			}
+			logger.LogInfo("dunning.worker.retrying_payment", logger.String("invoice_id", inv.ID), logger.String("account_id", inv.AccountID))
+			failedPayment := &payment.FailedPayment{ID: inv.ID, InvoiceID: inv.ID, DunningAttempts: inv.DunningAttempts, DunningState: inv.DunningStatus, LastDunningAttempt: inv.DunningNextAttemptAt}
+			result, payErr := payment.RetryPayment(c.Context(), h.PaymentStore, failedPayment)
+			if payErr == nil && result != nil && result.Status == "succeeded" {
+				err := h.Store.UpdateInvoiceStatus(c.Context(), inv.ID, "paid")
+				if err != nil {
+					logger.LogError("dunning.worker.update_invoice_status_failed", logger.ErrorField(err), logger.String("invoice_id", inv.ID))
+				}
+				details := map[string]interface{}{
+					"invoice_id":    inv.ID,
+					"amount":        inv.Amount,
+					"currency":      inv.Currency,
+					"due_date":      inv.DueDate,
+					"status":        "paid",
+					"account_id":    acct.ID,
+					"account_email": acct.Email,
+					"tenant_id":     acct.TenantID,
+				}
+				nErr := h.Notify.SendNotification(
+					context.Background(),
+					acct.TenantID,
+					security_management.NotificationEmail,
+					[]string{acct.Email},
+					"invoice.issued",
+					details,
+					3,
+				)
+				if nErr != nil {
+					logger.LogError("dunning.worker.notify_paid_failed", logger.ErrorField(nErr), logger.String("account_id", acct.ID))
+				}
+				logger.LogInfo("dunning.worker.payment_success", logger.String("invoice_id", inv.ID))
+
+			}
+			logger.LogError("dunning.worker.payment_retry_failed", logger.ErrorField(payErr), logger.String("invoice_id", inv.ID))
 			details := map[string]interface{}{
 				"invoice_id":    inv.ID,
 				"amount":        inv.Amount,
 				"currency":      inv.Currency,
-				"due_date":      inv.DueDate,
-				"status":        inv.Status,
+				"status":        "payment_failed",
 				"account_id":    acct.ID,
 				"account_email": acct.Email,
-				"tenant_id":     acct.TenantID,
 			}
-			err := h.Notify.SendNotification(
+			nErr := h.Notify.SendNotification(
 				context.Background(),
 				acct.TenantID,
 				security_management.NotificationEmail,
 				[]string{acct.Email},
-				"invoice.issued",
+				"invoice.payment_failed",
 				details,
 				3,
 			)
-			if err != nil {
-				logger.LogError("dunning.worker.notify.failed", logger.ErrorField(err), logger.String("account_id", acct.ID))
+			if nErr != nil {
+				logger.LogError("dunning.worker.notify_failed_failed", logger.ErrorField(nErr), logger.String("account_id", acct.ID))
 			}
+			// Optionally: escalate after N failures, e.g. mark as "collections" or similar
 		}(invoice)
 	}
 	return c.Status(fiber.StatusCreated).JSON(invoice)
 }
 
-// swagger:route PUT /billing-management/invoices/update billing invoiceUpdate
-// ---
-// summary: Update an invoice
-// description: Updates an existing invoice.
-// tags:
-//   - billing
-//   - invoice
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     $ref: "#/definitions/Invoice"
-//
-// responses:
-//
-//	200:
-//	  description: Invoice
-//	  schema:
-//	    $ref: "#/definitions/Invoice"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) UpdateInvoice(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
@@ -1828,56 +790,6 @@ func (h *BillingAdminHandler) UpdateInvoice(c *fiber.Ctx) error {
 	return c.JSON(invoice)
 }
 
-// swagger:route GET /billing-management/invoices/get billing invoiceGet
-// ---
-// summary: Get an invoice
-// description: Retrieves an invoice by ID.
-// tags:
-//   - billing
-//   - invoice
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     type: object
-//     properties:
-//     invoice_id:
-//     type: string
-//
-// responses:
-//
-//	200:
-//	  description: Invoice
-//	  schema:
-//	    $ref: "#/definitions/Invoice"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	404:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) GetInvoice(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
@@ -1892,62 +804,6 @@ func (h *BillingAdminHandler) GetInvoice(c *fiber.Ctx) error {
 	return c.JSON(invoice)
 }
 
-// swagger:route GET /billing-management/invoices/list billing invoiceList
-// ---
-// summary: List invoices
-// description: Lists invoices with optional filters.
-// tags:
-//   - billing
-//   - invoice
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: false
-//     schema:
-//     type: object
-//     properties:
-//     account_id:
-//     type: string
-//     status:
-//     type: string
-//     page:
-//     type: integer
-//     page_size:
-//     type: integer
-//
-// responses:
-//
-//	200:
-//	  description: List of invoices
-//	  schema:
-//	    type: object
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) ListInvoices(c *fiber.Ctx) error {
 	accountID := c.Query("account_id")
 	status := c.Query("status")
@@ -1963,53 +819,6 @@ func (h *BillingAdminHandler) ListInvoices(c *fiber.Ctx) error {
 
 // --- ExchangeRate Handlers ---
 
-// swagger:route POST /billing-management/exchange-rates/create billing exchangeRateCreate
-// ---
-// summary: Create an exchange rate
-// description: Creates a new exchange rate.
-// tags:
-//   - billing
-//   - exchange-rate
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     $ref: "#/definitions/ExchangeRate"
-//
-// responses:
-//
-//	201:
-//	  description: ExchangeRate
-//	  schema:
-//	    $ref: "#/definitions/ExchangeRate"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) CreateExchangeRate(c *fiber.Ctx) error {
 	var input ExchangeRate
 	if err := c.BodyParser(&input); err != nil {
@@ -2037,53 +846,6 @@ func (h *BillingAdminHandler) CreateExchangeRate(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(rate)
 }
 
-// swagger:route PUT /billing-management/exchange-rates/update billing exchangeRateUpdate
-// ---
-// summary: Update an exchange rate
-// description: Updates an existing exchange rate.
-// tags:
-//   - billing
-//   - exchange-rate
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     $ref: "#/definitions/ExchangeRate"
-//
-// responses:
-//
-//	200:
-//	  description: ExchangeRate
-//	  schema:
-//	    $ref: "#/definitions/ExchangeRate"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) UpdateExchangeRate(c *fiber.Ctx) error {
 	var input ExchangeRate
 	if err := c.BodyParser(&input); err != nil {
@@ -2108,56 +870,6 @@ func (h *BillingAdminHandler) UpdateExchangeRate(c *fiber.Ctx) error {
 	return c.JSON(rate)
 }
 
-// swagger:route DELETE /billing-management/exchange-rates/delete billing exchangeRateDelete
-// ---
-// summary: Delete an exchange rate
-// description: Deletes an exchange rate by base and quote currency.
-// tags:
-//   - billing
-//   - exchange-rate
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     type: object
-//     properties:
-//     base_currency:
-//     type: string
-//     quote_currency:
-//     type: string
-//
-// responses:
-//
-//	204:
-//	  description: EmptyResponse
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) DeleteExchangeRate(c *fiber.Ctx) error {
 	var input struct {
 		BaseCurrency  string `json:"base_currency"`
@@ -2184,49 +896,6 @@ func (h *BillingAdminHandler) DeleteExchangeRate(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// swagger:route GET /billing-management/exchange-rates/get billing exchangeRateGet
-// ---
-// summary: Get an exchange rate
-// description: Retrieves an exchange rate by base and quote currency.
-// tags:
-//   - billing
-//   - exchange-rate
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     type: object
-//     properties:
-//     base_currency:
-//     type: string
-//     quote_currency:
-//     type: string
-//
-// responses:
-//
-//	200: ExchangeRate
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400: ErrorResponse
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422: ErrorResponse
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) GetExchangeRate(c *fiber.Ctx) error {
 	var input struct {
 		BaseCurrency  string `json:"base_currency"`
@@ -2252,37 +921,6 @@ func (h *BillingAdminHandler) GetExchangeRate(c *fiber.Ctx) error {
 	return c.JSON(rate)
 }
 
-// swagger:route GET /billing-management/exchange-rates/list billing exchangeRateList
-// ---
-// summary: List exchange rates
-// description: Lists all exchange rates.
-// tags:
-//   - billing
-//   - exchange-rate
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// responses:
-//
-//	200: ExchangeRateListResponse
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400: ErrorResponse
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422: ErrorResponse
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) ListExchangeRates(c *fiber.Ctx) error {
 	rates, err := h.Store.ListExchangeRates(c.Context())
 	if err != nil {
@@ -2294,51 +932,6 @@ func (h *BillingAdminHandler) ListExchangeRates(c *fiber.Ctx) error {
 
 // --- TenantCurrency Handlers ---
 
-// swagger:route POST /billing-management/tenant-currency/set billing tenantCurrencySet
-// ---
-// summary: Set tenant currency
-// description: Sets the currency for a tenant.
-// tags:
-//   - billing
-//   - tenant-currency
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     type: object
-//     properties:
-//     tenant_id:
-//     type: string
-//     currency:
-//     type: string
-//
-// responses:
-//
-//	201: TenantCurrencyResponse
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//
-//	400: ErrorResponse
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//
-//	422: ErrorResponse
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) SetTenantCurrency(c *fiber.Ctx) error {
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
@@ -2358,47 +951,6 @@ func (h *BillingAdminHandler) SetTenantCurrency(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(curr)
 }
 
-// swagger:route GET /billing-management/tenant-currency/get billing tenantCurrencyGet
-// ---
-// summary: Get tenant currency
-// description: Retrieves the currency for a tenant.
-// tags:
-//   - billing
-//   - tenant-currency
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     type: object
-//     properties:
-//     tenant_id:
-//     type: string
-//
-// responses:
-//
-//	200: TenantCurrencyResponse
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	400: ErrorResponse
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
-//	422: ErrorResponse
-//	  headers:
-//	    X-Request-ID:
-//	      type: string
-//	      description: Unique request ID
 func (h *BillingAdminHandler) GetTenantCurrency(c *fiber.Ctx) error {
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
@@ -2476,42 +1028,6 @@ func generateInvoicePDF(pdfData map[string]interface{}) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// swagger:route POST /billing-management/invoice/download billing invoiceDownload
-// ---
-// summary: Download invoice PDF
-// description: Downloads the invoice PDF as an attachment. Only JSON body allowed.
-// tags:
-//   - billing
-//   - invoice
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/pdf
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     $ref: "#/definitions/InvoiceDownload"
-//
-// responses:
-//
-//	200:
-//	  description: PDF
-//	  schema:
-//	    type: string
-//	400:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-//	404:
-//	  description: ErrorResponse
-//	  schema:
-//	    $ref: "#/definitions/ErrorResponse"
-
 // DownloadInvoicePDF returns the invoice PDF as an attachment. Only JSON body allowed.
 func (h *BillingAdminHandler) DownloadInvoicePDF(c *fiber.Ctx) error {
 	id := c.Params("id")
@@ -2522,18 +1038,19 @@ func (h *BillingAdminHandler) DownloadInvoicePDF(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "invoice not found"})
 	}
-	account, err := h.AccountService.GetProjectBillingAccount(c.Context(), invoice.AccountID)
+	res, err := h.AccountService.Get(c.Context(), account.AccountTypeProject, invoice.AccountID)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "account not found"})
 	}
+	accountObj, _ := res.(account.ProjectBillingAccount)
 	pdfData := map[string]interface{}{
 		"title":  "Invoice " + invoice.ID,
 		"header": []string{"INVOICE"},
 		"fields": [][2]string{
 			{"Invoice ID:", invoice.ID},
 			{"Status:", invoice.Status},
-			{"Account Email:", account.Email},
-			{"Account ID:", account.ID},
+			{"Account Email:", accountObj.Email},
+			{"Account ID:", accountObj.ID},
 			{"Created:", invoice.CreatedAt.Format("2006-01-02 15:04")},
 			{"Due Date:", invoice.DueDate.Format("2006-01-02")},
 		},
@@ -2558,39 +1075,6 @@ func (h *BillingAdminHandler) DownloadInvoicePDF(c *fiber.Ctx) error {
 	return c.Send(pdfBytes)
 }
 
-// swagger:route POST /billing-management/stripe/webhook billing stripeWebhook
-// ---
-// summary: Stripe webhook handler
-// description: Handles Stripe webhook events (invoice.paid, payment_intent.succeeded, invoice.payment_failed, customer.subscription.deleted, invoice.upcoming, invoice.finalized, invoice.voided, invoice.marked_uncollectible, charge.refunded, etc.).
-// tags:
-//   - billing
-//   - webhook
-//   - stripe
-//
-// consumes:
-//   - application/json
-//
-// produces:
-//   - application/json
-//
-// parameters:
-//   - name: input
-//     in: body
-//     required: true
-//     schema:
-//     type: object
-//     properties:
-//     base_currency:
-//     type: string
-//     quote_currency:
-//     type: string
-//
-// responses:
-//
-//	200:
-//	  description: OK
-//	  schema:
-//	    type: string
 func (h *BillingAdminHandler) StripeWebhookHandler(c *fiber.Ctx) error {
 	const maxBodyBytes = int64(65536)
 	body := c.BodyRaw()
@@ -2727,24 +1211,7 @@ func (h *BillingAdminHandler) StripeWebhookHandler(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusOK)
 }
 
-// swagger:route POST /billing-management/dunning/worker billing dunningWorker
-// ---
-// summary: Dunning worker
-// description: Runs payment retries for failed invoices (internal use only).
-// tags:
-//   - billing
-//   - dunning
-//
-// produces:
-//   - application/json
-//
-// responses:
-//
-//	200:
-//	  description: OK
-//	  schema:
-//	    type: string
-func DunningWorker(store *PostgresStore, paymentStore payment.StoreInterface, accountService account.ProjectBillingAccountService, notificationService security_management.NotificationService) {
+func DunningWorker(store *PostgresStore, paymentStore payment.StoreInterface, accountService account.BillingAccountService, notificationService security_management.NotificationService) {
 	ctx := context.Background()
 	logger.LogInfo("dunning.worker.starting")
 	for {
@@ -2761,11 +1228,12 @@ func DunningWorker(store *PostgresStore, paymentStore payment.StoreInterface, ac
 			continue
 		}
 		for _, inv := range invoices {
-			acct, err := accountService.GetProjectBillingAccount(ctx, inv.AccountID)
+			res, err := accountService.Get(ctx, account.AccountTypeProject, inv.AccountID)
 			if err != nil {
 				logger.LogError("dunning.worker.account_not_found", logger.ErrorField(err), logger.String("account_id", inv.AccountID))
 				continue
 			}
+			acct, _ := res.(account.ProjectBillingAccount)
 			if acct.Email == "" {
 				logger.LogError("dunning.worker.account_no_email", logger.String("account_id", inv.AccountID))
 				continue
