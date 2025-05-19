@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -73,6 +74,7 @@ const (
 	VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	ON CONFLICT (tenant_id, plugin_name)
 	DO UPDATE SET config = $4, is_enabled = $5, is_default = $6, updated_at = $8`
+	qDeleteRefund = `DELETE FROM refunds WHERE id = $1`
 )
 
 // --- Refund CRUD ---
@@ -135,6 +137,14 @@ func (s *PostgresStore) ListRefunds(ctx context.Context, paymentID, invoiceID, s
 		out = append(out, r)
 	}
 	return out, nil
+}
+func (s *PostgresStore) DeleteRefund(ctx context.Context, id string) error {
+	_, err := s.DB.Exec(ctx, qDeleteRefund, id)
+	if err != nil {
+		logger.LogError("DeleteRefund failed", logger.ErrorField(err), logger.String("id", id))
+		return err
+	}
+	return nil
 }
 
 // --- Payment CRUD ---
@@ -842,4 +852,354 @@ func (s *PostgresStore) GetDefaultPaymentPlugin(ctx context.Context, tenantID st
 		config.Config = make(map[string]interface{})
 	}
 	return &config, nil
+}
+
+// --- PaymentMethod CRUD ---
+func (s *PostgresStore) CreatePaymentMethod(ctx context.Context, input PaymentMethod, data map[string]string) (PaymentMethod, error) {
+	if err := input.Validate(); err != nil {
+		logger.LogError("CreatePaymentMethod: validation failed", logger.ErrorField(err))
+		return PaymentMethod{}, err
+	}
+	if input.ID == "" {
+		input.ID = uuid.NewString()
+	}
+	now := time.Now().UTC()
+	input.CreatedAt = now
+	input.UpdatedAt = now
+	meta, err := json.Marshal(data)
+	if err != nil {
+		logger.LogError("CreatePaymentMethod: failed to marshal metadata", logger.ErrorField(err))
+		return PaymentMethod{}, errors.New("failed to marshal metadata")
+	}
+	input.Metadata = string(meta)
+	const q = `INSERT INTO payment_methods (id, account_id, type, provider, last4, exp_month, exp_year, is_default, status, token, token_provider, created_at, updated_at, metadata)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+		RETURNING id, account_id, type, provider, last4, exp_month, exp_year, is_default, status, token, token_provider, created_at, updated_at, metadata`
+	row := s.DB.QueryRow(ctx, q, input.ID, input.AccountID, input.Type, input.Provider, input.Last4, input.ExpMonth, input.ExpYear, input.IsDefault, input.Status, input.Token, input.TokenProvider, input.CreatedAt, input.UpdatedAt, input.Metadata)
+	var out PaymentMethod
+	if err := row.Scan(&out.ID, &out.AccountID, &out.Type, &out.Provider, &out.Last4, &out.ExpMonth, &out.ExpYear, &out.IsDefault, &out.Status, &out.Token, &out.TokenProvider, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
+		logger.LogError("CreatePaymentMethod: insert failed", logger.ErrorField(err))
+		return PaymentMethod{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) UpdatePaymentMethod(ctx context.Context, input PaymentMethod) (PaymentMethod, error) {
+	if err := input.Validate(); err != nil {
+		logger.LogError("UpdatePaymentMethod: validation failed", logger.ErrorField(err))
+		return PaymentMethod{}, err
+	}
+	input.UpdatedAt = time.Now().UTC()
+	const q = `UPDATE payment_methods SET account_id=$2, type=$3, provider=$4, last4=$5, exp_month=$6, exp_year=$7, is_default=$8, status=$9, token=$10, token_provider=$11, updated_at=$12, metadata=$13 WHERE id=$1
+		RETURNING id, account_id, type, provider, last4, exp_month, exp_year, is_default, status, token, token_provider, created_at, updated_at, metadata`
+	row := s.DB.QueryRow(ctx, q, input.ID, input.AccountID, input.Type, input.Provider, input.Last4, input.ExpMonth, input.ExpYear, input.IsDefault, input.Status, input.Token, input.TokenProvider, input.UpdatedAt, input.Metadata)
+	var out PaymentMethod
+	if err := row.Scan(&out.ID, &out.AccountID, &out.Type, &out.Provider, &out.Last4, &out.ExpMonth, &out.ExpYear, &out.IsDefault, &out.Status, &out.Token, &out.TokenProvider, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
+		logger.LogError("UpdatePaymentMethod: update failed", logger.ErrorField(err))
+		return PaymentMethod{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) PatchPaymentMethod(ctx context.Context, id string, setDefault *bool, status string) error {
+	if id == "" {
+		return errors.New("id is required")
+	}
+	updates := []string{}
+	args := []interface{}{}
+	argIdx := 1
+	if setDefault != nil {
+		updates = append(updates, "is_default = $"+strconv.Itoa(argIdx))
+		args = append(args, *setDefault)
+		argIdx++
+	}
+	if status != "" {
+		updates = append(updates, "status = $"+strconv.Itoa(argIdx))
+		args = append(args, status)
+		argIdx++
+	}
+	if len(updates) == 0 {
+		return errors.New("no fields to patch")
+	}
+	updates = append(updates, "updated_at = $"+strconv.Itoa(argIdx))
+	args = append(args, time.Now().UTC())
+	argIdx++
+	q := "UPDATE payment_methods SET " + strings.Join(updates, ", ") + " WHERE id = $" + strconv.Itoa(argIdx)
+	args = append(args, id)
+	res, err := s.DB.Exec(ctx, q, args...)
+	if err != nil {
+		logger.LogError("PatchPaymentMethod: update failed", logger.ErrorField(err))
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (s *PostgresStore) DeletePaymentMethod(ctx context.Context, id string) error {
+	if id == "" {
+		return errors.New("id is required")
+	}
+	const q = `UPDATE payment_methods SET status='deleted', updated_at=NOW() WHERE id=$1`
+	res, err := s.DB.Exec(ctx, q, id)
+	if err != nil {
+		logger.LogError("DeletePaymentMethod: update failed", logger.ErrorField(err))
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (s *PostgresStore) GetPaymentMethod(ctx context.Context, id string) (PaymentMethod, error) {
+	if id == "" {
+		return PaymentMethod{}, errors.New("id is required")
+	}
+	const q = `SELECT id, account_id, type, provider, last4, exp_month, exp_year, is_default, status, token, token_provider, created_at, updated_at, metadata FROM payment_methods WHERE id=$1 AND status != 'deleted'`
+	row := s.DB.QueryRow(ctx, q, id)
+	var out PaymentMethod
+	if err := row.Scan(&out.ID, &out.AccountID, &out.Type, &out.Provider, &out.Last4, &out.ExpMonth, &out.ExpYear, &out.IsDefault, &out.Status, &out.Token, &out.TokenProvider, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
+		if err == sql.ErrNoRows {
+			return PaymentMethod{}, sql.ErrNoRows
+		}
+		logger.LogError("GetPaymentMethod: query failed", logger.ErrorField(err))
+		return PaymentMethod{}, err
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) ListPaymentMethods(ctx context.Context, accountID, status string, page, pageSize int) ([]PaymentMethod, error) {
+	if accountID == "" {
+		return nil, errors.New("account_id is required")
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 100
+	}
+	q := `SELECT id, account_id, type, provider, last4, exp_month, exp_year, is_default, status, token, token_provider, created_at, updated_at, metadata FROM payment_methods WHERE account_id=$1 AND status != 'deleted'`
+	args := []interface{}{accountID}
+	if status != "" {
+		q += " AND status=$2"
+		args = append(args, status)
+	}
+	q += " ORDER BY created_at DESC LIMIT $3 OFFSET $4"
+	args = append(args, pageSize, (page-1)*pageSize)
+	rows, err := s.DB.Query(ctx, q, args...)
+	if err != nil {
+		logger.LogError("ListPaymentMethods: query failed", logger.ErrorField(err))
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PaymentMethod
+	for rows.Next() {
+		var m PaymentMethod
+		if err := rows.Scan(&m.ID, &m.AccountID, &m.Type, &m.Provider, &m.Last4, &m.ExpMonth, &m.ExpYear, &m.IsDefault, &m.Status, &m.Token, &m.TokenProvider, &m.CreatedAt, &m.UpdatedAt, &m.Metadata); err != nil {
+			logger.LogError("ListPaymentMethods: scan failed", logger.ErrorField(err))
+			continue
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) RefundPayment(ctx context.Context, req *RefundPaymentRequest) (*PaymentResult, error) {
+	if req == nil {
+		return nil, errors.New("refund request is nil")
+	}
+	p, err := s.GetPayment(ctx, req.PaymentID)
+	if err != nil {
+		logger.LogError("RefundPayment: get payment failed", logger.ErrorField(err))
+		return nil, err
+	}
+	if p.Status == "refunded" {
+		return nil, errors.New("payment already refunded")
+	}
+	refund := Refund{
+		ID:        uuid.NewString(),
+		PaymentID: req.PaymentID,
+		Amount:    req.Amount,
+		Currency:  req.Currency,
+		Reason:    req.Reason,
+		Status:    "processed",
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+		Metadata:  "{}",
+	}
+	_, err = s.CreateRefund(ctx, refund)
+	if err != nil {
+		logger.LogError("RefundPayment: create refund failed", logger.ErrorField(err))
+		return nil, err
+	}
+	err = s.UpdatePaymentStatus(ctx, req.PaymentID, "refunded")
+	if err != nil {
+		logger.LogError("RefundPayment: update payment status failed", logger.ErrorField(err))
+		return nil, err
+	}
+	result := &PaymentResult{
+		PaymentID: p.ID,
+		Status:    "refunded",
+		Amount:    req.Amount,
+		Currency:  req.Currency,
+		CreatedAt: time.Now().UTC(),
+		Provider:  p.Method,
+		Raw:       refund,
+	}
+	return result, nil
+}
+
+func (s *PostgresStore) GetPaymentStatus(ctx context.Context, paymentID string) (*PaymentStatus, error) {
+	if paymentID == "" {
+		return nil, errors.New("paymentID is required")
+	}
+	p, err := s.GetPayment(ctx, paymentID)
+	if err != nil {
+		logger.LogError("GetPaymentStatus: get payment failed", logger.ErrorField(err))
+		return nil, err
+	}
+	status := &PaymentStatus{
+		PaymentID: p.ID,
+		Status:    p.Status,
+		Amount:    p.Amount,
+		Currency:  p.Currency,
+		UpdatedAt: p.UpdatedAt,
+		Provider:  p.Method,
+		Raw:       p,
+	}
+	return status, nil
+}
+
+func (s *PostgresStore) CreateEvidence(ctx context.Context, input *DisputeEvidence) error {
+	if input == nil {
+		return errors.New("evidence input is nil")
+	}
+	raw, err := json.Marshal(input.Raw)
+	if err != nil {
+		logger.LogError("CreateEvidence: marshal raw evidence failed", logger.ErrorField(err))
+		return errors.New("failed to marshal raw evidence")
+	}
+	const q = `INSERT INTO dispute_evidence (id, dispute_id, tenant_id, file_url, file_name, file_type, uploaded_by, uploaded_at, provider_status, provider_response, created_at, updated_at, raw_json)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`
+	_, err = s.DB.Exec(ctx, q, input.ID, input.DisputeID, input.TenantID, input.FileURL, input.FileName, input.FileType, input.UploadedBy, input.UploadedAt, input.ProviderStatus, input.ProviderResponse, input.CreatedAt, input.UpdatedAt, string(raw))
+	if err != nil {
+		logger.LogError("CreateEvidence: insert failed", logger.ErrorField(err))
+		return err
+	}
+	return nil
+}
+
+func (s *PostgresStore) UpdateEvidence(ctx context.Context, input *DisputeEvidence) error {
+	if input == nil {
+		return errors.New("evidence input is nil")
+	}
+	raw, err := json.Marshal(input.Raw)
+	if err != nil {
+		logger.LogError("UpdateEvidence: marshal raw evidence failed", logger.ErrorField(err))
+		return errors.New("failed to marshal raw evidence")
+	}
+	const q = `UPDATE dispute_evidence SET file_url=$2, file_name=$3, file_type=$4, provider_status=$5, provider_response=$6, updated_at=$7, raw_json=$8 WHERE id=$1`
+	_, err = s.DB.Exec(ctx, q, input.ID, input.FileURL, input.FileName, input.FileType, input.ProviderStatus, input.ProviderResponse, input.UpdatedAt, string(raw))
+	if err != nil {
+		logger.LogError("UpdateEvidence: update failed", logger.ErrorField(err))
+		return err
+	}
+	return nil
+}
+
+func (s *PostgresStore) DeleteEvidence(ctx context.Context, id string) error {
+	if id == "" {
+		return errors.New("evidence id is required")
+	}
+	const q = `UPDATE dispute_evidence SET provider_status='deleted', updated_at=NOW() WHERE id=$1`
+	res, err := s.DB.Exec(ctx, q, id)
+	if err != nil {
+		logger.LogError("DeleteEvidence: update failed", logger.ErrorField(err))
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (s *PostgresStore) GetEvidence(ctx context.Context, id string) (*DisputeEvidence, error) {
+	if id == "" {
+		return nil, errors.New("evidence id is required")
+	}
+	const q = `SELECT id, dispute_id, tenant_id, file_url, file_name, file_type, uploaded_by, uploaded_at, provider_status, provider_response, created_at, updated_at, raw_json FROM dispute_evidence WHERE id=$1 AND provider_status != 'deleted'`
+	row := s.DB.QueryRow(ctx, q, id)
+	var e DisputeEvidence
+	var raw string
+	if err := row.Scan(&e.ID, &e.DisputeID, &e.TenantID, &e.FileURL, &e.FileName, &e.FileType, &e.UploadedBy, &e.UploadedAt, &e.ProviderStatus, &e.ProviderResponse, &e.CreatedAt, &e.UpdatedAt, &raw); err != nil {
+		if err == sql.ErrNoRows {
+			logger.LogError("GetEvidence: no rows found", logger.String("id", id))
+			return nil, sql.ErrNoRows
+		}
+		logger.LogError("GetEvidence: query failed", logger.ErrorField(err))
+		return nil, err
+	}
+	_ = json.Unmarshal([]byte(raw), &e.Raw)
+	return &e, nil
+}
+
+func (s *PostgresStore) ListEvidence(ctx context.Context, disputeID, tenantID string, page, pageSize int) ([]*DisputeEvidence, error) {
+	if disputeID == "" || tenantID == "" {
+		return nil, errors.New("dispute_id and tenant_id are required")
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 100
+	}
+	const q = `SELECT id, dispute_id, tenant_id, file_url, file_name, file_type, uploaded_by, uploaded_at, provider_status, provider_response, created_at, updated_at, raw_json FROM dispute_evidence WHERE dispute_id=$1 AND tenant_id=$2 AND provider_status != 'deleted' ORDER BY uploaded_at DESC LIMIT $3 OFFSET $4`
+	rows, err := s.DB.Query(ctx, q, disputeID, tenantID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		logger.LogError("ListEvidence: query failed", logger.ErrorField(err))
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*DisputeEvidence
+	for rows.Next() {
+		var e DisputeEvidence
+		var raw string
+		if err := rows.Scan(&e.ID, &e.DisputeID, &e.TenantID, &e.FileURL, &e.FileName, &e.FileType, &e.UploadedBy, &e.UploadedAt, &e.ProviderStatus, &e.ProviderResponse, &e.CreatedAt, &e.UpdatedAt, &raw); err != nil {
+			logger.LogError("ListEvidence: scan failed", logger.ErrorField(err))
+			continue
+		}
+		_ = json.Unmarshal([]byte(raw), &e.Raw)
+		out = append(out, &e)
+	}
+	return out, nil
+}
+
+
+func (s *PostgresStore) UpdateDispute(ctx context.Context, input Dispute) (Dispute, error) {
+	if input.ID == "" {
+		return Dispute{}, errors.New("dispute id is required")
+	}
+	const q = `UPDATE disputes SET status=$2, reason=$3, amount=$4, currency=$5, updated_at=$6 WHERE id=$1
+		RETURNING id, payment_id, tenant_id, provider, status, reason, amount, currency, evidence_due, evidence_submitted, created_at, updated_at, raw_json`
+	row := s.DB.QueryRow(ctx, q, input.ID, input.Status, input.Reason, input.Amount, input.Currency, time.Now().UTC())
+	var out Dispute
+	var raw string
+	var status string
+	var evidenceDue, evidenceSubmitted *time.Time
+	err := row.Scan(&out.ID, &out.PaymentID, &out.TenantID, &out.Provider, &status, &out.Reason, &out.Amount, &out.Currency, &evidenceDue, &evidenceSubmitted, &out.CreatedAt, &out.UpdatedAt, &raw)
+	if err != nil {
+		logger.LogError("UpdateDispute: scan failed", logger.ErrorField(err))
+		return Dispute{}, err
+	}
+	out.Status = DisputeStatus(status)
+	out.EvidenceDue = evidenceDue
+	out.EvidenceSubmitted = evidenceSubmitted
+	err = json.Unmarshal([]byte(raw), &out.Raw)
+	if err != nil {
+		logger.LogError("UpdateDispute: unmarshal raw failed", logger.ErrorField(err))
+		return Dispute{}, err
+	}
+	return out, nil
 }

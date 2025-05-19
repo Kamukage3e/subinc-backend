@@ -3,56 +3,72 @@ description:
 globs: 
 alwaysApply: true
 ---
+# Go Backend Coding Rules for SaaS Multi-Tenant Billing System
 
-# Your rule content
-  You are an expert AI programming assistant specializing in building APIs with Go, using the fiber package. This microservice is aws cost management microservice
+## General Principles
+- I only give a task. Dont chat to me. 
+- Only real, production-grade backend code. No placeholders, no dummy code, no mixed prod/non-prod content.
+- All code must be linter-clean, type-safe, and pass static analysis.
+- No commented-out code, no TODOs, no “fix later” notes.
+- No hardcoded secrets, no insecure defaults, no panics.
+- All error handling must be robust, user-friendly, and never leak sensitive info.
+- All code must be secure by default.
+- All dependencies must be up-to-date, minimal, and explicitly required.
+- All code must be cloud-native, container-ready, and CI/CD friendly.
+- All architectural decisions must be explicit and justified in code comments (not in chat).
+- No “misc”, “tmp”, or catch-all folders. No “example”, “sample”, or “test”, "In a real implementation" code outside dedicated test directories.
+- All code must be easily testable and ready for CI/CD integration.
+- All code, comments, and documentation must be written for expert-level developers.
+- All code must be compatible with the latest stable versions of all relevant tools and languages.
+- All code must be accessible and maintainable by any senior engineer without additional context.
+- If a convention or best practice is violated, document the reason in code comments.
 
-  Always use the latest stable version of Go (1.23 or newer) and be familiar with RESTful API design principles, best practices, and Go idioms.
-types in the types
-interfaces in interfaces
-func handler or common func in handlers
-if uses database use stores
-## Coding Rules (Strict)
+## Directory & File Structure
+- Use clear, modular directories reflecting real-world microservice boundaries.
+- Types go in `types`, interfaces in `interfaces`, handlers in `handlers`, DB logic in `stores`.
+- Use only existing files; do not create new files.
 
-- **No placeholders, no dummy code, no mixed prod/non-prod content. Don't chat to me**
-- **All code must be linter-clean, type-safe, and pass static analysis.**
-- **No commented-out code, no TODOs, no "fix later" notes.**
-- **No hardcoded secrets, no insecure defaults, no panics.**
-- **All error handling must be robust, user-friendly, and never leak sensitive info.**
-- **All code must be secure by default.**
-- **All dependencies must be up-to-date, minimal, and explicitly required.**
-- **All code must be cloud-native, container-ready, and CI/CD friendly.**
-- **All architectural decisions must be explicit and justified in code comments.**
-- **No "misc", "tmp", or catch-all folders.**
-- **No "example", "sample", or "test" code outside of dedicated test directories.**
-- **All code must be easily testable and ready for CI/CD integration.**
-- **All code, comments, and documentation must be written for expert-level developers.**
-- **All code must be compatible with the latest stable versions of all relevant tools and languages.**
-- **All code must be accessible and maintainable by any senior engineer without additional context.**
-- **If a convention or best practice is violated, document the reason in code comments.**
+## Implementation Rules
+- Always research if a function already exists before implementing.
+- Only backend code. No frontend, no chat, no scaffolding.
+- All code, folders, and files must be production-grade, real, and ready for SaaS deployment.
+- Directory structure must be clean, modular, and reflect real-world microservice boundaries.
+- All error handling must be robust, user-friendly, and never leak sensitive info. No panics, no silent failures.
+- All code must be secure by default: no hardcoded secrets, no unsafe eval, no insecure defaults.
+- All code must be easily testable and ready for CI/CD integration.
+- All code, comments, and documentation must be written for expert-level developers. No hand-holding, no redundant explanations, no “beginner” content.
+- All code must be cloud-native and ready for containerization and orchestration.
+- If a convention or best practice is violated, document the reason in code comments.
 
-  - Follow the user's requirements carefully & to the letter.
-  -  Only real world app
-  - First think step-by-step - describe your plan for the API structure, endpoints, and data flow in pseudocode, written out in great detail.
-  - Confirm the plan, then write code!
-  - Write correct, up-to-date, bug-free, fully functional, secure, and efficient Go code for APIs.
-  - Use the fiber package for API development:
-    - Implement proper handling of different HTTP methods (GET, POST, PUT, DELETE, etc.)
+## API & Coding Practices
+- Use the latest stable Go (1.23+).
+- Use Fiber for API development.
+- Implement proper HTTP method handling (GET, POST, PUT, DELETE, etc.).
+- Use wildcard/regex support in routes where appropriate.
+- Implement input validation for all endpoints.
+- Use proper status codes and JSON response formatting.
+- Use Go's concurrency features for performance when beneficial.
+- Implement proper logging using Fiber's log package.
+- Consider middleware for cross-cutting concerns (auth, rate limiting, etc.).
+- Implement rate limiting and authentication/authorization as needed.
+- No commented-out code, TODOs, or “fix later” notes.
+- No bloat, no legacy packages.
 
-    - Leverage new features like wildcard matching and regex support in routes
-  - Implement proper error handling, including custom error types when beneficial.
-  - Use appropriate status codes and format JSON responses correctly.
-  - Implement input validation for API endpoints.
-  - Utilize Go's built-in concurrency features when beneficial for API performance.
-  - Follow design principles and best practices.
-  - Include necessary imports, package declarations, and any required setup code.
-  - Implement proper logging using the standard library's fiber log package .
-  - Consider implementing middleware for cross-cutting concerns .
-  - Implement rate limiting and authentication/authorization when appropriate.
-  - Leave NO todos, placeholders, or missing pieces in the API implementation.
-  - Be concise in explanations, but provide brief comments for complex logic or Go-specific idioms.
-  - If unsure about a best practice or implementation detail, say so instead of guessing.
-  - Offer suggestions for testing the API endpoints using Go's testing package.
+## Process
+- Follow user requirements exactly.
+- Only real-world, production-grade code.
+- First, describe your plan for API structure, endpoints, and data flow in detailed pseudocode.
+- Confirm the plan, then write code.
+- Be concise in explanations, but add brief comments for complex logic or Go idioms.
+- Offer suggestions for testing endpoints using Go's testing package.
 
-  Always prioritize security, scalability, and maintainability in your API designs and implementations. Leverage the power and simplicity of Go's standard library to create efficient and idiomatic APIs.
-  directly apply it
+## Enforcement
+- No placeholder files/folders allowed.
+- No mixing of prod and non-prod code in the same directory.
+- No “example”, “sample”, or “test” code outside of dedicated test directories.
+- All new code/structure must be reviewed for SaaS readiness before merge.
+
+## Summary
+- Prioritize security, scalability, and maintainability.
+- Leverage Go's standard library and idioms for efficient, idiomatic APIs.
+- Apply these rules directly—no chat, no placeholders, no exceptions.

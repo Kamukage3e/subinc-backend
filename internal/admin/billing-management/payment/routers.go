@@ -27,7 +27,7 @@ func RegisterRoutes(router fiber.Router, handler *PaymentHandler, jwtSecret stri
 	route.Get("/", rbacmiddleware.RBACMiddleware("payment", "read", nil), handler.ListPayments)
 	route.Get("/:id", rbacmiddleware.RBACMiddleware("payment", "read", nil), handler.GetPayment)
 	route.Put("/:id", rbacmiddleware.RBACMiddleware("payment", "update", nil), handler.UpdatePayment)
-	route.Post("/:id/refund", rbacmiddleware.RBACMiddleware("payment", "refund", nil), handler.RefundPayment)
+	route.Delete("/:id/refund", rbacmiddleware.RBACMiddleware("payment", "refund", nil), handler.DeleteRefund)
 	route.Get("/:id/status", rbacmiddleware.RBACMiddleware("payment", "read", nil), handler.GetPaymentStatus)
 
 	// Payment method endpoints
@@ -44,6 +44,7 @@ func RegisterRoutes(router fiber.Router, handler *PaymentHandler, jwtSecret stri
 	route.Get("/refunds/:id", rbacmiddleware.RBACMiddleware("refund", "read", nil), handler.GetRefund)
 	route.Put("/refunds/:id", rbacmiddleware.RBACMiddleware("refund", "update", nil), handler.UpdateRefund)
 	route.Delete("/refunds/:id", rbacmiddleware.RBACMiddleware("refund", "delete", nil), handler.DeleteRefund)
+	route.Post("/refunds/:id/manual", rbacmiddleware.RBACMiddleware("refund", "update", nil), handler.CreateManualRefund)
 
 	// Dispute endpoints
 	route.Post("/disputes", rbacmiddleware.RBACMiddleware("dispute", "create", nil), handler.CreateDispute)

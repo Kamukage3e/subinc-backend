@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
+	"github.com/sethvargo/go-password/password"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -43,6 +45,15 @@ func (h *UserHandler) CreateUser(c *fiber.Ctx) error {
 		logger.LogError("invalid user input", logger.ErrorField(err))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
+	user.ID = uuid.New().String()
+	password, err := password.Generate(64, 10, 10, false, false)
+	if err != nil {
+		logger.LogError("failed to generate password", logger.ErrorField(err))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to generate password"})
+	}
+	user.Password = password
+
+	logger.LogInfo("CreateUser: user", logger.Any("user", user))
 	if err := user.Validate(); err != nil {
 		logger.LogError("CreateUser: validation failed", logger.ErrorField(err))
 		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
@@ -177,12 +188,15 @@ func (h *UserHandler) ListUsers(c *fiber.Ctx) error {
 	status := c.Query("status")
 	page := c.QueryInt("page", 1)
 	pageSize := c.QueryInt("page_size", 50)
-	users, err := h.Store.ListUsers(c.Context(), status, page, pageSize)
+	users, total, err := h.Store.ListUsersWithTotal(c.Context(), status, page, pageSize)
 	if err != nil {
 		logger.LogError("failed to list users", logger.ErrorField(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list users"})
 	}
-	return c.JSON(users)
+	if users == nil {
+		users = []User{}
+	}
+	return c.JSON(fiber.Map{"users": users, "total": total})
 }
 
 // swagger:route POST /profiles user createProfile

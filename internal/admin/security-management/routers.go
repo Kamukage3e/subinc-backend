@@ -39,7 +39,7 @@ func RegisterRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretName
 	sessionAuth := SessionAuthMiddleware(handler.Store)
 
 	// --- Users Resource ---
-	route = router.Group("/users", securityHeadersMiddleware(), sessionAuth)
+	route = router.Group("/users", securityHeadersMiddleware(), OIDCMiddleware(jwtSecretName))
 	// Security events
 	route.Get("/:user_id/security-events", rbacmiddleware.RBACMiddleware("security-event", "read", nil), generalLimiter.middleware(), handler.ListUserSecurityEvents)
 	route.Get("/:user_id/security-events/:event_id", rbacmiddleware.RBACMiddleware("security-event", "read", nil), generalLimiter.middleware(), handler.GetUserSecurityEvent)
@@ -84,24 +84,24 @@ func RegisterRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretName
 	route.Post("/:user_id/password/reset", rbacmiddleware.RBACMiddleware("password", "create", nil), strictLimiter.middleware(), handler.ResetUserPassword)
 
 	// --- Audit Logs Resource ---
-	route = router.Group("/audit-logs", securityHeadersMiddleware(), sessionAuth)
+	route = router.Group("/audit-logs", securityHeadersMiddleware(), OIDCMiddleware(jwtSecretName))
 	route.Get("/", rbacmiddleware.RBACMiddleware("audit-log", "read", nil), generalLimiter.middleware(), handler.ListSecurityAuditLogs)
 	route.Get("/:log_id", rbacmiddleware.RBACMiddleware("audit-log", "read", nil), generalLimiter.middleware(), handler.GetSecurityAuditLog)
 
 	// --- Breaches Resource ---
-	route = router.Group("/breaches", securityHeadersMiddleware(), sessionAuth)
+	route = router.Group("/breaches", securityHeadersMiddleware(), OIDCMiddleware(jwtSecretName))
 	route.Get("/", rbacmiddleware.RBACMiddleware("breach", "read", nil), generalLimiter.middleware(), handler.ListBreaches)
 	route.Get("/:breach_id", rbacmiddleware.RBACMiddleware("breach", "read", nil), generalLimiter.middleware(), handler.GetBreach)
 
 	// --- Policies Resource ---
-	route = router.Group("/policies", securityHeadersMiddleware(), sessionAuth)
+	route = router.Group("/policies", securityHeadersMiddleware(), OIDCMiddleware(jwtSecretName))
 	route.Get("/", rbacmiddleware.RBACMiddleware("policy", "read", nil), generalLimiter.middleware(), handler.ListSecurityPolicies)
 	route.Post("/", rbacmiddleware.RBACMiddleware("policy", "create", nil), generalLimiter.middleware(), handler.CreateSecurityPolicy)
 	route.Put("/:policy_id", rbacmiddleware.RBACMiddleware("policy", "update", nil), generalLimiter.middleware(), handler.UpdateSecurityPolicy)
 	route.Delete("/:policy_id", rbacmiddleware.RBACMiddleware("policy", "delete", nil), generalLimiter.middleware(), handler.DeleteSecurityPolicy)
 
 	// --- Webhooks Resource ---
-	route = router.Group("/webhooks", securityHeadersMiddleware(), sessionAuth)
+	route = router.Group("/webhooks", securityHeadersMiddleware(), OIDCMiddleware(jwtSecretName))
 	route.Get("/tenants/:tenant_id", rbacmiddleware.RBACMiddleware("webhook", "read", nil), generalLimiter.middleware(), handler.ListWebhooks)
 	route.Post("/tenants/:tenant_id", rbacmiddleware.RBACMiddleware("webhook", "create", nil), generalLimiter.middleware(), handler.CreateWebhook)
 	route.Delete("/tenants/:tenant_id/:webhook_id", rbacmiddleware.RBACMiddleware("webhook", "delete", nil), generalLimiter.middleware(), handler.DeleteWebhook)
@@ -115,7 +115,7 @@ func RegisterRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretName
 	route.Post("/tokens/:token/redeem", rbacmiddleware.RBACMiddleware("password-reset", "create", nil), strictLimiter.middleware(), handler.UsePasswordResetToken)
 
 	// --- Rate Limits Resource ---
-	route = router.Group("/rate-limits", securityHeadersMiddleware(), sessionAuth)
+	route = router.Group("/rate-limits", securityHeadersMiddleware(), OIDCMiddleware(jwtSecretName))
 	route.Get("/:scope/:scope_id", rbacmiddleware.RBACMiddleware("rate-limit", "read", nil), strictLimiter.middleware(), handler.GetRateLimit)
 	route.Put("/:scope/:scope_id", rbacmiddleware.RBACMiddleware("rate-limit", "update", nil), strictLimiter.middleware(), handler.SetRateLimit)
 	route.Delete("/:rate_limit_id", rbacmiddleware.RBACMiddleware("rate-limit", "delete", nil), strictLimiter.middleware(), handler.DeleteRateLimit)
@@ -126,7 +126,7 @@ func RegisterRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretName
 	route.Post("/accept", rbacmiddleware.RBACMiddleware("invite", "create", nil), generalLimiter.middleware(), handler.AcceptInvite) // Accept invite doesn't need session auth
 
 	// --- Notifications Resource ---
-	route = router.Group("/notifications", securityHeadersMiddleware(), sessionAuth)
+	route = router.Group("/notifications", securityHeadersMiddleware(), OIDCMiddleware(jwtSecretName))
 	route.Get("/providers/status", rbacmiddleware.RBACMiddleware("notification", "read", nil), generalLimiter.middleware(), handler.GetNotificationProvidersStatus)
 	route.Post("/queue/retry", rbacmiddleware.RBACMiddleware("notification", "create", nil), generalLimiter.middleware(), handler.RetryNotificationQueue)
 	route.Get("/tenants/:tenant_id/config", rbacmiddleware.RBACMiddleware("notification", "read", nil), generalLimiter.middleware(), handler.GetNotificationConfig)
@@ -139,7 +139,7 @@ func RegisterRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretName
 
 	// --- Config Resources ---
 	// Module config
-	route = router.Group("/configs", securityHeadersMiddleware(), sessionAuth)
+	route = router.Group("/configs", securityHeadersMiddleware(), OIDCMiddleware(jwtSecretName))
 	route.Get("/tenants/:tenant_id/security", rbacmiddleware.RBACMiddleware("config", "read", nil), generalLimiter.middleware(), handler.GetSecurityModuleConfig)
 	route.Put("/tenants/:tenant_id/security", rbacmiddleware.RBACMiddleware("config", "update", nil), strictLimiter.middleware(), handler.SetSecurityModuleConfig)
 
@@ -152,11 +152,11 @@ func RegisterRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretName
 	route.Put("/tenants/:tenant_id/session", rbacmiddleware.RBACMiddleware("config", "update", nil), strictLimiter.middleware(), handler.SetSessionConfig)
 
 	// --- Self Service Resource ---
-	route = router.Group("/self-service", securityHeadersMiddleware(), sessionAuth)
+	route = router.Group("/self-service", securityHeadersMiddleware(), OIDCMiddleware(jwtSecretName))
 	route.Get("/security", rbacmiddleware.RBACMiddleware("self-service", "read", nil), generalLimiter.middleware(), handler.GetSelfServiceSecurity)
 
 	// --- Security Analytics Resource ---
-	route = router.Group("/analytics", securityHeadersMiddleware(), sessionAuth)
+	route = router.Group("/analytics", securityHeadersMiddleware(), OIDCMiddleware(jwtSecretName))
 	route.Get("/tenants/:tenant_id/security", rbacmiddleware.RBACMiddleware("analytics", "read", nil), generalLimiter.middleware(), handler.GetSecurityAnalytics)
 	route.Get("/tenants/:tenant_id/anomalies", rbacmiddleware.RBACMiddleware("analytics", "read", nil), generalLimiter.middleware(), handler.ListAnomalies)
 	route.Get("/tenants/:tenant_id/anomalies/:anomaly_id", rbacmiddleware.RBACMiddleware("analytics", "read", nil), generalLimiter.middleware(), handler.GetAnomaly)

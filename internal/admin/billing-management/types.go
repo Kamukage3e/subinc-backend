@@ -24,7 +24,8 @@ type BillingAdminHandler struct {
 	ManualAdjustmentService    ManualAdjustmentService
 	AccountActionService       AccountActionService
 	WebhookSubscriptionService WebhookSubscriptionService
-	AccountService             account.AccountService
+	AccountService             account.ProjectBillingAccountService
+	AccountHandler             *account.AccountHandler
 	PaymentMethodService       payment.PaymentMethodService
 	CreditService              discount.CreditService
 	TaxService                 tax.TaxInfoService

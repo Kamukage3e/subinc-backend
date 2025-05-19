@@ -66,12 +66,18 @@ func (s *PostgresStore) GetUserByEmail(ctx context.Context, email string) (User,
 	return u, nil
 }
 
-func (s *PostgresStore) ListUsers(ctx context.Context, status string, page, pageSize int) ([]User, error) {
-	const q = `SELECT id, email, status, created_at, updated_at FROM users WHERE status=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
-	rows, err := s.DB.Query(ctx, q, status, pageSize, (page-1)*pageSize)
+func (s *PostgresStore) ListUsersWithTotal(ctx context.Context, status string, page, pageSize int) ([]User, int, error) {
+	const countQ = `SELECT COUNT(*) FROM users WHERE status=$1`
+	const dataQ = `SELECT id, email, status, created_at, updated_at FROM users WHERE status=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+	var total int
+	if err := s.DB.QueryRow(ctx, countQ, status).Scan(&total); err != nil {
+		logger.LogError("failed to count users", logger.ErrorField(err))
+		return nil, 0, err
+	}
+	rows, err := s.DB.Query(ctx, dataQ, status, pageSize, (page-1)*pageSize)
 	if err != nil {
 		logger.LogError("failed to list users", logger.ErrorField(err))
-		return nil, errors.New("failed to list users: " + err.Error())
+		return nil, 0, err
 	}
 	defer rows.Close()
 	var users []User
@@ -79,15 +85,20 @@ func (s *PostgresStore) ListUsers(ctx context.Context, status string, page, page
 		var u User
 		if err := rows.Scan(&u.ID, &u.Email, &u.Status, &u.CreatedAt, &u.UpdatedAt); err != nil {
 			logger.LogError("failed to scan user row", logger.ErrorField(err))
-			return nil, errors.New("failed to scan user row: " + err.Error())
+			return nil, 0, err
 		}
 		users = append(users, u)
 	}
 	if err := rows.Err(); err != nil {
 		logger.LogError("error iterating user rows", logger.ErrorField(err))
-		return nil, errors.New("error iterating user rows: " + err.Error())
+		return nil, 0, err
 	}
-	return users, nil
+	return users, total, nil
+}
+
+func (s *PostgresStore) ListUsers(ctx context.Context, status string, page, pageSize int) ([]User, error) {
+	users, _, err := s.ListUsersWithTotal(ctx, status, page, pageSize)
+	return users, err
 }
 
 // UserProfileService

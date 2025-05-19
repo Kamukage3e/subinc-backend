@@ -1,7 +1,6 @@
 package account
 
 import (
-
 	"fmt"
 	"time"
 
@@ -12,16 +11,27 @@ import (
 
 // AccountHandler handles account endpoints
 type AccountHandler struct {
-	AccountService      AccountService
-	NotificationService security_management.NotificationService
+	ProjectBillingAccountService ProjectBillingAccountService
+	NotificationService          security_management.NotificationService
+	RateLimitService             *security_management.RateLimitService
 }
 
-type Account struct {
+type ProjectBillingAccount struct {
 	ID        string    `json:"id"`
-	TenantID  string    `json:"tenant_id"`
+	ProjectID string    `json:"project_id"`
 	Email     string    `json:"email"`
 	Status    string    `json:"status"`
-	Currency  string    `json:"currency"` // ISO 4217, e.g. USD
+	Currency  string    `json:"currency"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type OrgBillingAccount struct {
+	ID        string    `json:"id"`
+	OrgID     string    `json:"org_id"`
+	Email     string    `json:"email"`
+	Status    string    `json:"status"`
+	Currency  string    `json:"currency"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -39,9 +49,22 @@ type Error struct {
 	Err     error
 }
 
-func (a *Account) Validate() *Error {
-	if a.TenantID == "" {
-		return NewValidationError("tenant_id", "must not be empty")
+func (a *ProjectBillingAccount) Validate() *Error {
+	if a.ProjectID == "" {
+		return NewValidationError("project_id", "must not be empty")
+	}
+	if a.Email == "" {
+		return NewValidationError("email", "must not be empty")
+	}
+	if a.Status == "" {
+		return NewValidationError("status", "must not be empty")
+	}
+	return nil
+}
+
+func (a *OrgBillingAccount) Validate() *Error {
+	if a.OrgID == "" {
+		return NewValidationError("org_id", "must not be empty")
 	}
 	if a.Email == "" {
 		return NewValidationError("email", "must not be empty")
@@ -66,55 +89,3 @@ func (e *Error) Error() string {
 	}
 	return fmt.Sprintf("%s: %s", e.Code, e.Message)
 }
-
-
-
-// AccountPluginRegistry manages account plugins
-// All methods concurrency-safe
-type AccountPluginRegistry struct {
-	plugins map[string]AccountPlugin
-}
-
-// Register adds an account plugin to the registry
-func (r *AccountPluginRegistry) Register(plugin AccountPlugin) {
-	if plugin == nil {
-		return
-	}
-	name := plugin.Name()
-	if name == "" {
-		return
-	}
-	if r.plugins == nil {
-		r.plugins = make(map[string]AccountPlugin)
-	}
-	r.plugins[name] = plugin
-}
-
-// Unregister removes an account plugin from the registry
-func (r *AccountPluginRegistry) Unregister(name string) {
-	if r.plugins == nil {
-		return
-	}
-	delete(r.plugins, name)
-}
-
-// Lookup retrieves an account plugin by name
-func (r *AccountPluginRegistry) Lookup(name string) (AccountPlugin, bool) {
-	if r.plugins == nil {
-		return nil, false
-	}
-	p, ok := r.plugins[name]
-	return p, ok
-}
-
-// List returns all registered account plugin names
-func (r *AccountPluginRegistry) List() []string {
-	names := make([]string, 0, len(r.plugins))
-	for name := range r.plugins {
-		names = append(names, name)
-	}
-	return names
-}
-
-// Global registry for account plugins
-var AccountPlugins = &AccountPluginRegistry{plugins: make(map[string]AccountPlugin)}

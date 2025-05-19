@@ -64,39 +64,39 @@ type DisputeDataStoreInterface interface {
 
 // PaymentService manages payment operations
 type PaymentService interface {
-	CreatePayment(input Payment) (Payment, error)
-	UpdatePayment(input Payment) (Payment, error)
-	GetPayment(id string) (Payment, error)
-	ListPayments(invoiceID string, page, pageSize int) ([]Payment, error)
-	GetPaymentByIdempotencyKey(idempotencyKey string) (Payment, error)
+	CreatePayment(ctx context.Context, input Payment) (Payment, error)
+	UpdatePayment(ctx context.Context, input Payment) (Payment, error)
+	GetPayment(ctx context.Context, id string) (Payment, error)
+	ListPayments(ctx context.Context, invoiceID string, page, pageSize int) ([]Payment, error)
+	GetPaymentByIdempotencyKey(ctx context.Context, idempotencyKey string) (Payment, error)
 	RefundPayment(ctx context.Context, req *RefundPaymentRequest) (*PaymentResult, error)
 	GetPaymentStatus(ctx context.Context, paymentID string) (*PaymentStatus, error)
 }
 
 // RefundService manages refund operations
 type RefundService interface {
-	CreateRefund(input Refund) (Refund, error)
-	UpdateRefund(id string) error
-	DeleteRefund(id string) error
-	GetRefund(id string) (Refund, error)
-	ListRefunds(paymentID, invoiceID, status string, page, pageSize int) ([]Refund, error)
+	CreateRefund(ctx context.Context, input Refund) (Refund, error)
+	UpdateRefund(ctx context.Context, input Refund) (Refund, error)
+	DeleteRefund(ctx context.Context, id string) error
+	GetRefund(ctx context.Context, id string) (Refund, error)
+	ListRefunds(ctx context.Context, paymentID, invoiceID, status string, page, pageSize int) ([]Refund, error)
 }
 
 // PaymentMethodService manages payment methods
 type PaymentMethodService interface {
-	CreatePaymentMethod(input PaymentMethod, data map[string]string) (PaymentMethod, error)
-	UpdatePaymentMethod(input PaymentMethod) (PaymentMethod, error)
-	PatchPaymentMethod(id string, setDefault *bool, status string) error
-	DeletePaymentMethod(id string) error
-	GetPaymentMethod(id string) (PaymentMethod, error)
-	ListPaymentMethods(accountID, status string, page, pageSize int) ([]PaymentMethod, error)
+	CreatePaymentMethod(ctx context.Context, input PaymentMethod, data map[string]string) (PaymentMethod, error)
+	UpdatePaymentMethod(ctx context.Context, input PaymentMethod) (PaymentMethod, error)
+	PatchPaymentMethod(ctx context.Context, id string, setDefault *bool, status string) error
+	DeletePaymentMethod(ctx context.Context, id string) error
+	GetPaymentMethod(ctx context.Context, id string) (PaymentMethod, error)
+	ListPaymentMethods(ctx context.Context, accountID, status string, page, pageSize int) ([]PaymentMethod, error)
 }
 
 // DisputeEvidenceService handles evidence upload, provider sync, audit, and admin endpoints
 // All methods robust, multi-tenant, audit-logged
 
 type ManualRefundService interface {
-	CreateManualRefund(paymentID, reason string, amount float64, currency string) error
+	CreateManualRefund(ctx context.Context, refund Refund) (Refund, error)
 }
 
 // PaymentPlugin defines a hot-pluggable interface for payment providers

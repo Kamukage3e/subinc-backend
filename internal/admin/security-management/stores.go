@@ -3,6 +3,7 @@ package security_management
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -176,15 +177,16 @@ func (s *PostgresStore) ListSecurityAuditLogs(ctx context.Context, page, pageSiz
 	for rows.Next() {
 		var log SecurityAuditLog
 		var metadataJSON []byte
+		var userID, resourceID, targetID sql.NullString
 
 		err := rows.Scan(
 			&log.ID,
-			&log.UserID,
+			&userID,
 			&log.ActorID,
 			&log.Action,
 			&log.Resource,
-			&log.ResourceID,
-			&log.TargetID,
+			&resourceID,
+			&targetID,
 			&log.Details,
 			&log.IP,
 			&log.UserAgent,
@@ -195,6 +197,19 @@ func (s *PostgresStore) ListSecurityAuditLogs(ctx context.Context, page, pageSiz
 		if err != nil {
 			logger.LogError("ListSecurityAuditLogs: row scan error", logger.ErrorField(err))
 			continue // Skip this row but continue processing others
+		}
+
+		log.UserID = ""
+		if userID.Valid {
+			log.UserID = userID.String
+		}
+		log.ResourceID = ""
+		if resourceID.Valid {
+			log.ResourceID = resourceID.String
+		}
+		log.TargetID = ""
+		if targetID.Valid {
+			log.TargetID = targetID.String
 		}
 
 		// Parse metadata
@@ -252,6 +267,24 @@ func (s *PostgresStore) CreateSecurityAuditLog(ctx context.Context, log Security
 		metadataJSON = []byte("{}")
 	}
 
+	// Patch: convert empty string UUIDs to nil for nullable columns
+	var userID, resourceID, targetID interface{}
+	if log.UserID == "" {
+		userID = nil
+	} else {
+		userID = log.UserID
+	}
+	if log.ResourceID == "" {
+		resourceID = nil
+	} else {
+		resourceID = log.ResourceID
+	}
+	if log.TargetID == "" {
+		targetID = nil
+	} else {
+		targetID = log.TargetID
+	}
+
 	const query = `
 		INSERT INTO security_audit_logs (
 			id, user_id, actor_id, action, resource, resource_id, target_id, details, ip, user_agent, created_at, metadata
@@ -261,16 +294,17 @@ func (s *PostgresStore) CreateSecurityAuditLog(ctx context.Context, log Security
 	`
 
 	var returnedMetadataJSON []byte
+	var returnedUserID, returnedResourceID, returnedTargetID sql.NullString
 	err = s.DB.QueryRow(
 		ctx,
 		query,
 		log.ID,
-		log.UserID,
+		userID,
 		log.ActorID,
 		log.Action,
 		log.Resource,
-		log.ResourceID,
-		log.TargetID,
+		resourceID,
+		targetID,
 		log.Details,
 		log.IP,
 		log.UserAgent,
@@ -278,18 +312,31 @@ func (s *PostgresStore) CreateSecurityAuditLog(ctx context.Context, log Security
 		metadataJSON,
 	).Scan(
 		&log.ID,
-		&log.UserID,
+		&returnedUserID,
 		&log.ActorID,
 		&log.Action,
 		&log.Resource,
-		&log.ResourceID,
-		&log.TargetID,
+		&returnedResourceID,
+		&returnedTargetID,
 		&log.Details,
 		&log.IP,
 		&log.UserAgent,
 		&log.CreatedAt,
 		&returnedMetadataJSON,
 	)
+
+	log.UserID = ""
+	if returnedUserID.Valid {
+		log.UserID = returnedUserID.String
+	}
+	log.ResourceID = ""
+	if returnedResourceID.Valid {
+		log.ResourceID = returnedResourceID.String
+	}
+	log.TargetID = ""
+	if returnedTargetID.Valid {
+		log.TargetID = returnedTargetID.String
+	}
 
 	if err != nil {
 		logger.LogError("CreateSecurityAuditLog: database error",
@@ -643,8 +690,6 @@ func (s *PostgresStore) DetectAnomalies(ctx context.Context, tenantID string) ([
 
 	return anomalies, nil
 }
-
-
 
 // --- Notification Pluggable Runtime Config ---
 
@@ -1959,8 +2004,8 @@ func (s *PostgresStore) SetProviderConfig(ctx context.Context, config ProviderCo
 func (s *PostgresStore) GetAuthTypeConfig(ctx context.Context, tenantID string) (AuthTypeConfigDB, error) {
 	var config AuthTypeConfigDB
 
-	query := `SELECT tenant_id, mfa_enabled, password_enabled, oauth_enabled, saml_enabled, 
-			auth_types, primary, fallback, updated_at
+	const query = `SELECT tenant_id, mfa_enabled, password_enabled, oauth_enabled, saml_enabled, 
+			auth_types, "primary", fallback, updated_at
 			FROM auth_type_configs WHERE tenant_id = $1`
 
 	row := s.DB.QueryRow(ctx, query, tenantID)
@@ -2365,4 +2410,25 @@ func (s *PostgresStore) SetSAMLConfig(ctx context.Context, tenantID string, conf
 	}
 
 	return nil
+}
+
+// GetUserTenantIDs returns all tenant/org IDs the user belongs to.
+func (s *PostgresStore) GetUserTenantIDs(ctx context.Context, userID string) ([]string, error) {
+	const q = `SELECT org_id FROM org_members WHERE user_id = $1`
+	rows, err := s.DB.Query(ctx, q, userID)
+	if err != nil {
+		logger.LogError("GetUserTenantIDs query failed", logger.ErrorField(err), logger.String("user_id", userID))
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			logger.LogError("GetUserTenantIDs scan failed", logger.ErrorField(err), logger.String("user_id", userID))
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
 }

@@ -9,7 +9,7 @@ import (
 )
 
 type InvoiceService interface {
-	CreateInvoice(input Invoice) (Invoice, error)
+	CreateInvoice(ctx context.Context, input Invoice) (Invoice, error)
 	UpdateInvoice(input Invoice) (Invoice, error)
 	GetInvoice(id string) (Invoice, error)
 	ListInvoices(accountID, status string, page, pageSize int) ([]Invoice, error)

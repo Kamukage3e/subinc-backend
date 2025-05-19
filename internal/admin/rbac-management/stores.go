@@ -529,10 +529,17 @@ func (s *PostgresStore) ListAuditLogs(ctx context.Context, tenantID, actorID, ac
 // RBACService implementation for PostgresStore
 // Enforces RBAC for all modules, including project management
 func (s *PostgresStore) CheckPermission(ctx context.Context, userID, resource, action string) (bool, error) {
-	// Validate input
 	if userID == "" || resource == "" || action == "" {
 		logger.LogError("CheckPermission invalid input", logger.String("user_id", userID), logger.String("resource", resource), logger.String("action", action))
 		return false, ErrInvalidRBACInput
+	}
+	// --- SUPER ADMIN SHORT-CIRCUIT ---
+	const superAdminRoleID = "00000000-0000-0000-0000-000000000001"
+	const globalTenantID = "00000000-0000-0000-0000-000000000000"
+	var superAdminCount int
+	superAdminErr := s.DB.QueryRow(ctx, `SELECT COUNT(1) FROM role_bindings WHERE user_id = $1 AND role_id = $2 AND tenant_id = $3`, userID, superAdminRoleID, globalTenantID).Scan(&superAdminCount)
+	if superAdminErr == nil && superAdminCount > 0 {
+		return true, nil // super admin: allow everything
 	}
 	// Query for user roles on the resource
 	roles, err := s.GetUserRoles(ctx, userID, resource)
@@ -561,6 +568,14 @@ func (s *PostgresStore) CheckPermission(ctx context.Context, userID, resource, a
 func (s *PostgresStore) GetUserRoles(ctx context.Context, userID, resource string) ([]string, error) {
 	if userID == "" || resource == "" {
 		return nil, ErrInvalidRBACInput
+	}
+	// --- SUPER ADMIN SHORT-CIRCUIT ---
+	const superAdminRoleID = "00000000-0000-0000-0000-000000000001"
+	const globalTenantID = "00000000-0000-0000-0000-000000000000"
+	var superAdminCount int
+	superAdminErr := s.DB.QueryRow(ctx, `SELECT COUNT(1) FROM role_bindings WHERE user_id = $1 AND role_id = $2 AND tenant_id = $3`, userID, superAdminRoleID, globalTenantID).Scan(&superAdminCount)
+	if superAdminErr == nil && superAdminCount > 0 {
+		return []string{"super_admin"}, nil
 	}
 	const q = `SELECT r.name FROM roles r
 		JOIN role_bindings rb ON rb.role_id = r.id

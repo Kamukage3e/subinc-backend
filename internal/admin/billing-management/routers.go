@@ -28,6 +28,9 @@ func RegisterRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret
 		auditmiddleware.AuditLoggerMiddleware(auditLogger),
 	)
 
+	// Register account routes
+
+
 	// Standard billing routes
 	route.Get("/accounts/invoice-preview", rbacmiddleware.RBACMiddleware("invoice", "read", nil), handler.GetInvoicePreview)
 

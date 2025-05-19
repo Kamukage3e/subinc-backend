@@ -116,6 +116,10 @@ func OIDCMiddleware(jwtSecret string) fiber.Handler {
 		if !ok {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid claims"})
 		}
+		// Set user_id and claims in context for downstream handlers
+		if userID, ok := claims["user_id"].(string); ok && userID != "" {
+			c.Locals("user_id", userID)
+		}
 		c.Locals("claims", claims)
 		return c.Next()
 	}

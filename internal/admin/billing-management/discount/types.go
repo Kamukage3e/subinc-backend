@@ -15,7 +15,7 @@ type DiscountHandler struct {
 	DiscountService DiscountService
 	CouponService   CouponService
 	CreditService   CreditService
-	AccountService  account.AccountService
+	AccountService  account.ProjectBillingAccountService
 	Logger          logger.Logger
 }
 

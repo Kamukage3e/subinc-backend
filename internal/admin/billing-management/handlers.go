@@ -886,7 +886,7 @@ func (h *BillingAdminHandler) GetInvoicePreview(c *fiber.Ctx) error {
 		logger.LogError("GetInvoicePreview: id required", logger.String("id", input.ID))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
-	if err := h.PaymentMethodService.DeletePaymentMethod(input.ID); err != nil {
+	if err := h.PaymentMethodService.DeletePaymentMethod(c.Context(), input.ID); err != nil {
 		logger.LogError("DeletePaymentMethod: failed", logger.ErrorField(err), logger.String("id", input.ID))
 		errResp := fiber.Map{"error": "failed to delete payment method"}
 		if apiErr, ok := err.(*Error); ok {
@@ -1478,12 +1478,12 @@ func (h *BillingAdminHandler) CreateInvoiceWithFeesAndTax(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "invoice not found"})
 	}
-	accountObj, err := h.AccountService.GetAccount(invoice.AccountID)
+	accountObj, err := h.AccountService.GetProjectBillingAccount(c.Context(), invoice.AccountID)
 	if err != nil {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "account not found"})
 	}
 	pluginName := "default"
-	if cfg, err := h.TaxService.GetTaxPluginConfig(c.Context(), accountObj.TenantID); err == nil && cfg.PluginName != "" {
+	if cfg, err := h.TaxService.GetTaxPluginConfig(c.Context(), acct.TenantID); err == nil && cfg.PluginName != "" {
 		pluginName = cfg.PluginName
 	}
 	plugin, ok := h.PluginManager.GetTaxPlugin(pluginName)
@@ -1615,7 +1615,7 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 		logger.LogError("CreateInvoice: validation failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
 	}
-	accountObj, err := h.AccountService.GetAccount(input.AccountID)
+	accountObj, err := h.AccountService.GetProjectBillingAccount(c.Context(), input.AccountID)
 	if err != nil {
 		logger.LogError("CreateInvoice: account not found", logger.ErrorField(err), logger.String("account_id", input.AccountID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "account not found"})
@@ -1691,7 +1691,7 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 	// Convert to tax.Account for the plugin
 	taxAccount := tax.Account{
 		ID:        accountObj.ID,
-		TenantID:  accountObj.TenantID,
+		TenantID:  accountObj.TenantID, 
 		Email:     accountObj.Email,
 		Status:    accountObj.Status,
 		Currency:  accountObj.Currency,
@@ -1699,14 +1699,14 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 		UpdatedAt: accountObj.UpdatedAt,
 	}
 
-	taxAmount, taxRate, terr := plugin.CalculateTax(c.Context(), taxInvoice, taxAccount, accountObj.TenantID)
+	taxAmount, taxRate, terr := plugin.CalculateTax(c.Context(), taxInvoice, taxAccount, acct.TenantID)
 	if terr != nil {
 		logger.LogError("CreateInvoice: tax plugin failed", logger.ErrorField(terr), logger.String("plugin", pluginName))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tax calculation failed: " + terr.Error()})
 	}
 	input.TaxAmount = taxAmount
 	input.TaxRate = taxRate
-	invoice, err := h.InvoiceService.CreateInvoice(input)
+	invoice, err := h.InvoiceService.CreateInvoice(c.Context(), input)
 	if err != nil {
 		logger.LogError("CreateInvoice: failed", logger.ErrorField(err), logger.Any("input", input))
 		errResp := fiber.Map{"error": err.Error()}
@@ -1719,7 +1719,7 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 	}
 	if h.Notify != nil && accountObj.Email != "" {
 		go func(inv Invoice) {
-			acct, accErr := h.AccountService.GetAccount(inv.AccountID)
+			acct, accErr := h.AccountService.GetProjectBillingAccount(c.Context(), inv.AccountID)
 			if accErr != nil || acct.Email == "" {
 				logger.LogError("dunning.worker.notify.account_not_found", logger.ErrorField(accErr), logger.String("account_id", inv.AccountID))
 				return
@@ -2522,7 +2522,7 @@ func (h *BillingAdminHandler) DownloadInvoicePDF(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "invoice not found"})
 	}
-	account, err := h.AccountService.GetAccount(invoice.AccountID)
+	account, err := h.AccountService.GetProjectBillingAccount(c.Context(), invoice.AccountID)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "account not found"})
 	}
@@ -2744,7 +2744,7 @@ func (h *BillingAdminHandler) StripeWebhookHandler(c *fiber.Ctx) error {
 //	  description: OK
 //	  schema:
 //	    type: string
-func DunningWorker(store *PostgresStore, paymentStore payment.StoreInterface, accountService account.AccountService, notificationService security_management.NotificationService) {
+func DunningWorker(store *PostgresStore, paymentStore payment.StoreInterface, accountService account.ProjectBillingAccountService, notificationService security_management.NotificationService) {
 	ctx := context.Background()
 	logger.LogInfo("dunning.worker.starting")
 	for {
@@ -2761,7 +2761,7 @@ func DunningWorker(store *PostgresStore, paymentStore payment.StoreInterface, ac
 			continue
 		}
 		for _, inv := range invoices {
-			acct, err := accountService.GetAccount(inv.AccountID)
+			acct, err := accountService.GetProjectBillingAccount(ctx, inv.AccountID)
 			if err != nil {
 				logger.LogError("dunning.worker.account_not_found", logger.ErrorField(err), logger.String("account_id", inv.AccountID))
 				continue

@@ -26,7 +26,7 @@ func RegisterRoutes(router fiber.Router, handler *SubscriptionHandler, auditLogg
 	route.Post("/", rbacmiddleware.RBACMiddleware("subscription", "create", nil), handler.CreateSubscription)
 	route.Get("/", rbacmiddleware.RBACMiddleware("subscription", "read", nil), handler.ListSubscriptions)
 	route.Get("/:id", rbacmiddleware.RBACMiddleware("subscription", "read", nil), handler.GetSubscription)
-	route.Put("/:id", rbacmiddleware.RBACMiddleware("subscription", "update", nil), handler.UpdateSubscription)
+	route.Put("/:id", rbacmiddleware.RBACMiddleware("subscription", "update", nil), handler.UpdateSubscription)    
 	route.Patch("/:id", rbacmiddleware.RBACMiddleware("subscription", "update", nil), handler.PatchSubscription)
 	route.Delete("/:id", rbacmiddleware.RBACMiddleware("subscription", "delete", nil), handler.DeleteSubscription)
 

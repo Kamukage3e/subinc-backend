@@ -14,7 +14,7 @@ func NewDiscountHandler(
 	discountService DiscountService,
 	couponService CouponService,
 	creditService CreditService,
-	accountService account.AccountService,
+	accountService account.ProjectBillingAccountService,
 	logger logger.Logger,
 ) *DiscountHandler {
 	return &DiscountHandler{
@@ -283,7 +283,7 @@ func (h *DiscountHandler) CreateCredit(c *fiber.Ctx) error {
 		logger.LogError("CreateCredit: validation failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
 	}
-	account, err := h.AccountService.GetAccount(input.AccountID)
+	account, err := h.AccountService.GetProjectBillingAccount(c.Context(), input.AccountID)
 	if err != nil {
 		logger.LogError("CreateCredit: account not found", logger.ErrorField(err), logger.String("account_id", input.AccountID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "account not found"})

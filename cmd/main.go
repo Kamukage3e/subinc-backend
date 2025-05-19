@@ -14,7 +14,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	billing_management "github.com/subinc/subinc-backend/internal/admin/billing-management"
+	"github.com/subinc/subinc-backend/internal/admin/billing-management/discount"
+	"github.com/subinc/subinc-backend/internal/admin/billing-management/fee"
 	payment "github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
+	"github.com/subinc/subinc-backend/internal/admin/billing-management/subscription"
+	"github.com/subinc/subinc-backend/internal/admin/billing-management/tax"
 	organization_management "github.com/subinc/subinc-backend/internal/admin/organization-management"
 	project_management "github.com/subinc/subinc-backend/internal/admin/project-management"
 	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
@@ -23,6 +27,9 @@ import (
 	tenant_management "github.com/subinc/subinc-backend/internal/admin/tenant-management"
 	user_management "github.com/subinc/subinc-backend/internal/admin/user-management"
 
+	account "github.com/subinc/subinc-backend/internal/admin/billing-management/account"
+	"github.com/subinc/subinc-backend/internal/pkg/auth"
+	jwtProvider "github.com/subinc/subinc-backend/internal/pkg/auth/providers/jwt"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 	"github.com/subinc/subinc-backend/pkg/rbac"
 	"github.com/subinc/subinc-backend/pkg/session"
@@ -139,10 +146,43 @@ func main() {
 
 	app := fiber.New()
 
+	// Log every request to stdout
+	app.Use(func(c *fiber.Ctx) error {
+		start := time.Now()
+		err := c.Next()
+		latency := time.Since(start)
+		logr.Info("request",
+			logger.String("method", c.Method()),
+			logger.String("path", c.OriginalURL()),
+			logger.Int("status", c.Response().StatusCode()),
+			logger.String("ip", c.IP()),
+			logger.Duration("latency", latency),
+		)
+		return err
+	})
+
+	// Add CORS middleware for development
+	app.Use(func(c *fiber.Ctx) error {
+		c.Set("Access-Control-Allow-Origin", "*")
+		c.Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS,PATCH")
+		c.Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Tenant-ID")
+		c.Set("Access-Control-Allow-Credentials", "true")
+
+		// Handle preflight requests
+		if c.Method() == "OPTIONS" {
+			return c.SendStatus(fiber.StatusNoContent)
+		}
+
+		return c.Next()
+	})
+
+	// Create RBAC store before any route registration
+	store := &rbac_management.PostgresStore{DB: ownerDBPool}
+	rbac_management.InitGlobalRBACStore(store)
+
 	// --- Unified admin routes (owner + client) ---
 	adminAPI := app.Group("/api/v1/")
 	securityStore := security_management.NewPostgresStore(ownerDBPool, serverConfigService, nil)
-	store := &rbac_management.PostgresStore{DB: ownerDBPool}
 	rbacHandler := rbac_management.NewRBACHandler(store)
 	rbac_management.RegisterAdminRBACRoutes(adminAPI, rbacHandler, jwtCfg.SecretName)
 
@@ -194,6 +234,33 @@ func main() {
 		NotificationService:         securityStore,
 		SecurityModuleConfigService: securityStore,
 	}
+
+	// Initialize auth manager with JWT as the default provider
+	authManager := auth.NewAuthManager(logr)
+
+	// Create JWT provider
+	jwtConfig := jwtProvider.DefaultConfig()
+	jwtConfig.Secret = jwtCfg.SecretName
+	jwtConfig.Issuer = "subinc-backend"
+	jwtConfig.TokenExpiry = 24 * time.Hour // 24 hour token expiry
+
+	jwtAuthProvider, err := jwtProvider.NewJWTProvider(jwtConfig)
+	if err != nil {
+		log.Fatalf("Failed to create JWT provider: %v", err)
+	}
+
+	// Register JWT provider and set as default
+	if err := authManager.RegisterProvider(jwtAuthProvider); err != nil {
+		log.Fatalf("Failed to register JWT provider: %v", err)
+	}
+
+	if err := authManager.SetDefaultProvider("jwt"); err != nil {
+		log.Fatalf("Failed to set JWT as default provider: %v", err)
+	}
+
+	// Assign auth manager to security handler
+	securityHandler.Auth = authManager
+
 	security_management.RegisterRoutes(adminAPI, securityHandler, jwtCfg.SecretName, securityStore)
 
 	userStore := user_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
@@ -220,7 +287,67 @@ func main() {
 	// Initialize billing plugin system
 	initializeBillingPlugins(billingHandler, serverConfigService, logr)
 
+	// Register billing-management main router
+	billingRoute := protectedAPI.Group("/billing-management")
 	billing_management.RegisterRoutes(protectedAPI, billingHandler, jwtCfg.SecretName, securityStore)
+
+	// Register all billing-management submodule routers under /billing-management
+	// --- FEE ---
+	feeStore := fee.NewPostgresStore(ownerDBPool)
+	feeHandler := &fee.FeeHandler{Store: feeStore}
+	fee.RegisterRoutes(billingRoute, feeHandler)
+
+	// --- DISCOUNT ---
+	discountStore := &discount.PostgresStore{DB: ownerDBPool, AuditLogger: securityStore, ServerConfigService: serverConfigService}
+	accountStore := &account.PostgresStore{DB: ownerDBPool}
+	discountHandler := discount.NewDiscountHandler(
+		&discount.DiscountServiceAdapter{Store: discountStore}, // DiscountService
+		&discount.CouponServiceAdapter{Store: discountStore},   // CouponService
+		&discount.CreditServiceAdapter{Store: discountStore},   // CreditService
+		&account.ProjectBillingAccountServiceAdapter{Store: accountStore},
+		*logr,
+	)
+	discount.RegisterRoutes(billingRoute, discountHandler, jwtCfg.SecretName, securityStore)
+
+	// --- PAYMENT ---
+	paymentHandler := payment.NewPaymentHandler(
+		&payment.PaymentServiceAdapter{Store: paymentStore},      // PaymentService
+		&payment.RefundServiceAdapter{Store: paymentStore},       // RefundService
+		&payment.ManualRefundServiceAdapter{Store: paymentStore}, // ManualRefundService
+		billingHandler.PaymentMethodService,
+		billingHandler.RateLimitService,
+		serverConfigService,
+		*logr,
+		securityStore,
+		paymentStore,
+	)
+	payment.RegisterRoutes(billingRoute, paymentHandler, jwtCfg.SecretName, securityStore)
+
+	// --- TAX ---
+	taxStore := &tax.PostgresStore{DB: ownerDBPool}
+	taxHandler := &tax.TaxHandler{
+		TaxInfoService: billingHandler.TaxService,
+		Store:          *taxStore,
+	}
+	tax.RegisterRoutes(billingRoute, taxHandler, jwtCfg.SecretName)
+
+	// --- ACCOUNT ---
+	accountHandler := &account.AccountHandler{
+		ProjectBillingAccountService: &account.ProjectBillingAccountServiceAdapter{Store: accountStore},
+		NotificationService:          securityStore,
+		RateLimitService:             &billingHandler.RateLimitService,
+	}
+	account.RegisterRoutes(billingRoute, accountHandler, jwtCfg.SecretName, billingHandler.RateLimitService)
+
+	// --- SUBSCRIPTION ---
+	subscriptionStore := &subscription.PostgresStore{DB: ownerDBPool}
+	subscriptionHandler := &subscription.SubscriptionHandler{
+		PlanService:         &subscription.PlanServiceAdapter{Store: subscriptionStore},
+		UsageService:        &subscription.UsageServiceAdapter{Store: subscriptionStore},
+		SubscriptionService: &subscription.SubscriptionServiceAdapter{Store: subscriptionStore},
+		Store:               subscriptionStore,
+	}
+	subscription.RegisterRoutes(billingRoute, subscriptionHandler, securityStore)
 
 	// Dunning worker setup
 
@@ -252,7 +379,7 @@ func main() {
 	}
 	if userCount == 0 {
 		ownerEmail := "admin@subinc.com"
-		ownerPassword := "admin"
+		ownerPassword := "falc0nreaper!"
 		if ownerEmail == "" || ownerPassword == "" {
 			log.Fatalf("OWNER_EMAIL and OWNER_PASSWORD env vars required for first owner admin bootstrap")
 		}

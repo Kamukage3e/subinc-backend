@@ -2,27 +2,20 @@ package account
 
 import "context"
 
-type AccountService interface {
-	CreateAccount(input Account) (Account, error)
-	UpdateAccount(input Account) (Account, error)
-	GetAccount(id string) (Account, error)
-	ListAccounts(tenantID string, page, pageSize int) ([]Account, error)
-	PerformAccountAction(ctx context.Context, accountID, action string, params map[string]interface{}) (interface{}, error)
-	DeleteAccount(id string) error
+type ProjectBillingAccountService interface {
+	CreateProjectBillingAccount(ctx context.Context, input ProjectBillingAccount) (ProjectBillingAccount, error)
+	UpdateProjectBillingAccount(ctx context.Context, input ProjectBillingAccount) (ProjectBillingAccount, error)
+	GetProjectBillingAccount(ctx context.Context, id string) (ProjectBillingAccount, error)
+	ListProjectBillingAccounts(ctx context.Context, projectID string, page, pageSize int) ([]ProjectBillingAccount, error)
+	PerformProjectBillingAccountAction(ctx context.Context, accountID, action string, params map[string]interface{}) (map[string]interface{}, error)
+	DeleteProjectBillingAccount(ctx context.Context, id string) error
 }
 
-// AccountPlugin defines a hot-pluggable interface for account logic
-// Each implementation can be dynamically loaded and configured at runtime
-// All methods must be concurrency-safe and production-grade
-// Extend as needed for SaaS account extensibility
-type AccountPlugin interface {
-	Name() string    // Unique name for the account plugin
-	Version() string // Version in semver format
-
-	// Core account operations (extend as needed)
-	OnCreate(ctx context.Context, account *Account) error
-	OnUpdate(ctx context.Context, account *Account) error
-	OnDelete(ctx context.Context, accountID string) error
-	Capabilities() []string
-	Initialize(config map[string]interface{}) error // Initialize with configuration
+type OrgBillingAccountService interface {
+	CreateOrgBillingAccount(ctx context.Context, input OrgBillingAccount) (OrgBillingAccount, error)
+	UpdateOrgBillingAccount(ctx context.Context, input OrgBillingAccount) (OrgBillingAccount, error)
+	GetOrgBillingAccount(ctx context.Context, id string) (OrgBillingAccount, error)
+	ListOrgBillingAccounts(ctx context.Context, orgID string, page, pageSize int) ([]OrgBillingAccount, error)
+	PerformOrgBillingAccountAction(ctx context.Context, accountID, action string, params map[string]interface{}) (map[string]interface{}, error)
+	DeleteOrgBillingAccount(ctx context.Context, id string) error
 }

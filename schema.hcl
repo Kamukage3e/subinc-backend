@@ -48,6 +48,50 @@ table "org_billing_accounts" {
   }
 }
 
+table "project_billing_accounts" {
+  schema = schema.public
+  column "id" {
+    type = uuid
+    null = false
+  }
+  column "project_id" {
+    type = uuid
+    null = false
+  }
+  column "status" {
+    type = varchar(32)
+    null = false
+  }
+  column "default_method_id" {
+    type = uuid
+    null = true
+  }
+  column "created_at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+  column "updated_at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+  primary_key {
+    columns = [column.id]
+  }
+  unique "uq_project_billing_accounts_id" {
+    columns = [column.id]
+  }
+  foreign_key "fk_project_billing_accounts_project_id" {
+    columns     = [column.project_id]
+    ref_columns = [table.projects.column.id]
+    on_delete   = CASCADE
+  }
+  index "idx_project_billing_accounts_project_id" {
+    columns = [column.id]
+  }
+}
+
 table "billing_methods" {
   schema = schema.public
   column "id" {
@@ -1404,6 +1448,7 @@ table "roles" {
   }
   column "deleted_at" {
     type = timestamptz
+    null = true
   }
   primary_key {
     columns = [column.id]
@@ -1477,6 +1522,10 @@ table "role_bindings" {
   column "user_id" {
     type = uuid
     null = false
+  }
+  column "resource_id" {
+    type = uuid
+    null = true
   }
   column "created_at" {
     type    = timestamptz
@@ -1877,6 +1926,10 @@ table "security_audit_logs" {
     type = uuid
     null = false
   }
+  column "user_id" {
+    type = uuid
+    null = true
+  }
   column "actor_id" {
     type = uuid
     null = false
@@ -1887,7 +1940,7 @@ table "security_audit_logs" {
   }
   column "target_id" {
     type = uuid
-    null = false
+    null = true
   }
   column "details" {
     type = text
@@ -1897,6 +1950,26 @@ table "security_audit_logs" {
     type    = timestamptz
     null    = false
     default = sql("now()")
+  }
+  column "resource" {
+    type = text
+    null = true
+  }
+  column "resource_id" {
+    type = uuid
+    null = true
+  }
+  column "ip" {
+    type = text
+    null = true
+  }
+  column "user_agent" {
+    type = text
+    null = true
+  }
+  column "metadata" {
+    type = jsonb
+    null = true
   }
   primary_key {
     columns = [column.id]
@@ -2579,6 +2652,24 @@ table "users" {
     type = varchar(32)
     null = false
   }
+  column "email_verification_token" {
+    type = varchar(128)
+    null = true
+  }
+  column "email_verified" {
+    type = boolean
+    null = false
+    default = false
+  }
+  column "mfa_enabled" {
+    type = boolean
+    null = false
+    default = false
+  }
+  column "mfa_secret" {
+    type = varchar(128)
+    null = true
+  }
   column "created_at" {
     type    = timestamptz
     null    = false
@@ -2637,44 +2728,6 @@ table "user_profiles" {
 }
 
 # All user settings are now runtime, DB-backed, and managed via server_config (key: user_settings_{userID})
-
-table "user_sessions" {
-  schema = schema.public
-  column "id" {
-    type = uuid
-    null = false
-  }
-  column "user_id" {
-    type = uuid
-    null = false
-  }
-  column "ip" {
-    type = varchar(64)
-  }
-  column "user_agent" {
-    type = varchar(256)
-  }
-  column "expires_at" {
-    type = timestamptz
-    null = false
-  }
-  column "created_at" {
-    type    = timestamptz
-    null    = false
-    default = sql("now()")
-  }
-  primary_key {
-    columns = [column.id]
-  }
-  foreign_key "user_sessions_user_id_fkey" {
-    columns     = [column.user_id]
-    ref_columns = [table.users.column.id]
-    on_delete   = CASCADE
-  }
-  index "user_sessions_user_id_idx" {
-    columns = [column.user_id]
-  }
-}
 
 table "user_audit_log" {
   schema = schema.public
@@ -2946,3 +2999,300 @@ table "documents" {
     columns = [column.owner_id]
   }
 }
+
+table "session_configs" {
+  schema = schema.public
+  column "tenant_id" {
+    type = uuid
+    null = false
+  }
+  column "session_timeout_minutes" {
+    type = integer
+    null = false
+  }
+  column "idle_timeout_minutes" {
+    type = integer
+    null = false
+  }
+  column "created_at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+  column "updated_at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+  primary_key {
+    columns = [column.tenant_id]
+  }
+}
+
+table "tenant_mfa_config" {
+  schema = schema.public
+  column "tenant_id" {
+    type = uuid
+    null = false
+  }
+  column "require_mfa" {
+    type = boolean
+    null = false
+    default = false
+  }
+  column "allowed_methods" {
+    type = jsonb
+    null = false
+  }
+  column "mfa_timeout_seconds" {
+    type = integer
+    null = false
+    default = 300
+  }
+  column "updated_at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+  primary_key {
+    columns = [column.tenant_id]
+  }
+}
+
+table "user_mfa_settings" {
+  schema = schema.public
+  column "user_id" {
+    type = uuid
+    null = false
+  }
+  column "mfa_enabled" {
+    type = boolean
+    null = false
+    default = false
+  }
+  column "mfa_methods" {
+    type = jsonb
+    null = true
+  }
+  column "updated_at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+  primary_key {
+    columns = [column.user_id]
+  }
+  foreign_key "user_mfa_settings_user_id_fkey" {
+    columns     = [column.user_id]
+    ref_columns = [table.users.column.id]
+    on_delete   = CASCADE
+  }
+}
+
+table "auth_type_configs" {
+  schema = schema.public
+  column "tenant_id" {
+    type = uuid
+    null = false
+  }
+  column "mfa_enabled" {
+    type = boolean
+    null = false
+    default = false
+  }
+  column "password_enabled" {
+    type = boolean
+    null = false
+    default = true
+  }
+  column "oauth_enabled" {
+    type = boolean
+    null = false
+    default = false
+  }
+  column "saml_enabled" {
+    type = boolean
+    null = false
+    default = false
+  }
+  column "auth_types" {
+    type = jsonb
+    null = false
+  }
+  column "primary" {
+    type = varchar(64)
+    null = false
+    default = "password"
+  }
+  column "fallback" {
+    type = jsonb
+    null = true
+  }
+  column "updated_at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+  primary_key {
+    columns = [column.tenant_id]
+  }
+}
+
+table "oauth_configs" {
+  schema = schema.public
+  column "tenant_id" {
+    type = uuid
+    null = false
+  }
+  column "client_id" {
+    type = varchar(256)
+    null = false
+  }
+  column "client_secret" {
+    type = varchar(256)
+    null = false
+  }
+  column "redirect_uri" {
+    type = varchar(256)
+    null = false
+  }
+  column "scopes" {
+    type = jsonb
+    null = false
+  }
+  column "updated_at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+  primary_key {
+    columns = [column.tenant_id]
+  }
+}
+
+table "saml_configs" {
+  schema = schema.public
+  column "tenant_id" {
+    type = uuid
+    null = false
+  }
+  column "metadata_url" {
+    type = varchar(256)
+    null = false
+  }
+  column "entity_id" {
+    type = varchar(256)
+    null = false
+  }
+  column "acs_url" {
+    type = varchar(256)
+    null = false
+  }
+  column "updated_at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+  primary_key {
+    columns = [column.tenant_id]
+  }
+}
+
+table "password_policy_configs" {
+  schema = schema.public
+  column "tenant_id" {
+    type = uuid
+    null = false
+  }
+  column "min_length" {
+    type = integer
+    null = false
+    default = 8
+  }
+  column "require_numbers" {
+    type = boolean
+    null = false
+    default = true
+  }
+  column "require_special" {
+    type = boolean
+    null = false
+    default = true
+  }
+  column "require_upper" {
+    type = boolean
+    null = false
+    default = true
+  }
+  column "require_lower" {
+    type = boolean
+    null = false
+    default = true
+  }
+  column "updated_at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+  primary_key {
+    columns = [column.tenant_id]
+  }
+}
+
+table "notification_channel_enabled_configs" {
+  schema = schema.public
+  column "tenant_id" {
+    type = uuid
+    null = false
+  }
+  column "channel" {
+    type = varchar(64)
+    null = false
+  }
+  column "provider" {
+    type = varchar(64)
+    null = false
+  }
+  column "enabled" {
+    type = boolean
+    null = false
+    default = false
+  }
+  column "updated_at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+  primary_key {
+    columns = [column.tenant_id, column.channel, column.provider]
+  }
+}
+
+table "notification_provider_configs" {
+  schema = schema.public
+  column "tenant_id" {
+    type = uuid
+    null = false
+  }
+  column "channel" {
+    type = varchar(64)
+    null = false
+  }
+  column "provider" {
+    type = varchar(64)
+    null = false
+  }
+  column "config" {
+    type = jsonb
+    null = false
+  }
+  column "updated_at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+  primary_key {
+    columns = [column.tenant_id, column.channel, column.provider]
+  }
+}
+

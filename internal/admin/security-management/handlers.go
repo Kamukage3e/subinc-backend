@@ -14,6 +14,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	"github.com/subinc/subinc-backend/internal/pkg/auth"
 	"github.com/subinc/subinc-backend/internal/pkg/auth/providers/jwt"
 	"github.com/subinc/subinc-backend/internal/pkg/auth/providers/session"
@@ -1639,18 +1640,6 @@ func (h *SecurityHandler) SetRateLimitConfig(c *fiber.Ctx) error {
 //	400: ErrorResponse
 //	401: ErrorResponse
 func (h *SecurityHandler) Login(c *fiber.Ctx) error {
-	// Get tenant-specific auth configuration
-	tenantID := getTenantID(c)
-	cfg, err := h.Store.GetAuthTypeConfig(c.Context(), tenantID)
-	if err != nil || !cfg.PasswordEnabled {
-		return auth.ToFiberError(auth.NewAuthError(
-			auth.ErrorTypeConfiguration,
-			"Password login disabled for this tenant",
-			"AUTH_LOGIN_001",
-			err,
-		))
-	}
-
 	var input struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
@@ -1660,7 +1649,6 @@ func (h *SecurityHandler) Login(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email and password required"})
 	}
 
-	// Use password service to validate credentials
 	user, err := h.PasswordService.AuthenticateUser(c.Context(), input.Email, input.Password)
 	if err != nil {
 		logger.LogError("Login: invalid credentials", logger.ErrorField(err), logger.String("email", input.Email))
@@ -1671,10 +1659,6 @@ func (h *SecurityHandler) Login(c *fiber.Ctx) error {
 			err,
 		))
 	}
-
-	// Get IP and device info for logging/security
-	ip := c.IP()
-	device := c.Get("User-Agent")
 
 	// Get user profile to retrieve roles and other data
 	profile, err := h.PasswordService.GetProfile(c.Context(), user.ID)
@@ -1693,17 +1677,19 @@ func (h *SecurityHandler) Login(c *fiber.Ctx) error {
 		}
 	}
 
-	// Use auth manager to select appropriate auth provider
-	var preferredProvider string
-	if cfg.Primary != "" {
-		preferredProvider = cfg.Primary
-	} else {
-		preferredProvider = "default"
+	// Fetch all tenant IDs for this user
+	var tenantIDs []string
+	if h.Store != nil {
+		ids, err := h.Store.GetUserTenantIDs(c.Context(), user.ID)
+		if err == nil {
+			tenantIDs = ids
+		}
 	}
 
+	// Use auth manager to select appropriate auth provider
+	preferredProvider := "default"
 	authProvider, err := h.Auth.GetProvider(preferredProvider)
 	if err != nil || authProvider == nil {
-		// Fall back to default provider
 		authProvider, err = h.Auth.GetDefaultProvider()
 		if err != nil {
 			logger.LogError("Login: no auth provider available", logger.ErrorField(err))
@@ -1716,20 +1702,20 @@ func (h *SecurityHandler) Login(c *fiber.Ctx) error {
 		}
 	}
 
-	// Create standard session data
+	ip := c.IP()
+	device := c.Get("User-Agent")
+
 	sessionData := map[string]interface{}{
 		"ip":            ip,
 		"device":        device,
 		"login_time":    time.Now().UTC(),
 		"login_method":  "password",
-		"tenant_id":     tenantID,
 		"email":         user.Email,
 		"user_status":   user.Status,
 		"last_activity": time.Now().UTC(),
 		"auth_provider": preferredProvider,
 	}
 
-	// Add security metadata
 	sessionData["security_metadata"] = map[string]interface{}{
 		"ip_address":    ip,
 		"user_agent":    device,
@@ -1738,22 +1724,18 @@ func (h *SecurityHandler) Login(c *fiber.Ctx) error {
 		"authenticated": true,
 	}
 
-	// Add profile data if available
 	if profile != nil {
 		for k, v := range profile {
-			// Don't overwrite critical fields
 			if k != "ip" && k != "device" && k != "login_time" && k != "login_method" &&
-				k != "tenant_id" && k != "security_metadata" && k != "auth_provider" {
+				k != "security_metadata" && k != "auth_provider" {
 				sessionData[k] = v
 			}
 		}
 	}
 
-	// For session provider, create a new session
 	if authProvider.Name() == "session" {
-		// Check if we have a session provider with extended API
 		if sessionProvider, ok := authProvider.(*session.SessionProvider); ok {
-			result, err := sessionProvider.CreateSession(c.Context(), user.ID, tenantID, user.Email, roles, sessionData)
+			result, err := sessionProvider.CreateSession(c.Context(), user.ID, "", user.Email, roles, sessionData)
 			if err != nil {
 				logger.LogError("Login: failed to create session", logger.ErrorField(err), logger.String("user_id", user.ID))
 				return auth.ToFiberError(auth.NewAuthError(
@@ -1763,22 +1745,19 @@ func (h *SecurityHandler) Login(c *fiber.Ctx) error {
 					err,
 				))
 			}
-
 			return c.JSON(fiber.Map{
 				"refresh_token": result.Token.Token,
 				"expires_at":    result.Token.ExpiresAt,
 				"session_token": result.Token.Token,
 				"user_id":       user.ID,
+				"tenant_ids":    tenantIDs,
 			})
 		}
 	}
 
-	// For JWT provider, create token pair
 	if authProvider.Name() == "jwt" {
-		// Check if we have a JWT provider with extended API
 		if jwtProvider, ok := authProvider.(*jwt.JWTProvider); ok {
-			// Generate token pair
-			accessToken, refreshToken, err := jwtProvider.GenerateTokenPair(user.ID, tenantID, user.Email, roles, sessionData)
+			accessToken, refreshToken, err := jwtProvider.GenerateTokenPair(user.ID, "", user.Email, roles, sessionData)
 			if err != nil {
 				logger.LogError("Login: failed to generate JWT tokens", logger.ErrorField(err), logger.String("user_id", user.ID))
 				return auth.ToFiberError(auth.NewAuthError(
@@ -1788,21 +1767,19 @@ func (h *SecurityHandler) Login(c *fiber.Ctx) error {
 					err,
 				))
 			}
-
 			return c.JSON(fiber.Map{
 				"access_token":  accessToken.Token,
 				"refresh_token": refreshToken.Token,
 				"expires_at":    accessToken.ExpiresAt,
 				"token_type":    "Bearer",
 				"user_id":       user.ID,
+				"tenant_ids":    tenantIDs,
 			})
 		}
 	}
 
-	// Generic fallback using standard AuthProvider interface
 	result, err := authProvider.Authenticate(c.Context(), map[string]interface{}{
 		"user_id":    user.ID,
-		"tenant_id":  tenantID,
 		"email":      user.Email,
 		"roles":      roles,
 		"ip":         ip,
@@ -1826,6 +1803,7 @@ func (h *SecurityHandler) Login(c *fiber.Ctx) error {
 		"expires_at":    result.Token.ExpiresAt,
 		"token_type":    result.Token.TokenType,
 		"user_id":       user.ID,
+		"tenant_ids":    tenantIDs,
 	})
 }
 
@@ -3015,6 +2993,143 @@ func (h *SecurityHandler) BootstrapOwnerAdmin(c *fiber.Ctx) error {
 			},
 		})
 	}
+
+	// Grant full RBAC access to admin via RBAC tables
+	go func() {
+		rbacStore := &rbac_management.PostgresStore{DB: h.Store.DB}
+		ctx := context.Background()
+		const adminRoleName = "admin"
+		const adminRoleDesc = "Full admin role (bootstrap)"
+
+		// Find org_id for this user
+		var tenantID string
+		row := h.Store.DB.QueryRow(ctx, `SELECT org_id FROM org_members WHERE user_id = $1 LIMIT 1`, user.ID)
+		err := row.Scan(&tenantID)
+		if err != nil || tenantID == "" {
+			logger.LogError("BootstrapOwnerAdmin: could not find org_id for admin user, skipping RBAC binding", logger.ErrorField(err), logger.String("user_id", user.ID))
+			return
+		}
+
+		// 1. Create/find the admin role for this org
+		var adminRole rbac_management.Role
+		roles, err := rbacStore.ListRoles(ctx, tenantID, 1, 1_000)
+		if err == nil {
+			for _, r := range roles {
+				if r.Name == adminRoleName {
+					adminRole = r
+					break
+				}
+			}
+		}
+		if adminRole.ID == "" {
+			adminRole, err = rbacStore.CreateRole(ctx, rbac_management.Role{
+				TenantID: tenantID,
+				Name:     adminRoleName,
+				Desc:     adminRoleDesc,
+			})
+			if err != nil {
+				logger.LogError("BootstrapOwnerAdmin: failed to create admin role", logger.ErrorField(err))
+				return
+			}
+		}
+
+		// 2. Grant all permissions to the admin role (wildcard)
+		// (Assume admin role is checked as wildcard in your RBAC logic, or assign all permissions if needed)
+
+		// 3. Bind admin user to admin role (if not already bound)
+		_, _ = rbacStore.CreateRoleBinding(ctx, rbac_management.RoleBinding{
+			TenantID: tenantID,
+			RoleID:   adminRole.ID,
+			UserID:   user.ID,
+		})
+	}()
+
+	// Grant global super admin RBAC access to admin
+	go func() {
+		rbacStore := &rbac_management.PostgresStore{DB: h.Store.DB}
+		ctx := context.Background()
+		const superAdminRoleName = "super_admin"
+		const superAdminRoleDesc = "Global super admin (bootstrap)"
+		const tenantID = "" // global
+
+		// 1. Create/find the super_admin role (global)
+		var superAdminRole rbac_management.Role
+		roles, err := rbacStore.ListRoles(ctx, tenantID, 1, 1_000)
+		if err == nil {
+			for _, r := range roles {
+				if r.Name == superAdminRoleName {
+					superAdminRole = r
+					break
+				}
+			}
+		}
+		if superAdminRole.ID == "" {
+			superAdminRole, err = rbacStore.CreateRole(ctx, rbac_management.Role{
+				TenantID: tenantID,
+				Name:     superAdminRoleName,
+				Desc:     superAdminRoleDesc,
+			})
+			if err != nil {
+				logger.LogError("BootstrapOwnerAdmin: failed to create super_admin role", logger.ErrorField(err))
+				return
+			}
+		}
+
+		// 2. Create/find the global wildcard resource '*'
+		var resourceID string
+		resources, err := rbacStore.ListResources(ctx, tenantID, "", 1, 1000)
+		if err == nil {
+			for _, res := range resources {
+				if res.Name == "*" {
+					resourceID = res.ID
+					break
+				}
+			}
+		}
+		if resourceID == "" {
+			res, err := rbacStore.CreateResource(ctx, rbac_management.Resource{
+				TenantID: tenantID,
+				Type:     "global",
+				Name:     "*",
+			})
+			if err != nil {
+				logger.LogError("BootstrapOwnerAdmin: failed to create global resource *", logger.ErrorField(err))
+				return
+			}
+			resourceID = res.ID
+		}
+
+		// 3. Bind admin user to super_admin role for global resource
+		_, _ = rbacStore.DB.Exec(ctx, `INSERT INTO role_bindings (id, tenant_id, role_id, user_id, resource_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, now(), now()) ON CONFLICT DO NOTHING`, uuid.NewString(), tenantID, superAdminRole.ID, user.ID, resourceID)
+
+		// 4. Grant all permissions (resource='*', action='*') to super_admin role
+		// Create/find the wildcard permission
+		var permID string
+		perms, err := rbacStore.ListPermissions(ctx, "*", "*", 1, 100)
+		if err == nil {
+			for _, p := range perms {
+				if p.Resource == "*" && p.Action == "*" {
+					permID = p.ID
+					break
+				}
+			}
+		}
+		if permID == "" {
+			perm, err := rbacStore.CreatePermission(ctx, rbac_management.Permission{
+				Name:     "super_admin_all",
+				Resource: "*",
+				Action:   "*",
+				Desc:     "Wildcard permission for super_admin",
+			})
+			if err != nil {
+				logger.LogError("BootstrapOwnerAdmin: failed to create wildcard permission", logger.ErrorField(err))
+				return
+			}
+			permID = perm.ID
+		}
+		// Bind permission to role (role_permissions)
+		_, _ = rbacStore.DB.Exec(ctx, `INSERT INTO role_permissions (id, role_id, permission_id, created_at, updated_at) VALUES ($1, $2, $3, now(), now()) ON CONFLICT DO NOTHING`, uuid.NewString(), superAdminRole.ID, permID)
+	}()
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"user": user,

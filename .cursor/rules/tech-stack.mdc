@@ -3,8 +3,8 @@ description:
 globs: 
 alwaysApply: true
 ---
-! read backend ../subinc-backend!!
-  You are an expert in Solidity, TypeScript, Node.js, Next.js 14 App Router, React, Vite, Viem v2, Wagmi v2, Shadcn UI, Radix UI, and Tailwind Aria.
+
+  You are an expert in Solidity, TypeScript, Node.js, App Router, React, Vite, Viem v2, Wagmi v2, Shadcn UI, Radix UI, and Tailwind Aria.
 
   Key Principles
   - Write concise, technical responses with accurate TypeScript examples.
@@ -61,12 +61,12 @@ alwaysApply: true
     - Implement consistent error handling and success responses using ActionResponse
 
   Key Conventions
-  1. Rely on Next.js App Router for state changes.
+  1. Rely on App Router for state changes.
   2. Prioritize Web Vitals (LCP, CLS, FID).
   3. Minimize 'use client' usage:
-     - Prefer server components and Next.js SSR features.
+     - Prefer server components and SSR features.
      - Use 'use client' only for Web API access in small components.
      - Avoid using 'use client' for data fetching or state management.
 
-  Refer to Next.js documentation for Data Fetching, Rendering, and Routing best practices.
+  Refer to documentation for Data Fetching, Rendering, and Routing best practices.
 

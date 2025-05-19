@@ -5,71 +5,63 @@ import (
 	"errors"
 
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
-	
 )
 
-// CreateAccount inserts a new account into the DB
-func (s *PostgresStore) CreateAccount(ctx context.Context, a Account) (Account, error) {
-	const q = `INSERT INTO accounts (id, tenant_id, email, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, tenant_id, email, status, created_at, updated_at`
-	row := s.DB.QueryRow(ctx, q, a.ID, a.TenantID, a.Email, a.Status, a.CreatedAt, a.UpdatedAt)
-	var out Account
-	if err := row.Scan(&out.ID, &out.TenantID, &out.Email, &out.Status, &out.CreatedAt, &out.UpdatedAt); err != nil {
-		logger.LogError("CreateAccount failed", logger.ErrorField(err), logger.Any("account", a))
-		return Account{}, err
+// CreateProjectBillingAccount inserts a new project billing account into the DB
+func (s *PostgresStore) CreateProjectBillingAccount(ctx context.Context, a ProjectBillingAccount) (ProjectBillingAccount, error) {
+	const q = `INSERT INTO project_billing_accounts (id, project_id, email, status, currency, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, project_id, email, status, currency, created_at, updated_at`
+	row := s.DB.QueryRow(ctx, q, a.ID, a.ProjectID, a.Email, a.Status, a.Currency, a.CreatedAt, a.UpdatedAt)
+	var out ProjectBillingAccount
+	if err := row.Scan(&out.ID, &out.ProjectID, &out.Email, &out.Status, &out.Currency, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		logger.LogError("CreateProjectBillingAccount failed", logger.ErrorField(err), logger.Any("account", a))
+		return ProjectBillingAccount{}, err
 	}
 	return out, nil
 }
 
-// GetAccount fetches an account by ID
-func (s *PostgresStore) GetAccount(ctx context.Context, id string) (Account, error) {
-	const q = `SELECT id, tenant_id, email, status, created_at, updated_at FROM accounts WHERE id = $1`
+func (s *PostgresStore) GetProjectBillingAccount(ctx context.Context, id string) (ProjectBillingAccount, error) {
+	const q = `SELECT id, project_id, email, status, currency, created_at, updated_at FROM project_billing_accounts WHERE id = $1`
 	row := s.DB.QueryRow(ctx, q, id)
-	var out Account
-	if err := row.Scan(&out.ID, &out.TenantID, &out.Email, &out.Status, &out.CreatedAt, &out.UpdatedAt); err != nil {
-		if errors.Is(err, errors.New("no rows")) {
-			logger.LogWarn("GetAccount: not found", logger.String("id", id))
-			return Account{}, errors.New("no rows")
-		}
-		logger.LogError("GetAccount failed", logger.ErrorField(err), logger.String("id", id))
-		return Account{}, err
+	var out ProjectBillingAccount
+	if err := row.Scan(&out.ID, &out.ProjectID, &out.Email, &out.Status, &out.Currency, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		logger.LogError("GetProjectBillingAccount failed", logger.ErrorField(err), logger.String("id", id))
+		return ProjectBillingAccount{}, err
 	}
 	return out, nil
 }
 
-// UpdateAccount updates an account in the DB
-func (s *PostgresStore) UpdateAccount(ctx context.Context, a Account) (Account, error) {
-	const q = `UPDATE accounts SET tenant_id = $2, email = $3, status = $4, updated_at = $5 WHERE id = $1 RETURNING id, tenant_id, email, status, created_at, updated_at`
-	row := s.DB.QueryRow(ctx, q, a.ID, a.TenantID, a.Email, a.Status, a.UpdatedAt)
-	var out Account
-	if err := row.Scan(&out.ID, &out.TenantID, &out.Email, &out.Status, &out.CreatedAt, &out.UpdatedAt); err != nil {
-		logger.LogError("UpdateAccount failed", logger.ErrorField(err), logger.Any("account", a))
-		return Account{}, err
+func (s *PostgresStore) UpdateProjectBillingAccount(ctx context.Context, a ProjectBillingAccount) (ProjectBillingAccount, error) {
+	const q = `UPDATE project_billing_accounts SET project_id = $2, email = $3, status = $4, currency = $5, updated_at = $6 WHERE id = $1 RETURNING id, project_id, email, status, currency, created_at, updated_at`
+	row := s.DB.QueryRow(ctx, q, a.ID, a.ProjectID, a.Email, a.Status, a.Currency, a.UpdatedAt)
+	var out ProjectBillingAccount
+	if err := row.Scan(&out.ID, &out.ProjectID, &out.Email, &out.Status, &out.Currency, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		logger.LogError("UpdateProjectBillingAccount failed", logger.ErrorField(err), logger.Any("account", a))
+		return ProjectBillingAccount{}, err
 	}
 	return out, nil
 }
 
-// ListAccounts returns a paginated list of accounts for a tenant
-func (s *PostgresStore) ListAccounts(ctx context.Context, tenantID string, page, pageSize int) ([]Account, error) {
+func (s *PostgresStore) ListProjectBillingAccounts(ctx context.Context, projectID string, page, pageSize int) ([]ProjectBillingAccount, error) {
 	if page < 1 {
 		page = 1
 	}
 	if pageSize < 1 || pageSize > 1000 {
 		pageSize = 100
 	}
-	const q = `SELECT id, tenant_id, email, status, created_at, updated_at FROM accounts WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+	const q = `SELECT id, project_id, email, status, currency, created_at, updated_at FROM project_billing_accounts WHERE project_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
 	offset := (page - 1) * pageSize
-	rows, err := s.DB.Query(ctx, q, tenantID, pageSize, offset)
+	rows, err := s.DB.Query(ctx, q, projectID, pageSize, offset)
 	if err != nil {
-		logger.LogError("ListAccounts query failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		logger.LogError("ListProjectBillingAccounts query failed", logger.ErrorField(err), logger.String("project_id", projectID))
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Account
+	var out []ProjectBillingAccount
 	for rows.Next() {
-		var a Account
-		if err := rows.Scan(&a.ID, &a.TenantID, &a.Email, &a.Status, &a.CreatedAt, &a.UpdatedAt); err != nil {
-			logger.LogError("ListAccounts scan failed", logger.ErrorField(err))
+		var a ProjectBillingAccount
+		if err := rows.Scan(&a.ID, &a.ProjectID, &a.Email, &a.Status, &a.Currency, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			logger.LogError("ListProjectBillingAccounts scan failed", logger.ErrorField(err))
 			return nil, err
 		}
 		out = append(out, a)
@@ -77,10 +69,9 @@ func (s *PostgresStore) ListAccounts(ctx context.Context, tenantID string, page,
 	return out, nil
 }
 
-// --- AccountAction ---
-func (s *PostgresStore) PerformAccountAction(ctx context.Context, accountID, action string, params map[string]interface{}) (map[string]interface{}, error) {
+func (s *PostgresStore) PerformProjectBillingAccountAction(ctx context.Context, accountID, action string, params map[string]interface{}) (map[string]interface{}, error) {
 	if accountID == "" || action == "" {
-		logger.LogError("PerformAccountAction: invalid input", logger.String("account_id", accountID), logger.String("action", action))
+		logger.LogError("PerformProjectBillingAccountAction: invalid input", logger.String("account_id", accountID), logger.String("action", action))
 		return nil, errors.New("account_id/action must not be empty")
 	}
 	var status string
@@ -92,14 +83,14 @@ func (s *PostgresStore) PerformAccountAction(ctx context.Context, accountID, act
 	case "close":
 		status = "closed"
 	default:
-		logger.LogError("PerformAccountAction: invalid action", logger.String("action", action))
+		logger.LogError("PerformProjectBillingAccountAction: invalid action", logger.String("action", action))
 		return nil, errors.New("unsupported account action")
 	}
-	const q = `UPDATE accounts SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, tenant_id, email, status, created_at, updated_at`
+	const q = `UPDATE project_billing_accounts SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, project_id, email, status, currency, created_at, updated_at`
 	row := s.DB.QueryRow(ctx, q, status, accountID)
-	var out Account
-	if err := row.Scan(&out.ID, &out.TenantID, &out.Email, &out.Status, &out.CreatedAt, &out.UpdatedAt); err != nil {
-		logger.LogError("PerformAccountAction: update failed", logger.ErrorField(err), logger.String("account_id", accountID), logger.String("action", action))
+	var out ProjectBillingAccount
+	if err := row.Scan(&out.ID, &out.ProjectID, &out.Email, &out.Status, &out.Currency, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		logger.LogError("PerformProjectBillingAccountAction: update failed", logger.ErrorField(err), logger.String("account_id", accountID), logger.String("action", action))
 		return nil, err
 	}
 	return map[string]interface{}{
@@ -107,4 +98,14 @@ func (s *PostgresStore) PerformAccountAction(ctx context.Context, accountID, act
 		"action":  action,
 		"status":  status,
 	}, nil
+}
+
+func (s *PostgresStore) DeleteProjectBillingAccount(ctx context.Context, id string) error {
+	const q = `DELETE FROM project_billing_accounts WHERE id = $1`
+	_, err := s.DB.Exec(ctx, q, id)
+	if err != nil {
+		logger.LogError("DeleteProjectBillingAccount failed", logger.ErrorField(err), logger.String("id", id))
+		return err
+	}
+	return nil
 }

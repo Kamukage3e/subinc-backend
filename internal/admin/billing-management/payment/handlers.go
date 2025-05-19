@@ -71,7 +71,7 @@ func (h *PaymentHandler) CreatePayment(c *fiber.Ctx) error {
 		logger.LogError("CreatePayment: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	payment, err := h.PaymentService.CreatePayment(input)
+	payment, err := h.PaymentService.CreatePayment(c.Context(), input)
 	if err != nil {
 		logger.LogError("CreatePayment: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create payment"})
@@ -125,7 +125,7 @@ func (h *PaymentHandler) UpdatePayment(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
 	input.ID = id
-	payment, err := h.PaymentService.UpdatePayment(input)
+	payment, err := h.PaymentService.UpdatePayment(c.Context(), input)
 	if err != nil {
 		logger.LogError("UpdatePayment: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update payment"})
@@ -139,7 +139,7 @@ func (h *PaymentHandler) GetPayment(c *fiber.Ctx) error {
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
 	}
-	payment, err := h.PaymentService.GetPayment(id)
+	payment, err := h.PaymentService.GetPayment(c.Context(), id)
 	if err != nil {
 		logger.LogError("GetPayment: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get payment"})
@@ -152,7 +152,7 @@ func (h *PaymentHandler) ListPayments(c *fiber.Ctx) error {
 	invoiceID := c.Query("invoice_id")
 	page := c.QueryInt("page", 1)
 	pageSize := c.QueryInt("page_size", 20)
-	payments, err := h.PaymentService.ListPayments(invoiceID, page, pageSize)
+	payments, err := h.PaymentService.ListPayments(c.Context(), invoiceID, page, pageSize)
 	if err != nil {
 		logger.LogError("ListPayments: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list payments"})
@@ -172,7 +172,7 @@ func (h *PaymentHandler) CreatePaymentMethod(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
 
-	method, err := h.PaymentMethodService.CreatePaymentMethod(input.PaymentMethod, input.PaymentData)
+	method, err := h.PaymentMethodService.CreatePaymentMethod(c.Context(), input.PaymentMethod, input.PaymentData) 
 	if err != nil {
 		logger.LogError("CreatePaymentMethod: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create payment method"})
@@ -193,7 +193,7 @@ func (h *PaymentHandler) UpdatePaymentMethod(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
 	input.ID = id
-	method, err := h.PaymentMethodService.UpdatePaymentMethod(input)
+	method, err := h.PaymentMethodService.UpdatePaymentMethod(c.Context(), input)
 	if err != nil {
 		logger.LogError("UpdatePaymentMethod: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update payment method"})
@@ -215,7 +215,7 @@ func (h *PaymentHandler) PatchPaymentMethod(c *fiber.Ctx) error {
 		logger.LogError("PatchPaymentMethod: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	err := h.PaymentMethodService.PatchPaymentMethod(id, input.SetDefault, input.Status)
+	err := h.PaymentMethodService.PatchPaymentMethod(c.Context(), id, input.SetDefault, input.Status)
 	if err != nil {
 		logger.LogError("PatchPaymentMethod: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to patch payment method"})
@@ -229,7 +229,7 @@ func (h *PaymentHandler) DeletePaymentMethod(c *fiber.Ctx) error {
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
 	}
-	if err := h.PaymentMethodService.DeletePaymentMethod(id); err != nil {
+	if err := h.PaymentMethodService.DeletePaymentMethod(c.Context(), id); err != nil {
 		logger.LogError("DeletePaymentMethod: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete payment method"})
 	}
@@ -242,7 +242,7 @@ func (h *PaymentHandler) GetPaymentMethod(c *fiber.Ctx) error {
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
 	}
-	method, err := h.PaymentMethodService.GetPaymentMethod(id)
+	method, err := h.PaymentMethodService.GetPaymentMethod(c.Context(), id)
 	if err != nil {
 		logger.LogError("GetPaymentMethod: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get payment method"})
@@ -257,7 +257,7 @@ func (h *PaymentHandler) ListPaymentMethods(c *fiber.Ctx) error {
 	page, _ := strconv.Atoi(c.Query("page", "1"))
 	pageSize, _ := strconv.Atoi(c.Query("page_size", "20"))
 
-	methods, err := h.PaymentMethodService.ListPaymentMethods(accountID, status, page, pageSize)
+	methods, err := h.PaymentMethodService.ListPaymentMethods(c.Context(), accountID, status, page, pageSize)
 	if err != nil {
 		logger.LogError("ListPaymentMethods: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list payment methods"})
@@ -274,7 +274,7 @@ func (h *PaymentHandler) CreateRefund(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
 
-	refund, err := h.RefundService.CreateRefund(input)
+	refund, err := h.RefundService.CreateRefund(c.Context(), input)
 	if err != nil {
 		logger.LogError("CreateRefund: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create refund"})
@@ -289,11 +289,17 @@ func (h *PaymentHandler) UpdateRefund(c *fiber.Ctx) error {
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
 	}
-	if err := h.RefundService.UpdateRefund(id); err != nil {
+	var input Refund
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("UpdateRefund: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	refund, err := h.RefundService.UpdateRefund(c.Context(), input)
+	if err != nil {
 		logger.LogError("UpdateRefund: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update refund"})
 	}
-	return c.SendStatus(fiber.StatusNoContent)
+	return c.JSON(refund)
 }
 
 // DeleteRefund handles refund deletion
@@ -302,7 +308,7 @@ func (h *PaymentHandler) DeleteRefund(c *fiber.Ctx) error {
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
 	}
-	if err := h.RefundService.DeleteRefund(id); err != nil {
+	if err := h.RefundService.DeleteRefund(c.Context(), id); err != nil {
 		logger.LogError("DeleteRefund: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete refund"})
 	}
@@ -315,7 +321,7 @@ func (h *PaymentHandler) GetRefund(c *fiber.Ctx) error {
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
 	}
-	refund, err := h.RefundService.GetRefund(id)
+	refund, err := h.RefundService.GetRefund(c.Context(), id)
 	if err != nil {
 		logger.LogError("GetRefund: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get refund"})
@@ -331,7 +337,7 @@ func (h *PaymentHandler) ListRefunds(c *fiber.Ctx) error {
 	page, _ := strconv.Atoi(c.Query("page", "1"))
 	pageSize, _ := strconv.Atoi(c.Query("page_size", "20"))
 
-	refunds, err := h.RefundService.ListRefunds(paymentID, invoiceID, status, page, pageSize)
+	refunds, err := h.RefundService.ListRefunds(c.Context(), paymentID, invoiceID, status, page, pageSize)
 	if err != nil {
 		logger.LogError("ListRefunds: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list refunds"})
@@ -1388,4 +1394,35 @@ func (h *PaymentHandler) DisablePaymentPlugin(c *fiber.Ctx) error {
 		"status":  "success",
 		"message": fmt.Sprintf("Payment plugin '%s' disabled successfully for tenant '%s'", pluginName, tenantID),
 	})
+}
+
+
+func (h *PaymentHandler) CreateManualRefund(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
+	}
+	var input struct {
+		Reason  string  `json:"reason"`
+		Amount  float64 `json:"amount"`
+		Currency string `json:"currency"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	refund := Refund{
+		PaymentID: id,
+		Reason:    input.Reason,
+		Amount:    input.Amount,
+		Currency:  input.Currency,
+		Status:    "manual",
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+		Metadata:  "{}",
+	}
+	refund, err := h.ManualRefundService.CreateManualRefund(c.Context(), refund)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create manual refund"})
+	}
+	return c.Status(fiber.StatusCreated).JSON(refund)
 }
