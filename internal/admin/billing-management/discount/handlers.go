@@ -37,7 +37,7 @@ func (h *DiscountHandler) GetDiscount(c *fiber.Ctx) error {
 	discount, err := h.DiscountService.GetDiscount(id)
 	if err != nil {
 		logger.LogError("GetDiscount: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(discount)
 }
@@ -51,7 +51,7 @@ func (h *DiscountHandler) GetDiscountByCode(c *fiber.Ctx) error {
 	discount, err := h.DiscountService.GetDiscountByCode(code)
 	if err != nil {
 		logger.LogError("GetDiscountByCode: not found", logger.ErrorField(err), logger.String("code", code))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(discount)
 }
@@ -109,7 +109,7 @@ func (h *DiscountHandler) UpdateDiscount(c *fiber.Ctx) error {
 	input.ID = id
 	if input.Code == "" {
 		logger.LogError("UpdateDiscount: code required for update")
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "code required for update", "code": "VALIDATION_ERROR", "field": "code"})
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "code required for update"})
 	}
 	if input.Metadata == "" {
 		input.Metadata = "{}"
@@ -227,7 +227,7 @@ func (h *DiscountHandler) GetCoupon(c *fiber.Ctx) error {
 	coupon, err := h.CouponService.GetCoupon(id)
 	if err != nil {
 		logger.LogError("GetCoupon: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(coupon)
 }
@@ -241,7 +241,7 @@ func (h *DiscountHandler) GetCouponByCode(c *fiber.Ctx) error {
 	coupon, err := h.CouponService.GetCouponByCode(code)
 	if err != nil {
 		logger.LogError("GetCouponByCode: not found", logger.ErrorField(err), logger.String("code", code))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(coupon)
 }
@@ -388,7 +388,7 @@ func (h *DiscountHandler) GetCredit(c *fiber.Ctx) error {
 	credit, err := h.CreditService.GetCredit(id)
 	if err != nil {
 		logger.LogError("GetCredit: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(credit)
 }

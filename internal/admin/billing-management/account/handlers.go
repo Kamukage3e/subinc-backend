@@ -146,7 +146,7 @@ func (h *AccountHandler) GetAccount(c *fiber.Ctx) error {
 	account, err := h.BillingAccountService.Get(ctx, BillingAccountType(accountType), id)
 	if err != nil {
 		logger.LogError("GetAccount: not found", logger.ErrorField(err))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(account)
 }

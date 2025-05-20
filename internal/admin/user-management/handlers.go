@@ -45,7 +45,7 @@ func (h *UserHandler) CreateUser(c *fiber.Ctx) error {
 	logger.LogInfo("CreateUser: user", logger.Any("user", user))
 	if err := user.Validate(); err != nil {
 		logger.LogError("CreateUser: validation failed", logger.ErrorField(err))
-		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	user.CreatedAt = NowUTC()
 	user.UpdatedAt = user.CreatedAt
@@ -79,7 +79,7 @@ func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
 	}
 	if err := user.Validate(); err != nil {
 		logger.LogError("UpdateUser: validation failed", logger.ErrorField(err))
-		return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	user.ID = id
 	user.UpdatedAt = NowUTC()

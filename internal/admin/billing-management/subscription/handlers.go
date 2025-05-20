@@ -351,7 +351,7 @@ func (h *SubscriptionHandler) ConfigureSubscriptionPlugin(c *fiber.Ctx) error {
 		Initialize(map[string]interface{}) error
 	}); ok {
 		if err := initializer.Initialize(config); err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to initialize plugin: " + err.Error()})
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to initialize plugin: " })
 		}
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "message": "Subscription plugin '" + pluginName + "' configured successfully"})

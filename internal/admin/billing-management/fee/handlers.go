@@ -24,7 +24,7 @@ func (h *FeeHandler) CreateFee(c *fiber.Ctx) error {
 	created, err := h.Store.CreateFee(context.Background(), fee)
 	if err != nil {
 		logger.LogError("CreateFee: store error", logger.ErrorField(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.Status(fiber.StatusCreated).JSON(created)
 }
@@ -34,7 +34,7 @@ func (h *FeeHandler) GetFee(c *fiber.Ctx) error {
 	fee, err := h.Store.GetFee(context.Background(), id)
 	if err != nil {
 		logger.LogError("GetFee: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(fee)
 }
@@ -54,7 +54,7 @@ func (h *FeeHandler) UpdateFee(c *fiber.Ctx) error {
 	updated, err := h.Store.UpdateFee(context.Background(), fee)
 	if err != nil {
 		logger.LogError("UpdateFee: store error", logger.ErrorField(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.JSON(updated)
 }
@@ -63,7 +63,7 @@ func (h *FeeHandler) DeleteFee(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if err := h.Store.DeleteFee(context.Background(), id); err != nil {
 		logger.LogError("DeleteFee: store error", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -90,7 +90,7 @@ func (h *FeeHandler) GetFeePluginConfig(c *fiber.Ctx) error {
 	cfg, err := h.Store.GetFeePluginConfig(c.Context(), tenantID)
 	if err != nil {
 		logger.LogError("GetFeePluginConfig: not found", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(cfg)
 }
@@ -101,7 +101,7 @@ func (h *FeeHandler) ListFees(c *fiber.Ctx) error {
 	fees, err := h.Store.ListFees(context.Background(), page, pageSize)
 	if err != nil {
 		logger.LogError("ListFees: store error", logger.ErrorField(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.JSON(fiber.Map{"fees": fees, "page": page, "page_size": pageSize})
 }

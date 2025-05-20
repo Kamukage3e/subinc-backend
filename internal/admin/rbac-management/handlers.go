@@ -114,7 +114,7 @@ func (h *RBACHandler) GetRole(c *fiber.Ctx) error {
 	role, err := h.RoleService.GetRole(c.Context(), id, tenantID)
 	if err != nil {
 		logger.LogError("GetRole: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(role)
 }
@@ -205,7 +205,7 @@ func (h *RBACHandler) GetPermission(c *fiber.Ctx) error {
 	perm, err := h.PermissionService.GetPermission(c.Context(), id)
 	if err != nil {
 		logger.LogError("GetPermission: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(perm)
 }
@@ -347,7 +347,7 @@ func (h *RBACHandler) GetPolicy(c *fiber.Ctx) error {
 	policy, err := h.PolicyService.GetPolicy(c.Context(), id)
 	if err != nil {
 		logger.LogError("GetPolicy: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(policy)
 }
@@ -526,7 +526,7 @@ func (h *RBACHandler) GetResource(c *fiber.Ctx) error {
 	res, err := h.ResourceService.GetResource(c.Context(), id)
 	if err != nil {
 		logger.LogError("GetResource: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(res)
 }
@@ -608,7 +608,7 @@ func (h *RBACHandler) GetABACPolicy(c *fiber.Ctx) error {
 	policy, err := h.Store.GetABACPolicy(c.Context(), id)
 	if err != nil {
 		logger.LogError("GetABACPolicy: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(policy)
 }
@@ -998,7 +998,7 @@ func (h *RBACHandler) ListRoleTemplates(c *fiber.Ctx) error {
 	templates, err := h.Store.ListPredefinedRoleTemplates(c.Context())
 	if err != nil {
 		logger.LogError("ListRoleTemplates: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.JSON(fiber.Map{"templates": templates})
@@ -1032,7 +1032,7 @@ func (h *RBACHandler) ApplyRoleTemplate(c *fiber.Ctx) error {
 	role, err := h.Store.ApplyPredefinedRoleTemplate(c.Context(), templateID, input.TenantID)
 	if err != nil {
 		logger.LogError("ApplyRoleTemplate: failed", logger.ErrorField(err), logger.String("template_id", templateID), logger.String("tenant_id", input.TenantID))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(role)

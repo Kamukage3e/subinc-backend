@@ -108,7 +108,7 @@ func (h *ProjectHandler) GetProject(c *fiber.Ctx) error {
 	proj, err := h.ProjectService.GetProject(c.Context(), id)
 	if err != nil {
 		logger.LogError("GetProject: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(proj)
 }

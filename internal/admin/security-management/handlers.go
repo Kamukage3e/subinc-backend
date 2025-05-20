@@ -77,7 +77,7 @@ func (h *SecurityHandler) ListUserSecurityEvents(c *fiber.Ctx) error {
 	events, err := h.SecurityEventService.ListUserSecurityEvents(c.Context(), userID)
 	if err != nil {
 		logger.LogError("ListUserSecurityEvents: failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("tenant_id", getTenantID(c)))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error(), "tenant_id": getTenantID(c)})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	// Filter by event type if specified
@@ -1530,7 +1530,7 @@ func (h *SecurityHandler) GetRateLimit(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("GetRateLimit: failed", logger.ErrorField(err),
 			logger.String("scope", scope), logger.String("scope_id", scopeID))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.Status(fiber.StatusOK).JSON(cfg)
 }
@@ -2149,7 +2149,7 @@ func (h *SecurityHandler) GetProfile(c *fiber.Ctx) error {
 	profile, err := h.PasswordService.GetProfile(c.Context(), userID)
 	if err != nil {
 		logger.LogError("GetProfile: failed", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 
 	return c.JSON(profile)
@@ -2643,6 +2643,7 @@ func (h *SecurityHandler) GetNotificationProvidersStatus(c *fiber.Ctx) error {
 	for name, provider := range providerRegistry {
 		status, err := provider.Status(c.Context())
 		if err != nil {
+			logger.LogError("GetNotificationProvidersStatus: failed to get provider status", logger.ErrorField(err), logger.String("provider", name))
 			statuses[name] = "error: " + err.Error()
 		} else {
 			statuses[name] = status
@@ -2653,6 +2654,7 @@ func (h *SecurityHandler) GetNotificationProvidersStatus(c *fiber.Ctx) error {
 
 func (h *SecurityHandler) RetryNotificationQueue(c *fiber.Ctx) error {
 	if h.Store == nil {
+		logger.LogError("RetryNotificationQueue: store not configured")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "store not configured"})
 	}
 	go h.Store.ProcessNotificationQueue(c.Context())
@@ -2854,9 +2856,7 @@ func (h *SecurityHandler) BootstrapOwnerAdmin(c *fiber.Ctx) error {
 	user, err := h.PasswordService.RegisterUser(c.Context(), input.Email, input.Password)
 	if err != nil {
 		logger.LogError("BootstrapOwnerAdmin: registration failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	// Update profile with name

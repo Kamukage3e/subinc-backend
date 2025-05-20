@@ -77,7 +77,7 @@ func (h *BillingAdminHandler) CreateWebhookEvent(c *fiber.Ctx) error {
 	}
 	event, err := h.WebhookEventService.CreateWebhookEvent(input)
 	if err != nil {
-
+		logger.LogError("", logger.ErrorField(err))
 		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.Status(fiber.StatusCreated).JSON(event)
@@ -95,7 +95,7 @@ func (h *BillingAdminHandler) UpdateWebhookEvent(c *fiber.Ctx) error {
 	input.ID = id
 	event, err := h.WebhookEventService.UpdateWebhookEvent(input)
 	if err != nil {
-
+		logger.LogError("", logger.ErrorField(err))
 		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.JSON(event)
@@ -122,7 +122,8 @@ func (h *BillingAdminHandler) GetWebhookEvent(c *fiber.Ctx) error {
 	event, err := h.WebhookEventService.GetWebhookEvent(id)
 	if err != nil {
 		logger.LogError("GetWebhookEvent: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
+
 	}
 	return c.JSON(event)
 }
@@ -205,7 +206,7 @@ func (h *BillingAdminHandler) GetInvoiceAdjustment(c *fiber.Ctx) error {
 	adj, err := h.InvoiceAdjustmentService.GetInvoiceAdjustment(id)
 	if err != nil {
 		logger.LogError("GetInvoiceAdjustment: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(adj)
 }
@@ -322,7 +323,7 @@ func (h *BillingAdminHandler) CreateWebhookSubscription(c *fiber.Ctx) error {
 	}
 	err := h.WebhookSubscriptionService.CreateWebhookSubscription(input.URL, input.Secret, input.Description, input.Events)
 	if err != nil {
-
+		logger.LogError("", logger.ErrorField(err))
 		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.SendStatus(fiber.StatusCreated)
@@ -334,7 +335,7 @@ func (h *BillingAdminHandler) ListWebhookSubscriptions(c *fiber.Ctx) error {
 	pageSize := c.QueryInt("page_size", 100)
 	out, err := h.WebhookSubscriptionService.ListWebhookSubscriptions(tenantID, page, pageSize)
 	if err != nil {
-
+		logger.LogError("", logger.ErrorField(err))
 		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.JSON(out)
@@ -483,7 +484,7 @@ func (h *BillingAdminHandler) GetRevenueReport(c *fiber.Ctx) error {
 	_ = c.BodyParser(&input)
 	out, err := h.Store.GetRevenueReport(c.Context())
 	if err != nil {
-
+		logger.LogError("", logger.ErrorField(err))
 		return c.JSON(fiber.ErrBadRequest)
 	}
 
@@ -495,7 +496,7 @@ func (h *BillingAdminHandler) GetARReport(c *fiber.Ctx) error {
 	_ = c.BodyParser(&input)
 	out, err := h.Store.GetARReport(c.Context())
 	if err != nil {
-
+		logger.LogError("", logger.ErrorField(err))
 		return c.JSON(fiber.ErrBadRequest)
 	}
 
@@ -507,7 +508,7 @@ func (h *BillingAdminHandler) GetChurnReport(c *fiber.Ctx) error {
 	_ = c.BodyParser(&input)
 	out, err := h.Store.GetChurnReport(c.Context())
 	if err != nil {
-
+		logger.LogError("", logger.ErrorField(err))
 		return c.JSON(fiber.ErrBadRequest)
 	}
 
@@ -579,7 +580,8 @@ func (h *BillingAdminHandler) CreateInvoiceWithFeesAndTax(c *fiber.Ctx) error {
 
 	taxAmount, taxRate, terr := plugin.CalculateTax(c.Context(), taxInvoice, taxAccount, accountObj.TenantID)
 	if terr != nil {
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": terr.Error()})
+		logger.LogError("", logger.ErrorField(terr))
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	invoice.TaxAmount = taxAmount
 	invoice.TaxRate = taxRate
@@ -601,7 +603,7 @@ func (h *BillingAdminHandler) CreateInvoiceWithFeesAndTax(c *fiber.Ctx) error {
 	invoice.Amount = subtotal + feeTotal + taxAmount
 	out, err := h.Store.CreateInvoiceWithFeesAndTax(c.Context(), invoice, input.FixedFee, input.PercentFee, taxRate)
 	if err != nil {
-
+		logger.LogError("", logger.ErrorField(err))
 		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.Status(fiber.StatusCreated).JSON(out)
@@ -705,7 +707,7 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 	taxAmount, taxRate, terr := plugin.CalculateTax(c.Context(), taxInvoice, taxAccount, accountObj.TenantID)
 	if terr != nil {
 		logger.LogError("CreateInvoice: tax plugin failed", logger.ErrorField(terr), logger.String("plugin", pluginName))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tax calculation failed: " + terr.Error()})
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tax calculation failed: "})
 	}
 	input.TaxAmount = taxAmount
 	input.TaxRate = taxRate
@@ -821,7 +823,7 @@ func (h *BillingAdminHandler) GetInvoice(c *fiber.Ctx) error {
 	invoice, err := h.InvoiceService.GetInvoice(id)
 	if err != nil {
 		logger.LogError("GetInvoice: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(invoice)
 }
@@ -938,7 +940,7 @@ func (h *BillingAdminHandler) GetExchangeRate(c *fiber.Ctx) error {
 	rate, err := h.Store.GetExchangeRate(c.Context(), input.BaseCurrency, input.QuoteCurrency)
 	if err != nil {
 		logger.LogError("GetExchangeRate: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(rate)
 }
@@ -982,7 +984,7 @@ func (h *BillingAdminHandler) GetTenantCurrency(c *fiber.Ctx) error {
 	curr, err := h.Store.GetTenantCurrency(c.Context(), tenantID)
 	if err != nil {
 		logger.LogError("GetTenantCurrency: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(curr)
 }
@@ -2516,7 +2518,7 @@ func (h *BillingAdminHandler) RegisterPlugin(c *fiber.Ctx) error {
 				logger.String("type", pluginType),
 				logger.String("plugin", pluginName),
 				logger.ErrorField(err))
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to initialize plugin: " + err.Error()})
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to initialize plugin: " })
 		}
 	} else {
 		logger.LogError("RegisterPlugin: plugin does not support initialization",
@@ -2587,7 +2589,7 @@ func (h *BillingAdminHandler) DisablePlugin(c *fiber.Ctx) error {
 
 	if err != nil {
 		logger.LogError("DisablePlugin: failed", logger.String("type", pluginType), logger.String("plugin", pluginName), logger.String("tenant_id", tenantID), logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "failed to disable plugin: " + err.Error()})
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "failed to disable plugin" }) 
 	}
 
 	logger.LogInfo("DisablePlugin: plugin disabled", logger.String("type", pluginType), logger.String("plugin", pluginName), logger.String("tenant_id", tenantID))
@@ -2624,7 +2626,7 @@ func (h *BillingAdminHandler) ConfigurePlugin(c *fiber.Ctx) error {
 				logger.String("type", pluginType),
 				logger.String("plugin", pluginName),
 				logger.ErrorField(err))
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to configure plugin: " + err.Error()})
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to configure plugin" })
 		}
 	} else {
 		logger.LogError("ConfigurePlugin: plugin does not support initialization",

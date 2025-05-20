@@ -110,7 +110,7 @@ func Middleware(cfg Config) fiber.Handler {
 			var err error
 			resource, action, err = cfg.ResourceResolver(c)
 			if err != nil {
-				return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid resource/action: " + err.Error()})
+				return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid resource/action: "})
 			}
 		}
 

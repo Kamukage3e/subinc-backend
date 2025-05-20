@@ -1304,7 +1304,7 @@ func (h *PaymentHandler) GetDispute(c *fiber.Ctx) error {
 	dispute, err := h.DisputeService.GetDispute(c.Context(), id)
 	if err != nil {
 		logger.LogError("GetDispute: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(dispute)
 }
@@ -1393,7 +1393,7 @@ func (h *PaymentHandler) GetEvidence(c *fiber.Ctx) error {
 	evidence, err := h.EvidenceService.GetDisputeEvidence(c.Context(), evidenceID)
 	if err != nil {
 		logger.LogError("GetEvidence: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrNotFound)
 	}
 	return c.JSON(evidence)
 }
