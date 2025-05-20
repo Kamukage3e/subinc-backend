@@ -258,11 +258,6 @@ func main() {
 		ServerConfigService: serverConfigService,
 	}
 
-	// Ensure webhook tables exist
-	if err := billingStore.EnsureWebhookTablesExist(ctx); err != nil {
-		log.Printf("Warning: Failed to ensure webhook tables exist: %v", err)
-	}
-
 	billingHandler := billing_management.NewBillingHandler(billingStore, paymentStore)
 	billingHandler.Notify = securityStore
 

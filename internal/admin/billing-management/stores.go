@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -20,6 +21,7 @@ import (
 
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
+	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -60,6 +62,13 @@ const (
 
 	QueryDeleteWebhookSubscription = `DELETE FROM webhook_subscriptions WHERE id = $1`
 
+	QueryGetWebhookSubscription = `SELECT id, tenant_id, url, event_types, secret, status, created_at, updated_at 
+		FROM webhook_subscriptions WHERE id = $1`
+
+	QueryUpdateWebhookSubscription = `UPDATE webhook_subscriptions 
+		SET url = $2, event_types = $3, secret = $4, status = $5, updated_at = $6 
+		WHERE id = $1 RETURNING id, tenant_id, url, event_types, secret, status, created_at, updated_at`
+
 	// Dunning queries
 	QueryListInvoicesForDunning = `SELECT id, account_id, amount, status, due_date, created_at, updated_at, 
 		dunning_attempts, dunning_next_attempt_at, dunning_status FROM invoices 
@@ -78,6 +87,59 @@ const (
 	QuerySetDunningConfig = `INSERT INTO dunning_configs (tenant_id, max_attempts, retry_intervals) 
 		VALUES ($1, $2, $3) ON CONFLICT (tenant_id) DO UPDATE SET 
 		max_attempts = $2, retry_intervals = $3`
+
+	// Invoice dunning updating
+	QueryUpdateInvoiceDunning = `UPDATE invoices SET 
+		dunning_status = $1, 
+		dunning_attempts = $2, 
+		dunning_next_attempt_at = $3,
+		updated_at = NOW()
+		WHERE id = $4`
+
+	// Exchange rate queries
+	QueryGetExchangeRate = `SELECT id, base_currency, quote_currency, rate, source, updated_at 
+		FROM exchange_rates WHERE base_currency = $1 AND quote_currency = $2`
+
+	QueryUpdateExchangeRate = `UPDATE exchange_rates SET rate = $3, source = $4, updated_at = $5 
+		WHERE base_currency = $1 AND quote_currency = $2 
+		RETURNING id, base_currency, quote_currency, rate, source, updated_at`
+
+	QueryDeleteExchangeRate = `DELETE FROM exchange_rates WHERE base_currency = $1 AND quote_currency = $2`
+
+	QueryListExchangeRates = `SELECT id, base_currency, quote_currency, rate, source, updated_at 
+		FROM exchange_rates ORDER BY base_currency, quote_currency`
+
+	// Webhook delivery
+	QueryRetryWebhookDelivery = `UPDATE webhook_delivery_logs 
+		SET delivery_attempts = delivery_attempts + 1, 
+		next_retry_at = NOW() + INTERVAL '1 hour', 
+		updated_at = NOW() 
+		WHERE id = $1`
+
+	QueryListWebhookDeliveryLogs = `SELECT id, webhook_id, event_type, url, request_headers, 
+		request_body, delivery_attempts, success, created_at, delivered_at, next_retry_at 
+		FROM webhook_delivery_logs WHERE webhook_id = $1 
+		ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+
+	// Webhook event
+	QueryListWebhookEvents = `SELECT id, provider, event_type, payload, status, received_at, processed_at, error, metadata 
+		FROM webhook_events 
+		WHERE account_id = $1 AND status = $2 ORDER BY received_at DESC LIMIT $3 OFFSET $4`
+
+	QueryGetWebhookEvent = `SELECT id, provider, event_type, payload, status, received_at, processed_at, error, metadata
+		FROM webhook_events WHERE id = $1`
+
+	QueryCreateWebhookEvent = `INSERT INTO webhook_events 
+		(id, provider, event_type, payload, status, received_at, metadata) 
+		VALUES ($1, $2, $3, $4, $5, $6, $7) 
+		RETURNING id, provider, event_type, payload, status, received_at, processed_at, error, metadata`
+
+	QueryUpdateWebhookEvent = `UPDATE webhook_events 
+		SET provider = $2, event_type = $3, payload = $4, status = $5, processed_at = $6, error = $7, metadata = $8 
+		WHERE id = $1 
+		RETURNING id, provider, event_type, payload, status, received_at, processed_at, error, metadata`
+
+	QueryDeleteWebhookEvent = `DELETE FROM webhook_events WHERE id = $1`
 )
 
 type DunningConfig = payment.DunningConfig
@@ -346,8 +408,7 @@ func (s *PostgresStore) CreateExchangeRate(ctx context.Context, rate ExchangeRat
 }
 
 func (s *PostgresStore) UpdateExchangeRate(ctx context.Context, rate ExchangeRate) (ExchangeRate, error) {
-	const q = `UPDATE exchange_rates SET rate = $3, source = $4, updated_at = $5 WHERE base_currency = $1 AND quote_currency = $2 RETURNING id, base_currency, quote_currency, rate, source, updated_at`
-	row := s.DB.QueryRow(ctx, q, rate.BaseCurrency, rate.QuoteCurrency, rate.Rate, rate.Source, rate.UpdatedAt)
+	row := s.DB.QueryRow(ctx, QueryUpdateExchangeRate, rate.BaseCurrency, rate.QuoteCurrency, rate.Rate, rate.Source, rate.UpdatedAt)
 	var out ExchangeRate
 	if err := row.Scan(&out.ID, &out.BaseCurrency, &out.QuoteCurrency, &out.Rate, &out.Source, &out.UpdatedAt); err != nil {
 		logger.LogError("UpdateExchangeRate failed", logger.ErrorField(err), logger.Any("rate", rate))
@@ -357,8 +418,7 @@ func (s *PostgresStore) UpdateExchangeRate(ctx context.Context, rate ExchangeRat
 }
 
 func (s *PostgresStore) DeleteExchangeRate(ctx context.Context, base, quote string) error {
-	const q = `DELETE FROM exchange_rates WHERE base_currency = $1 AND quote_currency = $2`
-	_, err := s.DB.Exec(ctx, q, base, quote)
+	_, err := s.DB.Exec(ctx, QueryDeleteExchangeRate, base, quote)
 	if err != nil {
 		logger.LogError("DeleteExchangeRate failed", logger.ErrorField(err), logger.String("base", base), logger.String("quote", quote))
 		return err
@@ -367,8 +427,7 @@ func (s *PostgresStore) DeleteExchangeRate(ctx context.Context, base, quote stri
 }
 
 func (s *PostgresStore) ListExchangeRates(ctx context.Context) ([]ExchangeRate, error) {
-	const q = `SELECT id, base_currency, quote_currency, rate, source, updated_at FROM exchange_rates ORDER BY base_currency, quote_currency`
-	rows, err := s.DB.Query(ctx, q)
+	rows, err := s.DB.Query(ctx, QueryListExchangeRates)
 	if err != nil {
 		logger.LogError("ListExchangeRates query failed", logger.ErrorField(err))
 		return nil, err
@@ -537,8 +596,7 @@ func NewPostgresStore(db *pgxpool.Pool, serverConfigService *server_config.Servi
 }
 
 func (s *PostgresStore) GetExchangeRate(ctx context.Context, base, quote string) (ExchangeRate, error) {
-	const q = `SELECT id, base_currency, quote_currency, rate, source, updated_at FROM exchange_rates WHERE base_currency = $1 AND quote_currency = $2`
-	row := s.DB.QueryRow(ctx, q, base, quote)
+	row := s.DB.QueryRow(ctx, QueryGetExchangeRate, base, quote)
 	var out ExchangeRate
 	if err := row.Scan(&out.ID, &out.BaseCurrency, &out.QuoteCurrency, &out.Rate, &out.Source, &out.UpdatedAt); err != nil {
 		logger.LogError("GetExchangeRate failed", logger.ErrorField(err), logger.String("base", base), logger.String("quote", quote))
@@ -702,116 +760,6 @@ func (s *PostgresStore) DisableTaxPluginConfig(ctx context.Context, tenantID, pl
 	return nil
 }
 
-// EnsureWebhookTablesExist ensures that all required webhook-related tables exist in the database
-func (s *PostgresStore) EnsureWebhookTablesExist(ctx context.Context) error {
-	// Check if webhook_delivery_logs table exists
-	var exists bool
-	err := s.DB.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1 FROM information_schema.tables 
-			WHERE table_schema = 'public' 
-			AND table_name = 'webhook_delivery_logs'
-		)
-	`).Scan(&exists)
-
-	if err != nil {
-		logger.LogError("EnsureWebhookTablesExist: check table existence failed", logger.ErrorField(err))
-		return err
-	}
-
-	// Create webhook_delivery_logs table if it doesn't exist
-	if !exists {
-		logger.LogInfo("Creating webhook_delivery_logs table")
-		_, err = s.DB.Exec(ctx, `
-			CREATE TABLE webhook_delivery_logs (
-				id UUID PRIMARY KEY,
-				webhook_id UUID NOT NULL REFERENCES webhook_subscriptions(id) ON DELETE CASCADE,
-				event_type VARCHAR(255) NOT NULL,
-				url TEXT NOT NULL,
-				request_headers TEXT NOT NULL,
-				request_body TEXT NOT NULL,
-				response_status INT,
-				response_headers TEXT,
-				response_body TEXT,
-				delivery_attempts INT NOT NULL DEFAULT 1,
-				success BOOLEAN NOT NULL DEFAULT false,
-				error_message TEXT,
-				created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-				delivered_at TIMESTAMP WITH TIME ZONE,
-				next_retry_at TIMESTAMP WITH TIME ZONE,
-				last_retry_failed_at TIMESTAMP WITH TIME ZONE,
-				CONSTRAINT fk_webhook_subscription
-					FOREIGN KEY (webhook_id)
-					REFERENCES webhook_subscriptions(id)
-					ON DELETE CASCADE
-			)
-		`)
-		if err != nil {
-			logger.LogError("EnsureWebhookTablesExist: create table failed", logger.ErrorField(err))
-			return err
-		}
-
-		// Create indexes for efficient querying
-		_, err = s.DB.Exec(ctx, `
-			CREATE INDEX idx_webhook_delivery_logs_webhook_id ON webhook_delivery_logs(webhook_id);
-			CREATE INDEX idx_webhook_delivery_logs_success ON webhook_delivery_logs(success);
-			CREATE INDEX idx_webhook_delivery_logs_next_retry_at ON webhook_delivery_logs(next_retry_at) WHERE next_retry_at IS NOT NULL;
-			CREATE INDEX idx_webhook_delivery_logs_created_at ON webhook_delivery_logs(created_at);
-		`)
-		if err != nil {
-			logger.LogError("EnsureWebhookTablesExist: create indexes failed", logger.ErrorField(err))
-			return err
-		}
-	}
-
-	// Check if webhook_subscriptions table exists
-	err = s.DB.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1 FROM information_schema.tables 
-			WHERE table_schema = 'public' 
-			AND table_name = 'webhook_subscriptions'
-		)
-	`).Scan(&exists)
-
-	if err != nil {
-		logger.LogError("EnsureWebhookTablesExist: check webhook_subscriptions existence failed", logger.ErrorField(err))
-		return err
-	}
-
-	// Create webhook_subscriptions table if it doesn't exist
-	if !exists {
-		logger.LogInfo("Creating webhook_subscriptions table")
-		_, err = s.DB.Exec(ctx, `
-			CREATE TABLE webhook_subscriptions (
-				id UUID PRIMARY KEY,
-				tenant_id VARCHAR(255) NOT NULL,
-				url TEXT NOT NULL,
-				event_types TEXT NOT NULL,
-				secret TEXT NOT NULL,
-				status VARCHAR(50) NOT NULL DEFAULT 'active',
-				created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-				updated_at TIMESTAMP WITH TIME ZONE NOT NULL
-			)
-		`)
-		if err != nil {
-			logger.LogError("EnsureWebhookTablesExist: create webhook_subscriptions table failed", logger.ErrorField(err))
-			return err
-		}
-
-		// Create indexes for efficient querying
-		_, err = s.DB.Exec(ctx, `
-			CREATE INDEX idx_webhook_subscriptions_tenant_id ON webhook_subscriptions(tenant_id);
-			CREATE INDEX idx_webhook_subscriptions_status ON webhook_subscriptions(status);
-		`)
-		if err != nil {
-			logger.LogError("EnsureWebhookTablesExist: create webhook_subscriptions indexes failed", logger.ErrorField(err))
-			return err
-		}
-	}
-
-	return nil
-}
-
 // CreateHMAC generates an HMAC signature for the given payload and secret
 func CreateHMAC(payload []byte, secret string) string {
 	h := hmac.New(sha256.New, []byte(secret))
@@ -898,11 +846,12 @@ func (s *PostgresStore) RunWebhookDeliveryWorker(ctx context.Context) {
 	logger.LogInfo("WebhookDeliveryWorker: completed webhook delivery processing")
 }
 
-// RetryWebhookDelivery attempts to retry a previously failed webhook delivery
+// RetryWebhookDelivery attempts to retry a failed webhook delivery
 func (s *PostgresStore) RetryWebhookDelivery(ctx context.Context, deliveryID string) error {
-	// Find the delivery log first
-	query := `SELECT id, webhook_id, event_type, url, request_headers, request_body, 
-		delivery_attempts, success, created_at FROM webhook_delivery_logs 
+	const query = `
+		SELECT id, webhook_id, event_type, url, request_headers, request_body, 
+		delivery_attempts, success, created_at
+		FROM webhook_delivery_logs 
 		WHERE id = $1`
 
 	var log WebhookDeliveryLog
@@ -1273,14 +1222,7 @@ func (s *PostgresStore) UpdateInvoiceDunning(ctx context.Context, invoiceID, sta
 		return errors.New("invoice ID is required")
 	}
 
-	const q = `UPDATE invoices SET 
-		dunning_status = $1, 
-		dunning_attempts = $2, 
-		dunning_next_attempt_at = $3,
-		updated_at = NOW()
-		WHERE id = $4`
-
-	result, err := s.DB.Exec(ctx, q, status, attempts, nextAttemptAt, invoiceID)
+	result, err := s.DB.Exec(ctx, QueryUpdateInvoiceDunning, status, attempts, nextAttemptAt, invoiceID)
 	if err != nil {
 		logger.LogError("UpdateInvoiceDunning failed",
 			logger.ErrorField(err),
@@ -1328,8 +1270,7 @@ func (s *PostgresStore) SetDunningConfig(ctx context.Context, tenantID string, c
 	}
 
 	// Insert or update dunning config
-	q := QuerySetDunningConfig
-	_, err = s.DB.Exec(ctx, q,
+	_, err = s.DB.Exec(ctx, QuerySetDunningConfig,
 		tenantID, config.MaxAttempts, string(intervalsJSON))
 
 	if err != nil {
@@ -1340,4 +1281,405 @@ func (s *PostgresStore) SetDunningConfig(ctx context.Context, tenantID string, c
 	}
 
 	return nil
+}
+
+// ListWebhookEvents retrieves a paginated list of webhook events
+func (s *PostgresStore) ListWebhookEvents(ctx context.Context, accountID, status string, page, pageSize int) ([]WebhookEvent, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 100
+	}
+	offset := (page - 1) * pageSize
+
+	rows, err := s.DB.Query(ctx, QueryListWebhookEvents, accountID, status, pageSize, offset)
+	if err != nil {
+		logger.LogError("ListWebhookEvents query failed", logger.ErrorField(err))
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []WebhookEvent
+	for rows.Next() {
+		var e WebhookEvent
+		var processedAt sql.NullTime
+		if err := rows.Scan(
+			&e.ID, &e.Provider, &e.EventType, &e.Payload,
+			&e.Status, &e.ReceivedAt, &processedAt, &e.Error, &e.Metadata); err != nil {
+			logger.LogError("ListWebhookEvents scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+
+		if processedAt.Valid {
+			e.ProcessedAt = &processedAt.Time
+		}
+
+		events = append(events, e)
+	}
+
+	return events, nil
+}
+
+// GetWebhookSubscription retrieves a webhook subscription by ID
+func (s *PostgresStore) GetWebhookSubscription(ctx context.Context, id string) (WebhookSubscription, error) {
+	row := s.DB.QueryRow(ctx, QueryGetWebhookSubscription, id)
+	var out WebhookSubscription
+	var eventTypes string
+
+	if err := row.Scan(&out.ID, &out.TenantID, &out.URL, &eventTypes, &out.Secret, &out.Status, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		logger.LogError("GetWebhookSubscription failed", logger.ErrorField(err), logger.String("id", id))
+		return WebhookSubscription{}, err
+	}
+
+	out.EventTypes = strings.Split(eventTypes, ",")
+	return out, nil
+}
+
+// UpdateWebhookSubscription updates a webhook subscription
+func (s *PostgresStore) UpdateWebhookSubscription(ctx context.Context, id string, url, secret string, events []string, status string) error {
+	eventTypes := strings.Join(events, ",")
+	updatedAt := time.Now().UTC()
+
+	_, err := s.DB.Exec(ctx, QueryUpdateWebhookSubscription, id, url, eventTypes, secret, status, updatedAt)
+	if err != nil {
+		logger.LogError("UpdateWebhookSubscription failed", logger.ErrorField(err), logger.String("id", id))
+		return err
+	}
+
+	return nil
+}
+
+// TestWebhookSubscription tests a webhook subscription by sending a test event
+func (s *PostgresStore) TestWebhookSubscription(ctx context.Context, id string, eventType string, payload map[string]interface{}) error {
+	// First get the subscription to get the URL and secret
+	sub, err := s.GetWebhookSubscription(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// Convert payload to JSON
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		logger.LogError("TestWebhookSubscription marshal failed", logger.ErrorField(err))
+		return err
+	}
+
+	// Create test event
+	testEventID := fmt.Sprintf("test-%s", commonutil.GenerateUUID())
+
+	// Build headers for HTTP request
+	headers := make(http.Header)
+	headers.Add("Content-Type", "application/json")
+	headers.Add("User-Agent", "SubInc-Webhook-Service/1.0")
+	headers.Add("X-Webhook-ID", id)
+	headers.Add("X-Webhook-Event", eventType)
+	headers.Add("X-Webhook-Delivery", testEventID)
+	headers.Add("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+	headers.Add("X-Webhook-Test", "true")
+
+	// Generate HMAC signature for security
+	signature := CreateHMAC(payloadBytes, sub.Secret)
+	headers.Add("X-Webhook-Signature", signature)
+
+	// Create the HTTP request
+	req, err := http.NewRequestWithContext(ctx, "POST", sub.URL, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return err
+	}
+
+	// Set headers
+	req.Header = headers
+
+	// Send the request
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Check if successful
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("webhook test failed: HTTP %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// GetWebhookDeliveryLogs retrieves delivery logs for a webhook subscription
+func (s *PostgresStore) GetWebhookDeliveryLogs(ctx context.Context, subscriptionID string, page, pageSize int) ([]WebhookDeliveryLog, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 100
+	}
+	offset := (page - 1) * pageSize
+
+	rows, err := s.DB.Query(ctx, QueryListWebhookDeliveryLogs, subscriptionID, pageSize, offset)
+	if err != nil {
+		logger.LogError("GetWebhookDeliveryLogs query failed", logger.ErrorField(err))
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []WebhookDeliveryLog
+	for rows.Next() {
+		var log WebhookDeliveryLog
+		var deliveredAt, nextRetryAt sql.NullTime
+
+		if err := rows.Scan(
+			&log.ID, &log.WebhookID, &log.EventType, &log.URL,
+			&log.RequestHeaders, &log.RequestBody, &log.DeliveryAttempts,
+			&log.Success, &log.CreatedAt, &deliveredAt, &nextRetryAt); err != nil {
+			logger.LogError("GetWebhookDeliveryLogs scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+
+		if deliveredAt.Valid {
+			log.DeliveredAt = &deliveredAt.Time
+		}
+
+		if nextRetryAt.Valid {
+			log.NextRetryAt = &nextRetryAt.Time
+		}
+
+		logs = append(logs, log)
+	}
+
+	return logs, nil
+}
+
+// CreateWebhookEvent creates a new webhook event
+func (s *PostgresStore) CreateWebhookEvent(ctx context.Context, event WebhookEvent) (WebhookEvent, error) {
+	row := s.DB.QueryRow(ctx, QueryCreateWebhookEvent,
+		event.ID, event.Provider, event.EventType, event.Payload,
+		event.Status, event.ReceivedAt, event.Metadata)
+
+	var out WebhookEvent
+	var processedAt sql.NullTime
+
+	if err := row.Scan(
+		&out.ID, &out.Provider, &out.EventType, &out.Payload,
+		&out.Status, &out.ReceivedAt, &processedAt, &out.Error, &out.Metadata); err != nil {
+		logger.LogError("CreateWebhookEvent failed", logger.ErrorField(err))
+		return WebhookEvent{}, err
+	}
+
+	if processedAt.Valid {
+		out.ProcessedAt = &processedAt.Time
+	}
+
+	return out, nil
+}
+
+// UpdateWebhookEvent updates an existing webhook event
+func (s *PostgresStore) UpdateWebhookEvent(ctx context.Context, event WebhookEvent) (WebhookEvent, error) {
+	var processedAt sql.NullTime
+	if event.ProcessedAt != nil {
+		processedAt = sql.NullTime{Time: *event.ProcessedAt, Valid: true}
+	}
+
+	row := s.DB.QueryRow(ctx, QueryUpdateWebhookEvent,
+		event.ID, event.Provider, event.EventType, event.Payload,
+		event.Status, processedAt, event.Error, event.Metadata)
+
+	var out WebhookEvent
+	var outProcessedAt sql.NullTime
+
+	if err := row.Scan(
+		&out.ID, &out.Provider, &out.EventType, &out.Payload,
+		&out.Status, &out.ReceivedAt, &outProcessedAt, &out.Error, &out.Metadata); err != nil {
+		logger.LogError("UpdateWebhookEvent failed", logger.ErrorField(err))
+		return WebhookEvent{}, err
+	}
+
+	if outProcessedAt.Valid {
+		out.ProcessedAt = &outProcessedAt.Time
+	}
+
+	return out, nil
+}
+
+// DeleteWebhookEvent deletes a webhook event
+func (s *PostgresStore) DeleteWebhookEvent(ctx context.Context, id string) error {
+	result, err := s.DB.Exec(ctx, QueryDeleteWebhookEvent, id)
+	if err != nil {
+		logger.LogError("DeleteWebhookEvent failed", logger.ErrorField(err))
+		return err
+	}
+
+	if result.RowsAffected() == 0 {
+		return NewNotFoundError("webhook event")
+	}
+
+	return nil
+}
+
+// GetWebhookEvent retrieves a webhook event by ID
+func (s *PostgresStore) GetWebhookEvent(ctx context.Context, id string) (WebhookEvent, error) {
+	row := s.DB.QueryRow(ctx, QueryGetWebhookEvent, id)
+
+	var out WebhookEvent
+	var processedAt sql.NullTime
+
+	if err := row.Scan(
+		&out.ID, &out.Provider, &out.EventType, &out.Payload,
+		&out.Status, &out.ReceivedAt, &processedAt, &out.Error, &out.Metadata); err != nil {
+		logger.LogError("GetWebhookEvent failed", logger.ErrorField(err))
+		return WebhookEvent{}, err
+	}
+
+	if processedAt.Valid {
+		out.ProcessedAt = &processedAt.Time
+	}
+
+	return out, nil
+}
+
+// DownloadInvoicePDF generates and returns a PDF for an invoice
+func (s *PostgresStore) DownloadInvoicePDF(ctx context.Context, invoiceID string) ([]byte, error) {
+	// Get the invoice
+	invoice, err := s.GetInvoice(ctx, invoiceID)
+	if err != nil {
+		logger.LogError("DownloadInvoicePDF: failed to get invoice", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
+		return nil, err
+	}
+
+	// Ideally, this would use a PDF generation library or an external service
+	// For now, we're generating a simple PDF representation
+	var pdfContent bytes.Buffer
+	pdfContent.WriteString(fmt.Sprintf("Invoice PDF for: %s\n", invoice.ID))
+	pdfContent.WriteString(fmt.Sprintf("Account: %s\n", invoice.AccountID))
+	pdfContent.WriteString(fmt.Sprintf("Amount: %.2f\n", invoice.Amount))
+	pdfContent.WriteString(fmt.Sprintf("Status: %s\n", invoice.Status))
+	pdfContent.WriteString(fmt.Sprintf("Due Date: %s\n", invoice.DueDate.Format("2006-01-02")))
+	pdfContent.WriteString(fmt.Sprintf("Created At: %s\n", invoice.CreatedAt.Format("2006-01-02 15:04:05")))
+
+	// In a production environment, we would use a PDF library such as fpdf or gofpdf
+	// to generate a properly formatted PDF
+
+	return pdfContent.Bytes(), nil
+}
+
+// --- Plugin System ---
+
+// pluginRegistry keeps track of registered plugins
+var pluginRegistry = struct {
+	sync.RWMutex
+	plugins map[string]map[string]interface{} // map[pluginType]map[pluginName]plugin
+}{
+	plugins: make(map[string]map[string]interface{}),
+}
+
+// ListPlugins lists all plugins of a specific type
+func (s *PostgresStore) ListPlugins(ctx context.Context, pluginType string) ([]string, error) {
+	pluginRegistry.RLock()
+	defer pluginRegistry.RUnlock()
+
+	if plugins, ok := pluginRegistry.plugins[pluginType]; ok {
+		names := make([]string, 0, len(plugins))
+		for name := range plugins {
+			names = append(names, name)
+		}
+		return names, nil
+	}
+
+	return []string{}, nil
+}
+
+// GetPlugin retrieves a specific plugin
+func (s *PostgresStore) GetPlugin(ctx context.Context, pluginType, name string) (interface{}, error) {
+	pluginRegistry.RLock()
+	defer pluginRegistry.RUnlock()
+
+	if plugins, ok := pluginRegistry.plugins[pluginType]; ok {
+		if plugin, ok := plugins[name]; ok {
+			return plugin, nil
+		}
+	}
+
+	return nil, fmt.Errorf("plugin not found: %s/%s", pluginType, name)
+}
+
+// RegisterPlugin registers a plugin
+func (s *PostgresStore) RegisterPlugin(ctx context.Context, pluginType, name string, plugin interface{}) error {
+	pluginRegistry.Lock()
+	defer pluginRegistry.Unlock()
+
+	if _, ok := pluginRegistry.plugins[pluginType]; !ok {
+		pluginRegistry.plugins[pluginType] = make(map[string]interface{})
+	}
+
+	pluginRegistry.plugins[pluginType][name] = plugin
+	logger.LogInfo("Registered plugin",
+		logger.String("type", pluginType),
+		logger.String("name", name))
+
+	return nil
+}
+
+// UnregisterPlugin unregisters a plugin
+func (s *PostgresStore) UnregisterPlugin(ctx context.Context, pluginType, name string) error {
+	pluginRegistry.Lock()
+	defer pluginRegistry.Unlock()
+
+	if plugins, ok := pluginRegistry.plugins[pluginType]; ok {
+		if _, exists := plugins[name]; exists {
+			delete(plugins, name)
+			logger.LogInfo("Unregistered plugin",
+				logger.String("type", pluginType),
+				logger.String("name", name))
+			return nil
+		}
+	}
+
+	return fmt.Errorf("plugin not found: %s/%s", pluginType, name)
+}
+
+// ConfigurePlugin configures a plugin
+func (s *PostgresStore) ConfigurePlugin(ctx context.Context, pluginType, name string, config map[string]interface{}) error {
+	plugin, err := s.GetPlugin(ctx, pluginType, name)
+	if err != nil {
+		return err
+	}
+
+	// Check if plugin implements a Configurable interface
+	// This is a basic example - in a real system, we would have a proper plugin interface
+	if configurable, ok := plugin.(interface {
+		Configure(map[string]interface{}) error
+	}); ok {
+		return configurable.Configure(config)
+	}
+
+	// Store configuration in the database
+	configJSON, err := json.Marshal(config)
+	if err != nil {
+		return err
+	}
+
+	const q = `INSERT INTO plugin_configs (plugin_type, plugin_name, config, updated_at)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (plugin_type, plugin_name) DO UPDATE
+		SET config = $3, updated_at = $4`
+
+	_, err = s.DB.Exec(ctx, q, pluginType, name, string(configJSON), time.Now().UTC())
+	return err
+}
+
+// DisablePlugin disables a plugin for a tenant
+func (s *PostgresStore) DisablePlugin(ctx context.Context, pluginType, name, tenantID string) error {
+	if tenantID == "" {
+		return errors.New("tenant ID is required")
+	}
+
+	const q = `INSERT INTO disabled_plugins (tenant_id, plugin_type, plugin_name, disabled_at)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (tenant_id, plugin_type, plugin_name) DO NOTHING`
+
+	_, err := s.DB.Exec(ctx, q, tenantID, pluginType, name, time.Now().UTC())
+	return err
 }
