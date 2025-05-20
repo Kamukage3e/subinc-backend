@@ -20,6 +20,7 @@ const (
 		ON CONFLICT (tenant_id) DO UPDATE SET plugin_name = $2, updated_at = $3
 		RETURNING tenant_id, plugin_name, updated_at`
 	qGetFeePluginConfig = `SELECT tenant_id, plugin_name, updated_at FROM fee_plugin_config WHERE tenant_id = $1`
+	qDisableFeePlugin   = `DELETE FROM fee_plugin_config WHERE tenant_id = $1 AND plugin_name = $2`
 	qCreateFee          = `INSERT INTO fees (id, invoice_id, account_id, amount, currency, type, status, created_at, updated_at, metadata, plugin_name)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 		RETURNING id, invoice_id, account_id, amount, currency, type, status, created_at, updated_at, metadata, plugin_name`
@@ -69,6 +70,35 @@ func (s *PostgresStore) GetFeePluginConfig(ctx context.Context, tenantID string)
 		return FeePluginConfig{}, err
 	}
 	return out, nil
+}
+
+// DisableFeePlugin removes the fee plugin configuration for a tenant
+func (s *PostgresStore) DisableFeePlugin(ctx context.Context, tenantID, pluginName string) error {
+	if tenantID == "" {
+		logger.LogError("DisableFeePlugin: tenant_id is empty")
+		return NewValidationError("tenant_id", "must not be empty")
+	}
+	if pluginName == "" {
+		logger.LogError("DisableFeePlugin: plugin_name is empty")
+		return NewValidationError("plugin_name", "must not be empty")
+	}
+
+	result, err := s.DB.Exec(ctx, qDisableFeePlugin, tenantID, pluginName)
+	if err != nil {
+		logger.LogError("DisableFeePlugin: db error", logger.ErrorField(err),
+			logger.String("tenant_id", tenantID),
+			logger.String("plugin_name", pluginName))
+		return err
+	}
+
+	if result.RowsAffected() == 0 {
+		logger.LogError("DisableFeePlugin: no config found",
+			logger.String("tenant_id", tenantID),
+			logger.String("plugin_name", pluginName))
+		return NewValidationError("plugin_config", "configuration not found for tenant and plugin")
+	}
+
+	return nil
 }
 
 // --- Fee CRUD ---

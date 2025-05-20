@@ -33,7 +33,7 @@ func RegisterRoutes(router fiber.Router, handler *DiscountHandler, jwtSecret str
 	route.Patch("/credits/:id", rbacmiddleware.RBACMiddleware("credit", "update", nil), handler.PatchCredit)
 	route.Delete("/credits/:id", rbacmiddleware.RBACMiddleware("credit", "delete", nil), handler.DeleteCredit)
 	route.Post("/credits/:id/apply", rbacmiddleware.RBACMiddleware("credit", "apply", nil), handler.ApplyCreditsToInvoice)
-
+	
 	// Unified plugin management endpoints
 	pluginRoutes := router.Group("/plugins/discount")
 	pluginRoutes.Get("/", rbacmiddleware.RBACMiddleware("discount-plugin", "read", nil), handler.ListDiscountPlugins)

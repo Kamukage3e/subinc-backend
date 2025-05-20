@@ -2,6 +2,7 @@ package payment
 
 import (
 	"context"
+	"time"
 )
 
 type PaymentServiceAdapter struct {
@@ -38,19 +39,18 @@ type PaymentMethodServiceAdapter struct {
 func (a *PaymentMethodServiceAdapter) CreatePaymentMethod(ctx context.Context, input PaymentMethod, data map[string]string) (PaymentMethod, error) {
 	return a.Store.CreatePaymentMethod(ctx, input, data)
 }
-func (a *PaymentServiceAdapter) UpdatePaymentMethod(ctx context.Context, input PaymentMethod) (PaymentMethod, error) {
+func (a *PaymentMethodServiceAdapter) UpdatePaymentMethod(ctx context.Context, input PaymentMethod) (PaymentMethod, error) {
 	return a.Store.UpdatePaymentMethod(ctx, input)
 }
-func (a *PaymentServiceAdapter) DeletePaymentMethod(ctx context.Context, id string) error {
+func (a *PaymentMethodServiceAdapter) DeletePaymentMethod(ctx context.Context, id string) error {
 	return a.Store.DeletePaymentMethod(ctx, id)
 }
-func (a *PaymentServiceAdapter) GetPaymentMethod(ctx context.Context, id string) (PaymentMethod, error) {
+func (a *PaymentMethodServiceAdapter) GetPaymentMethod(ctx context.Context, id string) (PaymentMethod, error) {
 	return a.Store.GetPaymentMethod(ctx, id)
 }
-func (a *PaymentServiceAdapter) ListPaymentMethods(ctx context.Context, accountID, status string, page, pageSize int) ([]PaymentMethod, error) {
+func (a *PaymentMethodServiceAdapter) ListPaymentMethods(ctx context.Context, accountID, status string, page, pageSize int) ([]PaymentMethod, error) {
 	return a.Store.ListPaymentMethods(ctx, accountID, status, page, pageSize)
 }
-
 func (a *PaymentMethodServiceAdapter) PatchPaymentMethod(ctx context.Context, id string, setDefault *bool, status string) error {
 	return a.Store.PatchPaymentMethod(ctx, id, setDefault, status)
 }
@@ -123,4 +123,42 @@ func (a *EvidenceServiceAdapter) ListEvidence(ctx context.Context, disputeID, te
 }
 func (a *EvidenceServiceAdapter) GetEvidence(ctx context.Context, id string) (*DisputeEvidence, error) {
 	return a.Store.GetEvidence(ctx, id)
+}
+
+type TransactionServiceAdapter struct {
+	Store *PostgresStore
+}
+
+func (a *TransactionServiceAdapter) GetTransactionReport(ctx context.Context, tenantID string, startDate time.Time, endDate time.Time, includeRefunds bool) (*TransactionReport, error) {
+	return a.Store.GetTransactionReport(ctx, tenantID, startDate, endDate, includeRefunds)
+}
+
+func (a *TransactionServiceAdapter) GetPaymentMethodReport(ctx context.Context, tenantID string, startDate, endDate time.Time) (map[string]int, error) {
+	return a.Store.GetPaymentMethodReport(ctx, tenantID, startDate, endDate)
+}
+
+func (a *TransactionServiceAdapter) GetTransactionVolume(ctx context.Context, tenantID string, startDate, endDate time.Time) (float64, int, error) {
+	return a.Store.GetTransactionVolume(ctx, tenantID, startDate, endDate)
+}
+
+// Plugin management adapter
+type PluginServiceAdapter struct {
+	Store    *PostgresStore
+	Registry *PaymentPluginRegistry
+}
+
+func (a *PluginServiceAdapter) ListPaymentPlugins() []string {
+	return a.Registry.List()
+}
+
+func (a *PluginServiceAdapter) GetPaymentPlugin(name string) (PaymentPlugin, bool) {
+	return a.Registry.Lookup(name)
+}
+
+func (a *PluginServiceAdapter) SavePaymentPluginConfig(ctx context.Context, config *PaymentPluginConfig) error {
+	return a.Store.SavePaymentPluginConfig(ctx, config)
+}
+
+func (a *PluginServiceAdapter) DisablePaymentPlugin(ctx context.Context, tenantID, pluginName string) error {
+	return a.Store.DisablePaymentPlugin(ctx, tenantID, pluginName)
 }

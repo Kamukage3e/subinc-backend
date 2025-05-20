@@ -17,6 +17,8 @@ func RegisterRoutes(router fiber.Router, handler *FeeHandler) {
 	pluginRoutes := router.Group("/plugins/fee")
 	pluginRoutes.Get("/", rbacmiddleware.RBACMiddleware("fee-plugin", "read", nil), handler.ListFeePlugins)
 	pluginRoutes.Get(":name", rbacmiddleware.RBACMiddleware("fee-plugin", "read", nil), handler.GetFeePlugin)
+	pluginRoutes.Post(":name/register", rbacmiddleware.RBACMiddleware("fee-plugin", "create", nil), handler.RegisterFeePlugin)
+	pluginRoutes.Post(":name/unregister", rbacmiddleware.RBACMiddleware("fee-plugin", "delete", nil), handler.UnregisterFeePlugin)
 	pluginRoutes.Post(":name/configure", rbacmiddleware.RBACMiddleware("fee-plugin", "update", nil), handler.ConfigureFeePlugin)
 	pluginRoutes.Post(":name/disable", rbacmiddleware.RBACMiddleware("fee-plugin", "update", nil), handler.DisableFeePlugin)
 }

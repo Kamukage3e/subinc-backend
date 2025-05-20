@@ -27,6 +27,7 @@ func RegisterRoutes(router fiber.Router, handler *PaymentHandler, jwtSecret stri
 	route.Put("/:id", rbacmiddleware.RBACMiddleware("payment", "update", nil), handler.UpdatePayment)
 	route.Delete("/:id/refund", rbacmiddleware.RBACMiddleware("payment", "refund", nil), handler.DeleteRefund)
 	route.Get("/:id/status", rbacmiddleware.RBACMiddleware("payment", "read", nil), handler.GetPaymentStatus)
+	route.Get("/by-idempotency", rbacmiddleware.RBACMiddleware("payment", "read", nil), handler.GetPaymentByIdempotencyKey)
 
 	// Payment method endpoints
 	route.Post("/payment-methods", rbacmiddleware.RBACMiddleware("payment-method", "create", nil), handler.CreatePaymentMethod)
@@ -66,7 +67,7 @@ func RegisterRoutes(router fiber.Router, handler *PaymentHandler, jwtSecret stri
 	// Plugin management routes
 	pluginRoutes := router.Group("/payments/plugins")
 	pluginRoutes.Get("/", rbacmiddleware.RBACMiddleware("payment-plugin", "read", nil), handler.ListPaymentPlugins)
-	pluginRoutes.Get(":name", rbacmiddleware.RBACMiddleware("payment-plugin", "read", nil), handler.GetPaymentPlugin)
-	pluginRoutes.Post(":name/configure", rbacmiddleware.RBACMiddleware("payment-plugin", "update", nil), handler.ConfigurePaymentPlugin)
-	pluginRoutes.Post(":name/disable", rbacmiddleware.RBACMiddleware("payment-plugin", "update", nil), handler.DisablePaymentPlugin)
+	pluginRoutes.Get("/:name", rbacmiddleware.RBACMiddleware("payment-plugin", "read", nil), handler.GetPaymentPlugin)
+	pluginRoutes.Post("/:name/configure", rbacmiddleware.RBACMiddleware("payment-plugin", "update", nil), handler.ConfigurePaymentPlugin)
+	pluginRoutes.Post("/:name/disable", rbacmiddleware.RBACMiddleware("payment-plugin", "update", nil), handler.DisablePaymentPlugin)
 }

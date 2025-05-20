@@ -125,3 +125,18 @@ type PaymentPlugin interface {
 	// Webhook handling
 	HandleWebhook(ctx context.Context, payload []byte, signature string) (interface{}, error) // Process provider webhook events
 }
+
+// PluginService manages payment plugin operations
+type PluginService interface {
+	ListPaymentPlugins() []string
+	GetPaymentPlugin(name string) (PaymentPlugin, bool)
+	SavePaymentPluginConfig(ctx context.Context, config *PaymentPluginConfig) error
+	DisablePaymentPlugin(ctx context.Context, tenantID, pluginName string) error
+}
+
+// TransactionReportService manages transaction reporting
+type TransactionReportService interface {
+	GetTransactionReport(ctx context.Context, tenantID string, startDate, endDate time.Time, includeDailyTotals bool) (*TransactionReport, error)
+	GetPaymentMethodReport(ctx context.Context, tenantID string, startDate, endDate time.Time) (map[string]int, error)
+	GetTransactionVolume(ctx context.Context, tenantID string, startDate, endDate time.Time) (float64, int, error)
+}

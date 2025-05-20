@@ -11,4 +11,5 @@ type FeeService interface {
 	DeleteFee(ctx context.Context, id string) error
 	SetFeePluginConfig(ctx context.Context, tenantID, pluginName string) (FeePluginConfig, error)
 	GetFeePluginConfig(ctx context.Context, tenantID string) (FeePluginConfig, error)
+	DisableFeePlugin(ctx context.Context, tenantID, pluginName string) error
 }

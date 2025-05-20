@@ -12,6 +12,7 @@ type FeePlugin interface {
 	Name() string
 	Version() string
 	Capabilities() []string
+	Initialize(config map[string]interface{}) error
 }
 
 // FeePluginRegistry holds registered plugins by name.
@@ -38,6 +39,14 @@ func (r *FeePluginRegistry) List() []string {
 		names = append(names, name)
 	}
 	return names
+}
+
+// Unregister removes a plugin from the registry
+func (r *FeePluginRegistry) Unregister(name string) {
+	if r.plugins == nil {
+		return
+	}
+	delete(r.plugins, name)
 }
 
 // FeePluginConfig stores per-tenant plugin selection.

@@ -31,13 +31,13 @@ func NewDiscountHandler(
 func (h *DiscountHandler) GetDiscount(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		logger.LogError("GetDiscount: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("GetDiscount: id required", logger.String("path", c.Path()))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
 	discount, err := h.DiscountService.GetDiscount(id)
 	if err != nil {
-		logger.LogError("GetDiscount: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.JSON(fiber.ErrNotFound)
+		logger.LogError("GetDiscount: failed", logger.ErrorField(err), logger.String("id", id))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 	return c.JSON(discount)
 }
@@ -45,13 +45,13 @@ func (h *DiscountHandler) GetDiscount(c *fiber.Ctx) error {
 func (h *DiscountHandler) GetDiscountByCode(c *fiber.Ctx) error {
 	code := c.Params("code")
 	if code == "" {
-		logger.LogError("GetDiscountByCode: code required", logger.String("code", code))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "code required"})
+		logger.LogError("GetDiscountByCode: code required", logger.String("path", c.Path()))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
 	discount, err := h.DiscountService.GetDiscountByCode(code)
 	if err != nil {
-		logger.LogError("GetDiscountByCode: not found", logger.ErrorField(err), logger.String("code", code))
-		return c.JSON(fiber.ErrNotFound)
+		logger.LogError("GetDiscountByCode: failed", logger.ErrorField(err), logger.String("code", code))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 	return c.JSON(discount)
 }
@@ -63,8 +63,7 @@ func (h *DiscountHandler) ListDiscounts(c *fiber.Ctx) error {
 	discounts, err := h.DiscountService.ListDiscounts(activeOnly, page, pageSize)
 	if err != nil {
 		logger.LogError("ListDiscounts: failed", logger.ErrorField(err), logger.Bool("active_only", activeOnly))
-
-		return c.JSON(fiber.ErrBadRequest)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 	return c.JSON(fiber.Map{"discounts": discounts, "page": page, "page_size": pageSize})
 }
@@ -73,7 +72,7 @@ func (h *DiscountHandler) CreateDiscount(c *fiber.Ctx) error {
 	var input Discount
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateDiscount: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 	if input.ID == "" {
 		input.ID = uuid.NewString()
@@ -83,13 +82,12 @@ func (h *DiscountHandler) CreateDiscount(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreateDiscount: validation failed", logger.ErrorField(err))
-		return c.JSON(fiber.ErrBadRequest)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 	discount, err := h.DiscountService.CreateDiscount(input)
 	if err != nil {
 		logger.LogError("CreateDiscount: failed", logger.ErrorField(err), logger.Any("input", input))
-
-		return c.JSON(fiber.ErrBadRequest)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(discount)
@@ -98,31 +96,30 @@ func (h *DiscountHandler) CreateDiscount(c *fiber.Ctx) error {
 func (h *DiscountHandler) UpdateDiscount(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		logger.LogError("UpdateDiscount: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("UpdateDiscount: id required", logger.String("path", c.Path()))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
 	var input Discount
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateDiscount: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 	input.ID = id
 	if input.Code == "" {
-		logger.LogError("UpdateDiscount: code required for update")
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "code required for update"})
+		logger.LogError("UpdateDiscount: code required for update", logger.String("id", id))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
 	if input.Metadata == "" {
 		input.Metadata = "{}"
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("UpdateDiscount: validation failed", logger.ErrorField(err))
-		return c.JSON(fiber.ErrBadRequest)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 	discount, err := h.DiscountService.UpdateDiscount(input)
 	if err != nil {
 		logger.LogError("UpdateDiscount: failed", logger.ErrorField(err), logger.Any("input", input))
-
-		return c.JSON(fiber.ErrBadRequest)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 	return c.JSON(discount)
 }
@@ -130,13 +127,12 @@ func (h *DiscountHandler) UpdateDiscount(c *fiber.Ctx) error {
 func (h *DiscountHandler) DeleteDiscount(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		logger.LogError("DeleteDiscount: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("DeleteDiscount: id required", logger.String("path", c.Path()))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
 	if err := h.DiscountService.DeleteDiscount(id); err != nil {
 		logger.LogError("DeleteDiscount: failed", logger.ErrorField(err), logger.String("id", id))
-
-		return c.JSON(fiber.ErrBadRequest)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -145,7 +141,7 @@ func (h *DiscountHandler) CreateCoupon(c *fiber.Ctx) error {
 	var input Coupon
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateCoupon: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 	if input.ID == "" {
 		input.ID = uuid.NewString()
@@ -161,13 +157,12 @@ func (h *DiscountHandler) CreateCoupon(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreateCoupon: validation failed", logger.ErrorField(err))
-		return c.JSON(fiber.ErrBadRequest)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 	coupon, err := h.CouponService.CreateCoupon(input)
 	if err != nil {
 		logger.LogError("CreateCoupon: failed", logger.ErrorField(err), logger.Any("input", input))
-
-		return c.JSON(fiber.ErrBadRequest)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(coupon)
@@ -176,28 +171,27 @@ func (h *DiscountHandler) CreateCoupon(c *fiber.Ctx) error {
 func (h *DiscountHandler) UpdateCoupon(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		logger.LogError("UpdateCoupon: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("UpdateCoupon: id required", logger.String("path", c.Path()))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
 	var input Coupon
 	input.ID = id
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateCoupon: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 	if input.ID == "" {
-		logger.LogError("UpdateCoupon: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("UpdateCoupon: id required", logger.String("path", c.Path()))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("UpdateCoupon: validation failed", logger.ErrorField(err))
-		return c.JSON(fiber.ErrBadRequest)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 	coupon, err := h.CouponService.UpdateCoupon(input)
 	if err != nil {
 		logger.LogError("UpdateCoupon: failed", logger.ErrorField(err), logger.Any("input", input))
-
-		return c.JSON(fiber.ErrBadRequest)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 
 	return c.JSON(coupon)
@@ -206,13 +200,12 @@ func (h *DiscountHandler) UpdateCoupon(c *fiber.Ctx) error {
 func (h *DiscountHandler) DeleteCoupon(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		logger.LogError("DeleteCoupon: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("DeleteCoupon: id required", logger.String("path", c.Path()))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
 	if err := h.CouponService.DeleteCoupon(id); err != nil {
 		logger.LogError("DeleteCoupon: failed", logger.ErrorField(err), logger.String("id", id))
-
-		return c.JSON(fiber.ErrBadRequest)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
@@ -221,13 +214,13 @@ func (h *DiscountHandler) DeleteCoupon(c *fiber.Ctx) error {
 func (h *DiscountHandler) GetCoupon(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		logger.LogError("GetCoupon: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("GetCoupon: id required", logger.String("path", c.Path()))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
 	coupon, err := h.CouponService.GetCoupon(id)
 	if err != nil {
-		logger.LogError("GetCoupon: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.JSON(fiber.ErrNotFound)
+		logger.LogError("GetCoupon: failed", logger.ErrorField(err), logger.String("id", id))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 	return c.JSON(coupon)
 }
@@ -235,13 +228,13 @@ func (h *DiscountHandler) GetCoupon(c *fiber.Ctx) error {
 func (h *DiscountHandler) GetCouponByCode(c *fiber.Ctx) error {
 	code := c.Params("code")
 	if code == "" {
-		logger.LogError("GetCouponByCode: code required", logger.String("code", code))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "code required"})
+		logger.LogError("GetCouponByCode: code required", logger.String("path", c.Path()))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
 	coupon, err := h.CouponService.GetCouponByCode(code)
 	if err != nil {
-		logger.LogError("GetCouponByCode: not found", logger.ErrorField(err), logger.String("code", code))
-		return c.JSON(fiber.ErrNotFound)
+		logger.LogError("GetCouponByCode: failed", logger.ErrorField(err), logger.String("code", code))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 	return c.JSON(coupon)
 }

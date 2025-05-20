@@ -2,6 +2,7 @@ package fee
 
 import (
 	"context"
+	"reflect"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
@@ -137,8 +138,46 @@ func (h *FeeHandler) GetFeePlugin(c *fiber.Ctx) error {
 
 // ConfigureFeePlugin is a stub for plugin configuration
 func (h *FeeHandler) ConfigureFeePlugin(c *fiber.Ctx) error {
-	logger.LogError("ConfigureFeePlugin: not implemented")
-	return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"error": "ConfigureFeePlugin not implemented for this plugin type"})
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		logger.LogError("ConfigureFeePlugin: plugin name required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Plugin name is required"})
+	}
+
+	// Check if plugin exists first
+	plugin, exists := FeePlugins.Lookup(pluginName)
+	if !exists {
+		logger.LogError("ConfigureFeePlugin: plugin not found", logger.String("plugin_name", pluginName))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Fee plugin '" + pluginName + "' not found"})
+	}
+
+	var input struct {
+		TenantID string `json:"tenant_id"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("ConfigureFeePlugin: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input format"})
+	}
+
+	if input.TenantID == "" {
+		logger.LogError("ConfigureFeePlugin: tenant_id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id is required"})
+	}
+
+	cfg, err := h.Store.SetFeePluginConfig(c.Context(), input.TenantID, pluginName)
+	if err != nil {
+		logger.LogError("ConfigureFeePlugin: store error", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to configure plugin"})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"config":  cfg,
+		"plugin": map[string]string{
+			"name":    plugin.Name(),
+			"version": plugin.Version(),
+		},
+	})
 }
 
 // DisableFeePlugin disables a fee plugin by name
@@ -148,6 +187,127 @@ func (h *FeeHandler) DisableFeePlugin(c *fiber.Ctx) error {
 		logger.LogError("DisableFeePlugin: plugin name required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Plugin name is required"})
 	}
-	logger.LogError("DisableFeePlugin: not implemented", logger.String("plugin_name", pluginName))
-	return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"error": "DisableFeePlugin not implemented for this plugin type"})
+
+	// Check if plugin exists
+	_, exists := FeePlugins.Lookup(pluginName)
+	if !exists {
+		logger.LogError("DisableFeePlugin: plugin not found", logger.String("plugin_name", pluginName))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Fee plugin '" + pluginName + "' not found"})
+	}
+
+	var input struct {
+		TenantID string `json:"tenant_id"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("DisableFeePlugin: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input format"})
+	}
+
+	if input.TenantID == "" {
+		logger.LogError("DisableFeePlugin: tenant_id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id is required"})
+	}
+
+	err := h.Store.DisableFeePlugin(c.Context(), input.TenantID, pluginName)
+	if err != nil {
+		logger.LogError("DisableFeePlugin: store error", logger.ErrorField(err),
+			logger.String("tenant_id", input.TenantID),
+			logger.String("plugin_name", pluginName))
+
+		if _, ok := err.(*ValidationError); ok {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		}
+
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to disable plugin"})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": "Fee plugin '" + pluginName + "' disabled for tenant " + input.TenantID,
+	})
+}
+
+// RegisterFeePlugin registers and initializes a fee plugin
+func (h *FeeHandler) RegisterFeePlugin(c *fiber.Ctx) error {
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		logger.LogError("RegisterFeePlugin: plugin name required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Plugin name is required"})
+	}
+
+	// Verify plugin exists in registry (should have been registered at startup)
+	plugin, exists := FeePlugins.Lookup(pluginName)
+	if !exists {
+		logger.LogError("RegisterFeePlugin: plugin not found", logger.String("plugin_name", pluginName))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Fee plugin '" + pluginName + "' not found"})
+	}
+
+	// Get configuration for plugin initialization
+	var config map[string]interface{}
+	if err := c.BodyParser(&config); err != nil {
+		logger.LogError("RegisterFeePlugin: invalid config", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid configuration format"})
+	}
+
+	// Check if plugin supports Initialize method via reflection
+	pluginType := reflect.TypeOf(plugin)
+	if _, exists := pluginType.MethodByName("Initialize"); !exists {
+		logger.LogError("RegisterFeePlugin: plugin does not support initialization", logger.String("plugin_name", pluginName))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Plugin does not support initialization"})
+	}
+
+	// Call Initialize method via reflection
+	initializeMethod := reflect.ValueOf(plugin).MethodByName("Initialize")
+	results := initializeMethod.Call([]reflect.Value{reflect.ValueOf(config)})
+	if len(results) > 0 && !results[0].IsNil() {
+		err := results[0].Interface().(error)
+		logger.LogError("RegisterFeePlugin: initialization failed", logger.ErrorField(err), logger.String("plugin_name", pluginName))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to initialize plugin: " + err.Error()})
+	}
+
+	logger.LogInfo("RegisterFeePlugin: plugin initialized successfully", logger.String("plugin_name", pluginName))
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": "Fee plugin '" + pluginName + "' registered and initialized successfully",
+		"plugin": map[string]string{
+			"name":    plugin.Name(),
+			"version": plugin.Version(),
+		},
+	})
+}
+
+// UnregisterFeePlugin unregisters a fee plugin
+func (h *FeeHandler) UnregisterFeePlugin(c *fiber.Ctx) error {
+	pluginName := c.Params("name")
+	if pluginName == "" {
+		logger.LogError("UnregisterFeePlugin: plugin name required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Plugin name is required"})
+	}
+
+	// Check if plugin exists before unregistering
+	plugin, exists := FeePlugins.Lookup(pluginName)
+	if !exists {
+		logger.LogError("UnregisterFeePlugin: plugin not found", logger.String("plugin_name", pluginName))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Fee plugin '" + pluginName + "' not found"})
+	}
+
+	// Check if plugin is in use by any tenants
+	// This would require a database query to check if any tenant has this plugin configured
+	// For now, just log the unregister action
+
+	// Unregister from global registry - we need to add this method to the registry
+	// Since the RegisterFeePlugin function uses FeePlugins.Register(), we need a corresponding Unregister method
+
+	// Update the plugin registry
+	FeePlugins.Unregister(pluginName)
+
+	logger.LogInfo("UnregisterFeePlugin: plugin unregistered", logger.String("plugin_name", pluginName))
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": "Fee plugin '" + pluginName + "' unregistered successfully",
+		"plugin": map[string]string{
+			"name":    plugin.Name(),
+			"version": plugin.Version(),
+		},
+	})
 }
