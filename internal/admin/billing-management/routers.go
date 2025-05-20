@@ -20,12 +20,15 @@ func RegisterRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret
 		return
 	}
 
+	// Initialize the rate limit handler
+
+
 	route := router.Group(
 		"/billing-management",
 		security_management.OIDCMiddleware(jwtSecret),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, billingScopeExtractor),
-
 	)
+
 
 	// Register account routes
 

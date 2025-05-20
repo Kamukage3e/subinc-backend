@@ -33,23 +33,23 @@ import (
 	"github.com/subinc/subinc-backend/pkg/session"
 )
 
-// Global state for DB pool and audit logger, protected by mutex for thread safety
+// Global state for DB pool, protected by mutex for thread safety
 var (
 	dbState struct {
-		pool        *pgxpool.Pool
+		pool *pgxpool.Pool
 	}
 	dbStateMu = &sync.RWMutex{}
 )
 
-// Handler dependencies struct for dynamic DB and audit logger
-// Each handler gets a pointer to this struct and reads db/audit logger at request time
+// Handler dependencies struct for dynamic DB
+// Each handler gets a pointer to this struct and reads db at request time
 
 type HandlerDeps struct {
-	GetDBPool      func() *pgxpool.Pool
+	GetDBPool func() *pgxpool.Pool
 }
 
 // DynamicStore implements the same interface as PostgresStore but always uses the latest dbState
-// This allows handlers to always use the current DB pool and audit logger after /db/connect
+// This allows handlers to always use the current DB pool after /db/connect
 
 type DynamicStore struct{}
 
@@ -59,19 +59,6 @@ func (s *DynamicStore) DB() *pgxpool.Pool {
 }
 
 
-// Helper: extract DB credentials from headers
-func extractDBConfig(c *fiber.Ctx) (string, error) {
-	host := c.Get("X-DB-Host")
-	port := c.Get("X-DB-Port")
-	user := c.Get("X-DB-User")
-	password := c.Get("X-DB-Password")
-	dbname := c.Get("X-DB-Name")
-	sslmode := c.Get("X-DB-SSLMode")
-	if host == "" || port == "" || user == "" || password == "" || dbname == "" || sslmode == "" {
-		return "", fmt.Errorf("missing DB credentials")
-	}
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", user, password, host, port, dbname, sslmode), nil
-}
 
 // @title           Subinc Admin API
 // @version         1.0
@@ -107,7 +94,7 @@ func main() {
 
 	ctx := context.Background()
 	serverConfigStore := server_config.NewStore(ownerDBPool, logr)
-	serverConfigService := server_config.NewService(serverConfigStore, 30*time.Second) 
+	serverConfigService := server_config.NewService(serverConfigStore, 30*time.Second)
 
 	logCfg, err := serverConfigService.GetOwnerLoggingConfig(ctx)
 	if err != nil {
@@ -178,21 +165,14 @@ func main() {
 
 	// Create RBAC store before any route registration
 	rbacStore := &rbac_management.PostgresStore{DB: ownerDBPool}
+	rbac_management.InitGlobalRBACStore(rbacStore)
 
 	// --- Unified admin routes (owner + client) ---
 	adminAPI := app.Group("/api/v1/")
-	securityStore := security_management.NewPostgresStore(ownerDBPool, serverConfigService) 
-
-	// Initialize global RBAC store with the store
-	rbac_management.InitGlobalRBACStore(rbacStore)
-
-	// Do NOT initialize global audit logger or adapters
+	securityStore := security_management.NewPostgresStore(ownerDBPool, serverConfigService)
 
 	rbacHandler := rbac_management.NewRBACHandler(rbacStore)
 	rbac_management.RegisterAdminRBACRoutes(adminAPI, rbacHandler, jwtCfg.SecretName)
-
-	// Add audit middleware to RBAC routes using securityStore directly
-
 
 	// Initialize RBAC configurator for centralized RBAC control
 	redisClient := redis.NewClient(&redis.Options{
@@ -211,7 +191,8 @@ func main() {
 	}
 
 	// Use the store directly for RBAC
-	rbacConfigurator := rbac.InitializeRBAC(rbacStore, redisSessionManager, serverConfigService, 30*time.Second) 
+	rbacStore = &rbac_management.PostgresStore{DB: ownerDBPool}
+	rbacConfigurator := rbac.InitializeRBAC(rbacStore, redisSessionManager, serverConfigService, 30*time.Second)
 
 	// Setup common bypass patterns (login, health checks, etc.)
 	if err := rbac.SetupCommonBypassPatterns(rbacConfigurator); err != nil {
@@ -223,7 +204,7 @@ func main() {
 
 	// Continue with regular route registration, but use protectedAPI for routes that should be RBAC-protected
 	serverConfigHandler := server_config.NewHandler(serverConfigService, logr)
-	server_config.RegisterAdminServerConfigRoutes(protectedAPI, serverConfigHandler, jwtCfg.SecretName) 
+	server_config.RegisterAdminServerConfigRoutes(protectedAPI, serverConfigHandler, jwtCfg.SecretName)
 
 	// Initialize auth manager
 	authManager := auth.NewAuthManager(logr)
@@ -270,7 +251,7 @@ func main() {
 
 	// Register billing-management main router
 	billingRoute := protectedAPI.Group("/billing-management")
-	billing_management.RegisterRoutes(protectedAPI, billingHandler, jwtCfg.SecretName) 
+	billing_management.RegisterRoutes(protectedAPI, billingHandler, jwtCfg.SecretName)
 
 	// Register all billing-management submodule routers under /billing-management
 	// --- FEE ---
@@ -279,7 +260,7 @@ func main() {
 	fee.RegisterRoutes(billingRoute, feeHandler)
 
 	// --- DISCOUNT ---
-	discountStore := &discount.PostgresStore{DB: ownerDBPool, ServerConfigService: serverConfigService} 
+	discountStore := &discount.PostgresStore{DB: ownerDBPool, ServerConfigService: serverConfigService}
 	accountStore := &account.PostgresStore{DB: ownerDBPool}
 	discountHandler := discount.NewDiscountHandler(
 		&discount.DiscountServiceAdapter{Store: discountStore}, // DiscountService
@@ -288,7 +269,7 @@ func main() {
 		&account.BillingAccountServiceAdapter{Store: accountStore},
 		*logr,
 	)
-	discount.RegisterRoutes(billingRoute, discountHandler, jwtCfg.SecretName) 
+	discount.RegisterRoutes(billingRoute, discountHandler, jwtCfg.SecretName)
 
 	// --- PAYMENT ---
 	paymentHandler := payment.NewPaymentHandler(
@@ -328,7 +309,7 @@ func main() {
 		SubscriptionService: &subscription.SubscriptionServiceAdapter{Store: subscriptionStore},
 		Store:               subscriptionStore,
 	}
-	subscription.RegisterRoutes(billingRoute, subscriptionHandler) 
+	subscription.RegisterRoutes(billingRoute, subscriptionHandler)
 
 	// Dunning worker setup - only enable if explicitly set in config
 	if appConfig.Stripe.APIKey != "" && os.Getenv("DUNNING_ENABLED") == "true" {
@@ -431,7 +412,6 @@ func getDBPool() *pgxpool.Pool {
 	defer dbStateMu.RUnlock()
 	return dbState.pool
 }
-
 
 // generateRandomPassword generates a secure random password
 func generateRandomPassword() (string, error) {

@@ -5,7 +5,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
-
 )
 
 // Architectural decision: All security-management endpoints use in-memory rate limiting and strict security headers.
@@ -82,11 +81,6 @@ func RegisterRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretName
 
 	// Password
 	route.Post("/:user_id/password/reset", rbacmiddleware.RBACMiddleware("password", "create", nil), strictLimiter.middleware(), handler.ResetUserPassword)
-
-	// --- Audit Logs Resource ---
-	route = router.Group("/audit-logs", securityHeadersMiddleware(), OIDCMiddleware(jwtSecretName))
-	route.Get("/", rbacmiddleware.RBACMiddleware("audit-log", "read", nil), generalLimiter.middleware(), handler.ListSecurityAuditLogs)
-	route.Get("/:log_id", rbacmiddleware.RBACMiddleware("audit-log", "read", nil), generalLimiter.middleware(), handler.GetSecurityAuditLog)
 
 	// --- Breaches Resource ---
 	route = router.Group("/breaches", securityHeadersMiddleware(), OIDCMiddleware(jwtSecretName))

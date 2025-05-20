@@ -21,7 +21,7 @@ func RegisterRoutes(router fiber.Router, handler *UserHandler, jwtSecret string)
 	route := router.Group(
 		"/user-management",
 		security_management.OIDCMiddleware(jwtSecret),
-		security_management.NewRateLimitMiddleware(handler.RateLimitService, userScopeExtractor),
+
 	)
 	// Users resource
 	route.Post("/users", rbacmiddleware.RBACMiddleware("user", "create", nil), handler.CreateUser)

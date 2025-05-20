@@ -60,11 +60,6 @@ type SessionService interface {
 	RevokeUserSession(ctx context.Context, userID, sessionID string) error
 }
 
-type SecurityAuditLogService interface {
-	ListSecurityAuditLogs(ctx context.Context, page, pageSize int) ([]SecurityAuditLog, error)
-	CreateSecurityAuditLog(ctx context.Context, log SecurityAuditLog) (SecurityAuditLog, error)
-}
-
 type APIKeyService interface {
 	ListUserAPIKeys(ctx context.Context, userID string) ([]APIKey, error)
 	CreateUserAPIKey(ctx context.Context, userID, name string) (APIKey, error)

@@ -820,11 +820,10 @@ func (h *SecurityHandler) DeleteSecurityPolicy(c *fiber.Ctx) error {
 	}
 
 	var policyExists bool
-	var policyName string
+
 	for _, policy := range policies {
 		if policy.ID == policyID {
 			policyExists = true
-			policyName = policy.Name
 			break
 		}
 	}
@@ -840,22 +839,7 @@ func (h *SecurityHandler) DeleteSecurityPolicy(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete security policy"})
 	}
 
-	// Audit the deletion
-	if h.SecurityAuditLogService != nil {
-		_, _ = h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:         uuid.NewString(),
-			UserID:     getActorID(c),
-			Action:     "delete_security_policy",
-			Resource:   "security_policy",
-			ResourceID: policyID,
-			IP:         c.IP(),
-			UserAgent:  c.Get("User-Agent"),
-			CreatedAt:  time.Now(),
-			Metadata: map[string]interface{}{
-				"policy_name": policyName,
-			},
-		})
-	}
+
 
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -1877,7 +1861,7 @@ func (h *SecurityHandler) Register(c *fiber.Ctx) error {
 	}
 
 	// Create security audit log
-	h.createAuditLog(c, "user_registered", "user", user.ID, input.Email)
+
 
 	// Return user info with verification status
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
@@ -2831,82 +2815,7 @@ func (h *SecurityHandler) SetSessionConfig(c *fiber.Ctx) error {
 	})
 }
 
-func (h *SecurityHandler) ListSecurityAuditLogs(c *fiber.Ctx) error {
 
-	// Pagination parameters
-	page := c.QueryInt("page", 1)
-	pageSize := c.QueryInt("page_size", 20)
-
-	// Filtering parameters
-	actorID := c.Query("actor_id", "")
-	action := c.Query("action", "")
-	targetID := c.Query("target_id", "")
-
-	// Date range filters
-	startDate := c.Query("start_date", "")
-	endDate := c.Query("end_date", "")
-
-	// Validate pagination parameters
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
-	}
-
-	logs, err := h.SecurityAuditLogService.ListSecurityAuditLogs(c.Context(), page, pageSize)
-	if err != nil {
-		logger.LogError("ListSecurityAuditLogs: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to retrieve audit logs"})
-	}
-
-	// Apply filters if specified
-	var filteredLogs []SecurityAuditLog
-	for _, log := range logs {
-		// Skip if doesn't match actor filter
-		if actorID != "" && log.ActorID != actorID {
-			continue
-		}
-		// Skip if doesn't match action filter
-		if action != "" && log.Action != action {
-			continue
-		}
-		// Skip if doesn't match target filter
-		if targetID != "" && log.TargetID != targetID {
-			continue
-		}
-
-		// Date range filtering
-		if startDate != "" {
-			startTime, err := time.Parse(time.RFC3339, startDate)
-			if err == nil && log.CreatedAt.Before(startTime) {
-				continue
-			}
-		}
-		if endDate != "" {
-			endTime, err := time.Parse(time.RFC3339, endDate)
-			if err == nil && log.CreatedAt.After(endTime) {
-				continue
-			}
-		}
-
-		filteredLogs = append(filteredLogs, log)
-	}
-
-	return c.JSON(fiber.Map{
-		"logs":      filteredLogs,
-		"page":      page,
-		"page_size": pageSize,
-		"total":     len(filteredLogs),
-		"filters": fiber.Map{
-			"actor_id":   actorID,
-			"action":     action,
-			"target_id":  targetID,
-			"start_date": startDate,
-			"end_date":   endDate,
-		},
-	})
-}
 
 // --- Owner Admin Bootstrap Endpoint ---
 func (h *SecurityHandler) BootstrapOwnerAdmin(c *fiber.Ctx) error {
@@ -2977,22 +2886,7 @@ func (h *SecurityHandler) BootstrapOwnerAdmin(c *fiber.Ctx) error {
 		// Continue anyway since the user was created
 	}
 
-	// Create a security audit log
-	if h.SecurityAuditLogService != nil {
-		h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:         uuid.NewString(),
-			UserID:     user.ID,
-			Action:     "owner_bootstrap",
-			Resource:   "user",
-			ResourceID: user.ID,
-			IP:         c.IP(),
-			UserAgent:  c.Get("User-Agent"),
-			CreatedAt:  time.Now(),
-			Metadata: map[string]interface{}{
-				"email": input.Email,
-			},
-		})
-	}
+
 
 	// Grant full RBAC access to admin via RBAC tables
 	go func() {
@@ -3156,68 +3050,5 @@ func (h *SecurityHandler) ResetUserPassword(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *SecurityHandler) GetSecurityAuditLog(c *fiber.Ctx) error {
 
-	logID := c.Params("log_id")
-	if logID == "" {
-		logger.LogError("GetSecurityAuditLog: missing log_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "log_id parameter required"})
-	}
 
-	// Retrieve all logs and search for the specified ID
-	// In a production environment, this should be a direct database query by ID
-	page := 1
-	pageSize := 100
-	var foundLog *SecurityAuditLog
-
-	for {
-		logs, err := h.SecurityAuditLogService.ListSecurityAuditLogs(c.Context(), page, pageSize)
-		if err != nil {
-			logger.LogError("GetSecurityAuditLog: failed to list logs", logger.ErrorField(err))
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to retrieve audit logs"})
-		}
-
-		if len(logs) == 0 {
-			break // No more logs to check
-		}
-
-		for i := range logs {
-			if logs[i].ID == logID {
-				foundLog = &logs[i]
-				break
-			}
-		}
-
-		if foundLog != nil || len(logs) < pageSize {
-			break // Found the log or reached the end
-		}
-
-		page++
-	}
-
-	if foundLog == nil {
-		logger.LogError("GetSecurityAuditLog: log not found", logger.String("log_id", logID))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "audit log not found"})
-	}
-
-	return c.JSON(foundLog)
-}
-
-// Security audit log creation with proper field usage
-func (h *SecurityHandler) createAuditLog(c *fiber.Ctx, action, resourceType, resourceID, details string) {
-	if h.SecurityAuditLogService != nil {
-		h.SecurityAuditLogService.CreateSecurityAuditLog(c.Context(), SecurityAuditLog{
-			ID:         uuid.NewString(),
-			UserID:     getActorID(c),
-			Action:     action,
-			Resource:   resourceType,
-			ResourceID: resourceID,
-			IP:         c.IP(),
-			UserAgent:  c.Get("User-Agent"),
-			CreatedAt:  time.Now(),
-			Metadata: map[string]interface{}{
-				"details": details,
-			},
-		})
-	}
-}

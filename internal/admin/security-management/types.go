@@ -25,7 +25,7 @@ type ServerConfigService interface {
 }
 
 type PostgresStore struct {
-	DB                  *pgxpool.Pool
+	DB *pgxpool.Pool
 
 	ServerConfigService ServerConfigService
 }
@@ -45,7 +45,7 @@ type SecurityHandler struct {
 	PasswordService             PasswordService
 	PasswordResetTokenService   PasswordResetTokenService
 	SessionService              SessionService
-	SecurityAuditLogService     SecurityAuditLogService
+
 	RateLimitService            RateLimitService
 	APIKeyService               APIKeyService
 	DeviceService               DeviceService
@@ -90,22 +90,6 @@ type LoginHistory struct {
 
 // Use the Session type from interfaces
 type Session = interfaces.Session
-
-// SecurityAuditLog represents a security-related audit log entry
-type SecurityAuditLog struct {
-	ID         string                 `json:"id"`
-	UserID     string                 `json:"user_id"`
-	ActorID    string                 `json:"actor_id"`
-	Action     string                 `json:"action"`
-	Resource   string                 `json:"resource"`
-	ResourceID string                 `json:"resource_id"`
-	TargetID   string                 `json:"target_id"`
-	Details    string                 `json:"details"`
-	IP         string                 `json:"ip"`
-	UserAgent  string                 `json:"user_agent"`
-	CreatedAt  time.Time              `json:"created_at"`
-	Metadata   map[string]interface{} `json:"metadata,omitempty"`
-}
 
 type APIKey struct {
 	ID        string     `json:"id"`

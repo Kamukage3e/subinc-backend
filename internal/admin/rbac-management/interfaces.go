@@ -58,10 +58,7 @@ type ResourceService interface {
 	ListResources(ctx context.Context, tenantID, typ string, page, pageSize int) ([]Resource, error)
 }
 
-type AuditLogService interface {
-	CreateAuditLog(ctx context.Context, log AuditLog) (AuditLog, error)
-	ListAuditLogs(ctx context.Context, tenantID, actorID, action, resource string, page, pageSize int) ([]AuditLog, error)
-}
+
 
 // RBACService provides full RBAC enforcement for all modules.
 // All methods must be robust, user-friendly, and never leak sensitive info.
@@ -74,7 +71,7 @@ type RBACService interface {
 	APIPermissionService
 	ResourceService
 	ABACPolicyService
-	AuditLogService
+
 
 	// Core RBAC functions
 	CheckAccess(ctx context.Context, userID, resource, action string, abacContext map[string]interface{}) (bool, error)

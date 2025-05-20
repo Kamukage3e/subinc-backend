@@ -14,18 +14,7 @@ func NewUserHandler(store *PostgresStore) *UserHandler {
 	return &UserHandler{Store: store}
 }
 
-// getActorID extracts the user_id from fiber context or returns "system" if not present
-func getActorID(c *fiber.Ctx) string {
-	id := c.Get("X-Actor-ID")
-	if id != "" {
-		return id
-	}
-	id = c.Get("X-User-ID")
-	if id != "" {
-		return id
-	}
-	return ""
-}
+
 
 // swagger:route POST /users user createUser
 // summary: Create a user
