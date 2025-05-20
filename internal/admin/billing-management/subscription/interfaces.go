@@ -27,6 +27,12 @@ type SubscriptionService interface {
 	ResumeSubscription(id string) error
 	UpgradeNowSubscription(id string) error
 	ProcessAutoRenewals() error
+
+	// Plugin management methods
+	ListSubscriptionPlugins() []string
+	GetSubscriptionPlugin(pluginName string) (SubscriptionPlugin, bool)
+	ConfigureSubscriptionPlugin(pluginName string, config map[string]interface{}) error
+	DisableSubscriptionPlugin(pluginName string) error
 }
 
 // SubscriptionPlugin defines a hot-pluggable interface for subscription logic.

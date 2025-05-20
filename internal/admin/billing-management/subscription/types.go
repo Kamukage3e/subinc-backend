@@ -1,6 +1,7 @@
 package subscription
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -18,7 +19,7 @@ type SubscriptionHandler struct {
 }
 
 type PostgresStore struct {
-	DB                  *pgxpool.Pool
+	DB *pgxpool.Pool
 
 	ServerConfigService *server_config.Service
 }
@@ -88,6 +89,11 @@ func NewValidationError(field, msg string) *Error {
 		Field:   field,
 	}
 }
+
+// Common subscription errors
+var (
+	ErrPluginNotFound = errors.New("subscription plugin not found")
+)
 
 // SubscriptionPluginRegistry holds registered plugins by name.
 type SubscriptionPluginRegistry struct {

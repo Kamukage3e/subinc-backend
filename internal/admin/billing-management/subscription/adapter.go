@@ -41,6 +41,40 @@ func (a *SubscriptionServiceAdapter) ProcessAutoRenewals() error {
 	return a.Store.ProcessAutoRenewals(context.Background())
 }
 
+// Plugin management methods - implement the interface
+func (a *SubscriptionServiceAdapter) ListSubscriptionPlugins() []string {
+	return SubscriptionPlugins.List()
+}
+
+func (a *SubscriptionServiceAdapter) GetSubscriptionPlugin(pluginName string) (SubscriptionPlugin, bool) {
+	return SubscriptionPlugins.Lookup(pluginName)
+}
+
+func (a *SubscriptionServiceAdapter) ConfigureSubscriptionPlugin(pluginName string, config map[string]interface{}) error {
+	plugin, exists := SubscriptionPlugins.Lookup(pluginName)
+	if !exists {
+		return ErrPluginNotFound
+	}
+
+	if initializer, ok := plugin.(interface {
+		Initialize(map[string]interface{}) error
+	}); ok {
+		return initializer.Initialize(config)
+	}
+
+	return nil
+}
+
+func (a *SubscriptionServiceAdapter) DisableSubscriptionPlugin(pluginName string) error {
+	_, exists := SubscriptionPlugins.Lookup(pluginName)
+	if !exists {
+		return ErrPluginNotFound
+	}
+
+	SubscriptionPlugins.Unregister(pluginName)
+	return nil
+}
+
 // Add methods as needed, e.g.:
 // func (a *SubscriptionServiceAdapter) CreateSubscription(s Subscription) (Subscription, error) {
 // 	return a.Store.CreateSubscription(context.Background(), s)
