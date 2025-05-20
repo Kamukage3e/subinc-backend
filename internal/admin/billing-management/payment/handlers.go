@@ -126,18 +126,18 @@ func (h *PaymentHandler) UpdatePayment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("UpdatePayment: id required", logger.String("path", c.Path()))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
 	var input Payment
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdatePayment: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 	input.ID = id
 	payment, err := h.PaymentService.UpdatePayment(c.Context(), input)
 	if err != nil {
 		logger.LogError("UpdatePayment: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update payment"})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 	return c.JSON(payment)
 }
@@ -147,12 +147,12 @@ func (h *PaymentHandler) GetPayment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetPayment: id required", logger.String("path", c.Path()))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
 	payment, err := h.PaymentService.GetPayment(c.Context(), id)
 	if err != nil {
 		logger.LogError("GetPayment: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get payment"})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 	return c.JSON(payment)
 }
@@ -165,7 +165,7 @@ func (h *PaymentHandler) ListPayments(c *fiber.Ctx) error {
 	payments, err := h.PaymentService.ListPayments(c.Context(), invoiceID, page, pageSize)
 	if err != nil {
 		logger.LogError("ListPayments: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list payments"})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 	return c.JSON(fiber.Map{"payments": payments, "page": page, "page_size": pageSize})
 }
@@ -175,7 +175,7 @@ func (h *PaymentHandler) GetPaymentByIdempotencyKey(c *fiber.Ctx) error {
 	idempotencyKey := c.Query("idempotency_key")
 	if idempotencyKey == "" {
 		logger.LogError("GetPaymentByIdempotencyKey: idempotency_key required", logger.String("path", c.Path()))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "idempotency_key is required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
 
 	payment, err := h.PaymentService.GetPaymentByIdempotencyKey(c.Context(), idempotencyKey)
@@ -1479,7 +1479,7 @@ func (h *PaymentHandler) ListPaymentPlugins(c *fiber.Ctx) error {
 func (h *PaymentHandler) GetTransactionReport(c *fiber.Ctx) error {
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
-		logger.LogError("GetTransactionReport: tenant_id is required", logger.String("path", c.Path()))
+		h.Logger.Error("GetTransactionReport: tenant_id is required", logger.String("path", c.Path()))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
 
@@ -1490,14 +1490,14 @@ func (h *PaymentHandler) GetTransactionReport(c *fiber.Ctx) error {
 
 	startDate, err := time.Parse("2006-01-02", startStr)
 	if err != nil {
-		logger.LogError("GetTransactionReport: invalid start_date", logger.ErrorField(err), logger.String("start_date", startStr))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid date format"})
+		h.Logger.Error("GetTransactionReport: invalid start_date", logger.ErrorField(err), logger.String("start_date", startStr))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 
 	endDate, err := time.Parse("2006-01-02", endStr)
 	if err != nil {
-		logger.LogError("GetTransactionReport: invalid end_date", logger.ErrorField(err), logger.String("end_date", endStr))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid date format"})
+		h.Logger.Error("GetTransactionReport: invalid end_date", logger.ErrorField(err), logger.String("end_date", endStr))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 
 	// Ensure end date is inclusive by extending to the end of the day
@@ -1505,23 +1505,23 @@ func (h *PaymentHandler) GetTransactionReport(c *fiber.Ctx) error {
 
 	// Validate date range
 	if startDate.After(endDate) {
-		logger.LogError("GetTransactionReport: start_date after end_date", logger.String("start_date", startStr), logger.String("end_date", endStr))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid date range"})
+		h.Logger.Error("GetTransactionReport: start_date after end_date", logger.String("start_date", startStr), logger.String("end_date", endStr))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 
 	// Maximum report period is 1 year
 	maxPeriod := 365 * 24 * time.Hour
 	if endDate.Sub(startDate) > maxPeriod {
-		logger.LogError("GetTransactionReport: date range exceeds maximum allowed period", logger.String("start_date", startStr), logger.String("end_date", endStr))
+		h.Logger.Error("GetTransactionReport: date range exceeds maximum allowed period", logger.String("start_date", startStr), logger.String("end_date", endStr))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid date range",
+			"error": "Invalid request format",
 		})
 	}
 
 	// Get the transaction report
 	report, err := h.ReportService.GetTransactionReport(c.Context(), tenantID, startDate, endDate, includeDailyTotals)
 	if err != nil {
-		logger.LogError("GetTransactionReport: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		h.Logger.Error("GetTransactionReport: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 
@@ -1532,8 +1532,8 @@ func (h *PaymentHandler) GetTransactionReport(c *fiber.Ctx) error {
 func (h *PaymentHandler) GetPaymentMethodDistribution(c *fiber.Ctx) error {
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
-		logger.LogError("GetPaymentMethodDistribution: tenant_id is required", logger.String("path", c.Path()))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id is required"})
+		h.Logger.Error("GetPaymentMethodDistribution: tenant_id is required", logger.String("path", c.Path()))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
 
 	// Parse date parameters with defaults
@@ -1542,14 +1542,14 @@ func (h *PaymentHandler) GetPaymentMethodDistribution(c *fiber.Ctx) error {
 
 	startDate, err := time.Parse("2006-01-02", startStr)
 	if err != nil {
-		logger.LogError("GetPaymentMethodDistribution: invalid start_date", logger.ErrorField(err), logger.String("start_date", startStr))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid start_date format, use YYYY-MM-DD"})
+		h.Logger.Error("GetPaymentMethodDistribution: invalid start_date", logger.ErrorField(err), logger.String("start_date", startStr))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 
 	endDate, err := time.Parse("2006-01-02", endStr)
 	if err != nil {
-		logger.LogError("GetPaymentMethodDistribution: invalid end_date", logger.ErrorField(err), logger.String("end_date", endStr))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid end_date format, use YYYY-MM-DD"})
+		h.Logger.Error("GetPaymentMethodDistribution: invalid end_date", logger.ErrorField(err), logger.String("end_date", endStr))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 
 	// Ensure end date is inclusive by extending to the end of the day
@@ -1558,8 +1558,8 @@ func (h *PaymentHandler) GetPaymentMethodDistribution(c *fiber.Ctx) error {
 	// Get the payment method distribution
 	distribution, err := h.Store.GetPaymentMethodReport(c.Context(), tenantID, startDate, endDate)
 	if err != nil {
-		logger.LogError("GetPaymentMethodDistribution: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to generate payment method distribution"})
+		h.Logger.Error("GetPaymentMethodDistribution: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 
 	return c.JSON(fiber.Map{
@@ -1573,8 +1573,8 @@ func (h *PaymentHandler) GetPaymentMethodDistribution(c *fiber.Ctx) error {
 func (h *PaymentHandler) GetTransactionVolume(c *fiber.Ctx) error {
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
-		logger.LogError("GetTransactionVolume: tenant_id is required", logger.String("path", c.Path()))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id is required"})
+		h.Logger.Error("GetTransactionVolume: tenant_id is required", logger.String("path", c.Path()))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
 
 	// Parse date parameters with defaults
@@ -1583,14 +1583,14 @@ func (h *PaymentHandler) GetTransactionVolume(c *fiber.Ctx) error {
 
 	startDate, err := time.Parse("2006-01-02", startStr)
 	if err != nil {
-		logger.LogError("GetTransactionVolume: invalid start_date", logger.ErrorField(err), logger.String("start_date", startStr))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid start_date format, use YYYY-MM-DD"})
+		h.Logger.Error("GetTransactionVolume: invalid start_date", logger.ErrorField(err), logger.String("start_date", startStr))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 
 	endDate, err := time.Parse("2006-01-02", endStr)
 	if err != nil {
-		logger.LogError("GetTransactionVolume: invalid end_date", logger.ErrorField(err), logger.String("end_date", endStr))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid end_date format, use YYYY-MM-DD"})
+		h.Logger.Error("GetTransactionVolume: invalid end_date", logger.ErrorField(err), logger.String("end_date", endStr))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 
 	// Ensure end date is inclusive by extending to the end of the day
@@ -1599,8 +1599,8 @@ func (h *PaymentHandler) GetTransactionVolume(c *fiber.Ctx) error {
 	// Get the transaction volume and count
 	volume, count, err := h.Store.GetTransactionVolume(c.Context(), tenantID, startDate, endDate)
 	if err != nil {
-		logger.LogError("GetTransactionVolume: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to calculate transaction volume"})
+		h.Logger.Error("GetTransactionVolume: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 
 	return c.JSON(fiber.Map{
@@ -1615,7 +1615,7 @@ func (h *PaymentHandler) GetTransactionVolume(c *fiber.Ctx) error {
 func (h *PaymentHandler) GetPaymentPlugin(c *fiber.Ctx) error {
 	pluginName := c.Params("name")
 	if pluginName == "" {
-		logger.LogError("GetPaymentPlugin: plugin name is required", logger.String("path", c.Path()))
+		h.Logger.Error("GetPaymentPlugin: plugin name is required", logger.String("path", c.Path()))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Missing required parameter",
 		})
@@ -1623,7 +1623,7 @@ func (h *PaymentHandler) GetPaymentPlugin(c *fiber.Ctx) error {
 
 	plugin, exists := h.PluginService.GetPaymentPlugin(pluginName)
 	if !exists {
-		logger.LogError("GetPaymentPlugin: plugin not found", logger.String("plugin_name", pluginName))
+		h.Logger.Error("GetPaymentPlugin: plugin not found", logger.String("plugin_name", pluginName))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Resource not found",
 		})
@@ -1640,7 +1640,7 @@ func (h *PaymentHandler) GetPaymentPlugin(c *fiber.Ctx) error {
 func (h *PaymentHandler) ConfigurePaymentPlugin(c *fiber.Ctx) error {
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
-		logger.LogError("ConfigurePaymentPlugin: tenant_id is required", logger.String("path", c.Path()))
+		h.Logger.Error("ConfigurePaymentPlugin: tenant_id is required", logger.String("path", c.Path()))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Missing required parameter",
 		})
@@ -1648,7 +1648,7 @@ func (h *PaymentHandler) ConfigurePaymentPlugin(c *fiber.Ctx) error {
 
 	pluginName := c.Params("name")
 	if pluginName == "" {
-		logger.LogError("ConfigurePaymentPlugin: plugin name is required", logger.String("path", c.Path()))
+		h.Logger.Error("ConfigurePaymentPlugin: plugin name is required", logger.String("path", c.Path()))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Missing required parameter",
 		})
@@ -1657,7 +1657,7 @@ func (h *PaymentHandler) ConfigurePaymentPlugin(c *fiber.Ctx) error {
 	// Check if the plugin exists
 	plugin, exists := h.PluginService.GetPaymentPlugin(pluginName)
 	if !exists {
-		logger.LogError("ConfigurePaymentPlugin: plugin not found", logger.String("plugin_name", pluginName))
+		h.Logger.Error("ConfigurePaymentPlugin: plugin not found", logger.String("plugin_name", pluginName))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Resource not found",
 		})
@@ -1666,7 +1666,7 @@ func (h *PaymentHandler) ConfigurePaymentPlugin(c *fiber.Ctx) error {
 	// Parse the configuration
 	var config map[string]interface{}
 	if err := c.BodyParser(&config); err != nil {
-		logger.LogError("ConfigurePaymentPlugin: invalid configuration format", logger.ErrorField(err))
+		h.Logger.Error("ConfigurePaymentPlugin: invalid configuration format", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid request format",
 		})
@@ -1674,7 +1674,7 @@ func (h *PaymentHandler) ConfigurePaymentPlugin(c *fiber.Ctx) error {
 
 	// Initialize the plugin with the configuration
 	if err := plugin.Initialize(config); err != nil {
-		logger.LogError("ConfigurePaymentPlugin: failed to initialize plugin", logger.ErrorField(err))
+		h.Logger.Error("ConfigurePaymentPlugin: failed to initialize plugin", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to process request",
 		})
@@ -1693,7 +1693,7 @@ func (h *PaymentHandler) ConfigurePaymentPlugin(c *fiber.Ctx) error {
 
 	// Save the configuration to the database
 	if err := h.PluginService.SavePaymentPluginConfig(c.Context(), &pluginConfig); err != nil {
-		logger.LogError("ConfigurePaymentPlugin: failed to save plugin configuration", logger.ErrorField(err))
+		h.Logger.Error("ConfigurePaymentPlugin: failed to save plugin configuration", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to process request",
 		})
@@ -1708,7 +1708,7 @@ func (h *PaymentHandler) ConfigurePaymentPlugin(c *fiber.Ctx) error {
 func (h *PaymentHandler) DisablePaymentPlugin(c *fiber.Ctx) error {
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
-		logger.LogError("DisablePaymentPlugin: tenant_id is required", logger.String("path", c.Path()))
+		h.Logger.Error("DisablePaymentPlugin: tenant_id is required", logger.String("path", c.Path()))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Missing required parameter",
 		})
@@ -1716,7 +1716,7 @@ func (h *PaymentHandler) DisablePaymentPlugin(c *fiber.Ctx) error {
 
 	pluginName := c.Params("name")
 	if pluginName == "" {
-		logger.LogError("DisablePaymentPlugin: plugin name is required", logger.String("path", c.Path()))
+		h.Logger.Error("DisablePaymentPlugin: plugin name is required", logger.String("path", c.Path()))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Missing required parameter",
 		})
@@ -1725,7 +1725,7 @@ func (h *PaymentHandler) DisablePaymentPlugin(c *fiber.Ctx) error {
 	// Check if the plugin exists
 	_, exists := h.PluginService.GetPaymentPlugin(pluginName)
 	if !exists {
-		logger.LogError("DisablePaymentPlugin: plugin not found", logger.String("plugin_name", pluginName))
+		h.Logger.Error("DisablePaymentPlugin: plugin not found", logger.String("plugin_name", pluginName))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Resource not found",
 		})
@@ -1733,7 +1733,7 @@ func (h *PaymentHandler) DisablePaymentPlugin(c *fiber.Ctx) error {
 
 	// Disable the plugin in the database
 	if err := h.PluginService.DisablePaymentPlugin(c.Context(), tenantID, pluginName); err != nil {
-		logger.LogError("DisablePaymentPlugin: failed to disable plugin", logger.ErrorField(err))
+		h.Logger.Error("DisablePaymentPlugin: failed to disable plugin", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to process request",
 		})
@@ -1744,21 +1744,25 @@ func (h *PaymentHandler) DisablePaymentPlugin(c *fiber.Ctx) error {
 	})
 }
 
+// CreateManualRefund handles creating a manual refund for a payment
 func (h *PaymentHandler) CreateManualRefund(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		logger.LogError("CreateManualRefund: id is required", logger.String("path", c.Path()))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
+		h.Logger.Error("CreateManualRefund: id is required", logger.String("path", c.Path()))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
+
 	var input struct {
 		Reason   string  `json:"reason"`
 		Amount   float64 `json:"amount"`
 		Currency string  `json:"currency"`
 	}
+
 	if err := c.BodyParser(&input); err != nil {
-		logger.LogError("CreateManualRefund: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+		h.Logger.Error("CreateManualRefund: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
+
 	refund := Refund{
 		PaymentID: id,
 		Reason:    input.Reason,
@@ -1769,10 +1773,12 @@ func (h *PaymentHandler) CreateManualRefund(c *fiber.Ctx) error {
 		UpdatedAt: time.Now().UTC(),
 		Metadata:  "{}",
 	}
+
 	refund, err := h.ManualRefundService.CreateManualRefund(c.Context(), refund)
 	if err != nil {
-		logger.LogError("CreateManualRefund: failed to create manual refund", logger.ErrorField(err))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create manual refund"})
+		h.Logger.Error("CreateManualRefund: failed to create manual refund", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
+
 	return c.Status(fiber.StatusCreated).JSON(refund)
 }

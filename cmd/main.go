@@ -58,8 +58,6 @@ func (s *DynamicStore) DB() *pgxpool.Pool {
 	return getDBPool()
 }
 
-
-
 // @title           Subinc Admin API
 // @version         1.0
 // @description     Unified admin API for Subinc platform (owner + client)
@@ -256,7 +254,8 @@ func main() {
 	// Register all billing-management submodule routers under /billing-management
 	// --- FEE ---
 	feeStore := fee.NewPostgresStore(ownerDBPool)
-	feeHandler := &fee.FeeHandler{Store: feeStore}
+	feeServiceAdapter := fee.NewFeeServiceAdapter(feeStore)
+	feeHandler := fee.NewFeeHandler(feeServiceAdapter)
 	fee.RegisterRoutes(billingRoute, feeHandler)
 
 	// --- DISCOUNT ---
@@ -281,6 +280,9 @@ func main() {
 		serverConfigService,
 		*logr,
 		securityStore,
+		feeServiceAdapter,
+		discountServiceAdapter,
+		subscriptionServiceAdapter,
 		paymentStore,
 	)
 	payment.RegisterRoutes(billingRoute, paymentHandler, jwtCfg.SecretName)

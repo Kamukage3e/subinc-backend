@@ -2,8 +2,10 @@ package discount
 
 import (
 	"context"
+	"fmt"
 )
 
+// DiscountServiceAdapter provides dynamic, type-agnostic account operations.
 type DiscountServiceAdapter struct {
 	Store *PostgresStore
 }
@@ -25,6 +27,57 @@ func (a *DiscountServiceAdapter) GetDiscountByCode(code string) (Discount, error
 }
 func (a *DiscountServiceAdapter) ListDiscounts(activeOnly bool, page, pageSize int) ([]Discount, error) {
 	return a.Store.ListDiscounts(context.Background(), activeOnly, page, pageSize)
+}
+
+// Plugin-related methods
+func (a *DiscountServiceAdapter) ListDiscountPlugins() ([]string, error) {
+	return DiscountPlugins.List(), nil
+}
+
+func (a *DiscountServiceAdapter) GetDiscountPlugin(pluginName string) (DiscountPlugin, error) {
+	if pluginName == "" {
+		return nil, fmt.Errorf("plugin name is required")
+	}
+
+	plugin, exists := DiscountPlugins.Lookup(pluginName)
+	if !exists {
+		return nil, fmt.Errorf("discount plugin '%s' not found", pluginName)
+	}
+
+	return plugin, nil
+}
+
+func (a *DiscountServiceAdapter) ConfigureDiscountPlugin(pluginName string, config map[string]interface{}) error {
+	if pluginName == "" {
+		return fmt.Errorf("plugin name is required")
+	}
+
+	plugin, exists := DiscountPlugins.Lookup(pluginName)
+	if !exists {
+		return fmt.Errorf("discount plugin '%s' not found", pluginName)
+	}
+
+	// Initialize the plugin with configuration
+	if err := plugin.Initialize(config); err != nil {
+		return fmt.Errorf("failed to initialize plugin: %v", err)
+	}
+
+	return nil
+}
+
+func (a *DiscountServiceAdapter) DisableDiscountPlugin(pluginName string) error {
+	if pluginName == "" {
+		return fmt.Errorf("plugin name is required")
+	}
+
+	_, exists := DiscountPlugins.Lookup(pluginName)
+	if !exists {
+		return fmt.Errorf("discount plugin '%s' not found", pluginName)
+	}
+
+	// In the current implementation, there's no mechanism to disable plugins
+	// We could update the registry to mark plugins as disabled, or implement a different mechanism
+	return fmt.Errorf("DisableDiscountPlugin not implemented for this plugin type")
 }
 
 type CreditServiceAdapter struct {

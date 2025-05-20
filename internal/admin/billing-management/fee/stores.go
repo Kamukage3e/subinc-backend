@@ -2,6 +2,7 @@ package fee
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -172,4 +173,59 @@ func (s *PostgresStore) ListFees(ctx context.Context, page, pageSize int) ([]Fee
 		out = append(out, f)
 	}
 	return out, nil
+}
+
+// --- Plugin management functions ---
+
+// ListFeePlugins returns all registered fee plugins from the global registry
+func (s *PostgresStore) ListFeePlugins(ctx context.Context) ([]string, error) {
+	return FeePlugins.List(), nil
+}
+
+// GetFeePlugin returns a specific fee plugin by name from the global registry
+func (s *PostgresStore) GetFeePlugin(ctx context.Context, pluginName string) (FeePlugin, error) {
+	if pluginName == "" {
+		return nil, fmt.Errorf("plugin name is required")
+	}
+
+	plugin, exists := FeePlugins.Lookup(pluginName)
+	if !exists {
+		return nil, fmt.Errorf("fee plugin '%s' not found", pluginName)
+	}
+
+	return plugin, nil
+}
+
+// RegisterFeePlugin registers a plugin with specified configuration
+func (s *PostgresStore) RegisterFeePlugin(ctx context.Context, pluginName string, config map[string]interface{}) error {
+	if pluginName == "" {
+		return fmt.Errorf("plugin name is required")
+	}
+
+	plugin, exists := FeePlugins.Lookup(pluginName)
+	if !exists {
+		return fmt.Errorf("fee plugin '%s' not found", pluginName)
+	}
+
+	// Initialize the plugin with configuration
+	if err := plugin.Initialize(config); err != nil {
+		return fmt.Errorf("failed to initialize plugin: %v", err)
+	}
+
+	return nil
+}
+
+// UnregisterFeePlugin removes a plugin from the registry
+func (s *PostgresStore) UnregisterFeePlugin(ctx context.Context, pluginName string) error {
+	if pluginName == "" {
+		return fmt.Errorf("plugin name is required")
+	}
+
+	_, exists := FeePlugins.Lookup(pluginName)
+	if !exists {
+		return fmt.Errorf("fee plugin '%s' not found", pluginName)
+	}
+
+	FeePlugins.Unregister(pluginName)
+	return nil
 }

@@ -17,6 +17,16 @@ type DiscountService interface {
 	GetDiscountByCode(code string) (Discount, error)
 	// ListDiscounts returns a paginated list of discounts. If activeOnly, only active discounts are returned.
 	ListDiscounts(activeOnly bool, page, pageSize int) ([]Discount, error)
+
+	// Plugin-related methods
+	// ListDiscountPlugins returns a list of available discount plugin names
+	ListDiscountPlugins() ([]string, error)
+	// GetDiscountPlugin retrieves a discount plugin by name
+	GetDiscountPlugin(pluginName string) (DiscountPlugin, error)
+	// ConfigureDiscountPlugin configures a plugin with the provided configuration
+	ConfigureDiscountPlugin(pluginName string, config map[string]interface{}) error
+	// DisableDiscountPlugin disables a plugin for a tenant
+	DisableDiscountPlugin(pluginName string) error
 }
 
 // CouponService defines all coupon CRUD, lookup, and redemption operations for SaaS billing.
