@@ -3,7 +3,6 @@ package billing_management
 import (
 	"github.com/gofiber/fiber/v2"
 
-
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
@@ -29,7 +28,6 @@ func RegisterRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret
 	)
 
 	// Register account routes
-
 
 	// Standard billing routes
 	route.Get("/accounts/invoice-preview", rbacmiddleware.RBACMiddleware("invoice", "read", nil), handler.GetInvoicePreview)
@@ -66,10 +64,23 @@ func RegisterRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret
 
 	route.Post("/webhook-subscriptions", rbacmiddleware.RBACMiddleware("webhook-subscription", "create", nil), handler.CreateWebhookSubscription)
 	route.Get("/webhook-subscriptions", rbacmiddleware.RBACMiddleware("webhook-subscription", "read", nil), handler.ListWebhookSubscriptions)
+	route.Get("/webhook-subscriptions/:id", rbacmiddleware.RBACMiddleware("webhook-subscription", "read", nil), handler.GetWebhookSubscription)
+	route.Put("/webhook-subscriptions/:id", rbacmiddleware.RBACMiddleware("webhook-subscription", "update", nil), handler.UpdateWebhookSubscription)
 	route.Delete("/webhook-subscriptions/:id", rbacmiddleware.RBACMiddleware("webhook-subscription", "delete", nil), handler.DeleteWebhookSubscription)
+	route.Post("/webhook-subscriptions/:id/test", rbacmiddleware.RBACMiddleware("webhook-subscription", "update", nil), handler.TestWebhookSubscription)
+	route.Get("/webhook-subscriptions/:id/logs", rbacmiddleware.RBACMiddleware("webhook-subscription", "read", nil), handler.GetWebhookDeliveryLogs)
+	route.Post("/webhook-deliveries/:id/retry", rbacmiddleware.RBACMiddleware("webhook-subscription", "update", nil), handler.RetryWebhookDelivery)
 
 	route.Post("/tenant-currency", rbacmiddleware.RBACMiddleware("tenant-currency", "update", nil), handler.SetTenantCurrency)
 	route.Get("/tenant-currency", rbacmiddleware.RBACMiddleware("tenant-currency", "read", nil), handler.GetTenantCurrency)
+
+	// Dunning management routes
+	dunningRoutes := route.Group("/dunning")
+	dunningRoutes.Get("/config", rbacmiddleware.RBACMiddleware("dunning", "read", nil), handler.GetDunningConfig)
+	dunningRoutes.Post("/config", rbacmiddleware.RBACMiddleware("dunning", "update", nil), handler.UpdateDunningConfig)
+	dunningRoutes.Post("/invoices/:id/retry", rbacmiddleware.RBACMiddleware("dunning", "update", nil), handler.ManualRetryDunning)
+	dunningRoutes.Get("/invoices/:id/events", rbacmiddleware.RBACMiddleware("dunning", "read", nil), handler.GetDunningEvents)
+	dunningRoutes.Get("/dashboard", rbacmiddleware.RBACMiddleware("dunning", "read", nil), handler.GetDunningDashboard)
 
 	// Unified plugin management endpoints
 	pluginRoutes := route.Group("/plugins")

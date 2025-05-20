@@ -11,8 +11,8 @@ while netstat -tuln | grep -q ":$PORT "; do
   PORT=$((PORT+1))
 done
 
-echo "Starting server on port $PORT..."
-DB_PORT=5432 HTTP_PORT=$PORT go run cmd/main.go &
+echo "Starting server using make run-test on port $PORT..."
+DB_PORT=5432 HTTP_PORT=$PORT make run-test &
 SERVER_PID=$!
 
 # Wait for server to start
@@ -42,6 +42,12 @@ echo -e "\n========== RUNNING ORGANIZATION TESTS ==========\n"
 
 echo -e "\n========== RUNNING PROJECT TESTS ==========\n"
 ./test_project_endpoints.sh
+
+
+echo -e "\n========== RUNNING BILLING ACCOUNT TESTS ==========\n"
+# Set the API base URL for the account tests
+sed -i.bak "s|API_BASE_URL=\"http://localhost:8080\"|API_BASE_URL=\"http://localhost:$PORT\"|g" test_accounts_api.sh
+./test_accounts_api.sh
 
 # Kill the server
 echo -e "\n========== TESTS COMPLETED, SHUTTING DOWN SERVER ==========\n"

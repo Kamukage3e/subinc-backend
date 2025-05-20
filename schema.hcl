@@ -2,7 +2,7 @@ schema "public" {
   comment = "All billing management tables are multi-tenant, type-safe, and production-grade. No placeholders, no bloat, no non-prod content."
 }
 
-table "org_billing_accounts" {
+table "organization_billing_accounts" {
   schema = schema.public
   column "id" {
     type = uuid
@@ -45,15 +45,15 @@ table "org_billing_accounts" {
   primary_key {
     columns = [column.id]
   }
-  unique "uq_org_billing_accounts_id" {
+  unique "uq_organization_billing_accounts_id" {
     columns = [column.id]
   }
-  foreign_key "fk_org_billing_accounts_org_id" {
+  foreign_key "fk_organization_billing_accounts_org_id" {
     columns     = [column.org_id]
     ref_columns = [table.organizations.column.id]
     on_delete   = CASCADE
   }
-  index "idx_org_billing_accounts_org_id" {
+  index "idx_organization_billing_accounts_org_id" {
     columns = [column.org_id]
   }
 }
@@ -212,7 +212,7 @@ table "billing_methods" {
   }
   foreign_key "fk_billing_methods_account_id" {
     columns     = [column.account_id]
-    ref_columns = [table.org_billing_accounts.column.id]
+    ref_columns = [table.organization_billing_accounts.column.id]
     on_delete   = CASCADE
   }
   index "idx_billing_methods_account_id" {
@@ -275,7 +275,7 @@ table "invoices" {
   }
   foreign_key "fk_invoices_account_id" {
     columns     = [column.account_id]
-    ref_columns = [table.org_billing_accounts.column.id]
+    ref_columns = [table.organization_billing_accounts.column.id]
     on_delete   = CASCADE
   }
   foreign_key "fk_invoices_org_id" {
@@ -584,7 +584,7 @@ table "payment_transactions" {
   }
   foreign_key "fk_payment_transactions_account_id" {
     columns     = [column.account_id]
-    ref_columns = [table.org_billing_accounts.column.id]
+    ref_columns = [table.organization_billing_accounts.column.id]
     on_delete   = CASCADE
   }
   foreign_key "fk_payment_transactions_invoice_id" {
@@ -951,6 +951,28 @@ table "discounts" {
     null    = false
     default = true
   }
+  column "value" {
+    type = numeric(18, 2)
+    null = true
+  }
+  column "redeemed" {
+    type = int
+    null = false
+    default = 0
+  }
+  column "start_at" {
+    type = timestamptz
+    null = true
+  }
+  column "end_at" {
+    type = timestamptz
+    null = true
+  }
+  column "is_active" {
+    type    = boolean
+    null    = false
+    default = true
+  }
   column "created_at" {
     type    = timestamptz
     null    = false
@@ -975,7 +997,7 @@ table "discounts" {
   }
 }
 
-table "coupon_redemptions" {
+table "coupons" {
   schema = schema.public
   column "id" {
     type = uuid
@@ -989,8 +1011,48 @@ table "coupon_redemptions" {
     type = uuid
     null = false
   }
+  column "code" {
+    type = varchar(64)
+    null = false
+  }
+  column "max_redemptions" {
+    type = int
+    null = true
+  }
+  column "redeemed" {
+    type = int
+    null = false
+    default = 0
+  }
+  column "start_at" {
+    type = timestamptz
+    null = true
+  }
+  column "end_at" {
+    type = timestamptz
+    null = true
+  }
   column "user_id" {
     type = uuid
+    null = true
+  }
+  column "is_active" {
+    type    = boolean
+    null    = false
+    default = true
+  }
+  column "created_at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+  column "updated_at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+  column "metadata" {
+    type = jsonb
     null = true
   }
   column "invoice_id" {
@@ -1005,31 +1067,31 @@ table "coupon_redemptions" {
   primary_key {
     columns = [column.id]
   }
-  foreign_key "fk_coupon_redemptions_discount_id" {
+  foreign_key "fk_coupons_discount_id" {
     columns     = [column.discount_id]
     ref_columns = [table.discounts.column.id]
     on_delete   = CASCADE
   }
-  foreign_key "fk_coupon_redemptions_org_id" {
+  foreign_key "fk_coupons_org_id" {
     columns     = [column.org_id]
     ref_columns = [table.organizations.column.id]
     on_delete   = CASCADE
   }
-  foreign_key "fk_coupon_redemptions_invoice_id" {
+  foreign_key "fk_coupons_invoice_id" {
     columns     = [column.invoice_id]
     ref_columns = [table.invoices.column.id]
     on_delete   = CASCADE
   }
-  index "idx_coupon_redemptions_discount_id" {
+  index "idx_coupons_discount_id" {
     columns = [column.discount_id]
   }
-  index "idx_coupon_redemptions_id" {
+  index "idx_coupons_id" {
     columns = [column.id]
   }
-  index "idx_coupon_redemptions_user_id" {
+  index "idx_coupons_user_id" {
     columns = [column.user_id]
   }
-  index "idx_coupon_redemptions_invoice_id" {
+  index "idx_coupons_invoice_id" {
     columns = [column.invoice_id]
   }
 }
@@ -1076,7 +1138,7 @@ table "dunning_events" {
   }
   foreign_key "fk_dunning_events_account_id" {
     columns     = [column.account_id]
-    ref_columns = [table.org_billing_accounts.column.id]
+    ref_columns = [table.organization_billing_accounts.column.id]
     on_delete   = CASCADE
   }
   foreign_key "fk_dunning_events_invoice_id" {

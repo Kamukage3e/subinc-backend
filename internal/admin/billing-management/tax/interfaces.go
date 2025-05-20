@@ -10,6 +10,7 @@ type TaxInfoService interface {
 	ListTaxPlugins(ctx context.Context) ([]string, error)
 	SetTaxPluginConfig(ctx context.Context, config TaxPluginConfig) (TaxPluginConfig, error)
 	GetTaxPluginConfig(ctx context.Context, tenantID string) (TaxPluginConfig, error)
+	RemoveTaxPluginConfig(ctx context.Context, tenantID, pluginName string) error
 }
 
 // TaxPlugin defines a hot-pluggable interface for tax calculation and compliance
@@ -26,6 +27,17 @@ type TaxPlugin interface {
 	// Plugin lifecycle
 	Initialize(config map[string]interface{}) error // Initialize with configuration parameters
 	Capabilities() []string                         // Return supported jurisdictions, reporting features
+}
+
+// DisableableTaxPlugin extends TaxPlugin to support runtime disabling
+type DisableableTaxPlugin interface {
+	TaxPlugin
+
+	// Disable stops the plugin and releases resources
+	Disable() error
+
+	// IsEnabled returns whether the plugin is currently enabled
+	IsEnabled() bool
 }
 
 // TaxPluginRegistry manages a collection of tax plugins

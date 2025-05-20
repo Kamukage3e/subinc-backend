@@ -83,6 +83,11 @@ type WebhookSubscriptionService interface {
 	CreateWebhookSubscription(url, secret, description string, events []string) error
 	DeleteWebhookSubscription(id string) error
 	ListWebhookSubscriptions(tenantID string, page, pageSize int) ([]WebhookSubscription, error)
+	TestWebhookSubscription(id string, eventType string, payload map[string]interface{}) error
+	GetWebhookSubscription(id string) (WebhookSubscription, error)
+	UpdateWebhookSubscription(id string, url, secret string, events []string, status string) error
+	GetWebhookDeliveryLogs(subscriptionID string, page, pageSize int) ([]WebhookDeliveryLog, error)
+	RetryWebhookDelivery(deliveryID string) error
 }
 
 type TenantCurrencyService interface {

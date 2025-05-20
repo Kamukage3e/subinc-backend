@@ -68,6 +68,29 @@ type Invoice struct {
 	DunningStatus        string    `json:"dunning_status"`
 }
 
+// DunningEvent represents a single event in the dunning process
+type DunningEvent struct {
+	ID        string                 `json:"id"`
+	AccountID string                 `json:"account_id"`
+	InvoiceID string                 `json:"invoice_id"`
+	EventType string                 `json:"event_type"` // payment_failed, retry, success, canceled, etc.
+	Details   map[string]interface{} `json:"details"`    // Additional context specific to the event
+	CreatedAt time.Time              `json:"created_at"`
+}
+
+// DunningDashboard represents an overview of dunning statistics
+type DunningDashboard struct {
+	TenantID                string    `json:"tenant_id"`
+	ActiveDunningCount      int       `json:"active_dunning_count"`      // Invoices in active dunning
+	PendingDunningCount     int       `json:"pending_dunning_count"`     // Invoices marked for dunning but not yet active
+	ResolvedDunningCount    int       `json:"resolved_dunning_count"`    // Invoices that were resolved through dunning
+	FailedDunningCount      int       `json:"failed_dunning_count"`      // Invoices that failed all dunning attempts
+	TotalDunningAmount      float64   `json:"total_dunning_amount"`      // Total amount in active dunning
+	SuccessfulRecoveryRate  float64   `json:"successful_recovery_rate"`  // Percentage of successful dunning recoveries
+	AverageRecoveryAttempts float64   `json:"average_recovery_attempts"` // Average attempts for successful recovery
+	LastUpdated             time.Time `json:"last_updated"`
+}
+
 func (i *Invoice) Validate() *Error {
 	if i.AccountID == "" {
 		return NewValidationError("account_id", "must not be empty")
@@ -265,6 +288,26 @@ type WebhookSubscription struct {
 	Status     string    `json:"status"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// WebhookDeliveryLog tracks webhook delivery attempts and responses
+type WebhookDeliveryLog struct {
+	ID                string     `json:"id"`
+	WebhookID         string     `json:"webhook_id"`
+	EventType         string     `json:"event_type"`
+	URL               string     `json:"url"`
+	RequestHeaders    string     `json:"request_headers"`
+	RequestBody       string     `json:"request_body"`
+	ResponseStatus    int        `json:"response_status"`
+	ResponseHeaders   string     `json:"response_headers"`
+	ResponseBody      string     `json:"response_body"`
+	DeliveryAttempts  int        `json:"delivery_attempts"`
+	Success           bool       `json:"success"`
+	ErrorMessage      string     `json:"error_message,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
+	DeliveredAt       *time.Time `json:"delivered_at,omitempty"`
+	NextRetryAt       *time.Time `json:"next_retry_at,omitempty"`
+	LastRetryFailedAt *time.Time `json:"last_retry_failed_at,omitempty"`
 }
 
 // ExchangeRate represents a currency conversion rate (e.g. USD->EUR)

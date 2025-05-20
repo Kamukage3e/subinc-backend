@@ -2,8 +2,6 @@ package subscription
 
 import "context"
 
-
-
 type PlanService interface {
 	CreatePlan(input Plan) (Plan, error)
 	UpdatePlan(input Plan) (Plan, error)
@@ -17,7 +15,6 @@ type UsageService interface {
 	ListUsage(accountID, metric, period string, page, pageSize int) ([]Usage, error)
 }
 
-
 type SubscriptionService interface {
 	CreateSubscription(input Subscription) (Subscription, error)
 	UpdateSubscription(input Subscription) (Subscription, error)
@@ -29,6 +26,7 @@ type SubscriptionService interface {
 	CancelSubscriptionNow(id string) error
 	ResumeSubscription(id string) error
 	UpgradeNowSubscription(id string) error
+	ProcessAutoRenewals() error
 }
 
 // SubscriptionPlugin defines a hot-pluggable interface for subscription logic.

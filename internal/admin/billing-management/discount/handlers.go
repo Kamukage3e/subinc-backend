@@ -3,8 +3,10 @@ package discount
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	account "github.com/subinc/subinc-backend/internal/admin/billing-management/account"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
@@ -78,6 +80,12 @@ func (h *DiscountHandler) CreateDiscount(c *fiber.Ctx) error {
 		logger.LogError("CreateDiscount: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
+	if input.ID == "" {
+		input.ID = uuid.NewString()
+	}
+	if input.Metadata == "" {
+		input.Metadata = "{}"
+	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreateDiscount: validation failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
@@ -109,6 +117,13 @@ func (h *DiscountHandler) UpdateDiscount(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
 	input.ID = id
+	if input.Code == "" {
+		// Defensive: require code for update
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "code required for update", "code": "VALIDATION_ERROR", "field": "code"})
+	}
+	if input.Metadata == "" {
+		input.Metadata = "{}"
+	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("UpdateDiscount: validation failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
@@ -151,6 +166,18 @@ func (h *DiscountHandler) CreateCoupon(c *fiber.Ctx) error {
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateCoupon: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.ID == "" {
+		input.ID = uuid.NewString()
+	}
+	if input.Metadata == "" {
+		input.Metadata = "{}"
+	}
+	if input.CreatedAt.IsZero() {
+		input.CreatedAt = time.Now().UTC()
+	}
+	if input.UpdatedAt.IsZero() {
+		input.UpdatedAt = input.CreatedAt
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreateCoupon: validation failed", logger.ErrorField(err))
@@ -278,6 +305,18 @@ func (h *DiscountHandler) CreateCredit(c *fiber.Ctx) error {
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateCredit: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+	if input.ID == "" {
+		input.ID = uuid.NewString()
+	}
+	if input.Metadata == "" {
+		input.Metadata = "{}"
+	}
+	if input.CreatedAt.IsZero() {
+		input.CreatedAt = time.Now().UTC()
+	}
+	if input.UpdatedAt.IsZero() {
+		input.UpdatedAt = input.CreatedAt
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreateCredit: validation failed", logger.ErrorField(err))

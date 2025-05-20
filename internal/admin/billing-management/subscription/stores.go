@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -337,12 +338,104 @@ func (s *PostgresStore) ListSubscriptions(ctx context.Context, accountID, status
 }
 
 func (s *PostgresStore) ChangePlanSubscription(ctx context.Context, id, planID string) error {
-	const q = `UPDATE subscriptions SET plan_id = $2, updated_at = $3 WHERE id = $1`
-	_, err := s.DB.Exec(ctx, q, id, planID, time.Now().UTC())
+	// Start a transaction to handle the plan change atomically
+	tx, err := s.DB.Begin(ctx)
 	if err != nil {
-		logger.LogError("ChangePlanSubscription failed", logger.ErrorField(err), logger.String("id", id), logger.String("planID", planID))
+		logger.LogError("ChangePlanSubscription begin transaction failed", logger.ErrorField(err))
 		return err
 	}
+	defer tx.Rollback(ctx)
+
+	// First, get the current subscription details
+	var subscription Subscription
+	const getQ = `SELECT id, account_id, plan_id, status, currency, current_period_start, current_period_end, created_at 
+		FROM subscriptions WHERE id = $1 FOR UPDATE`
+
+	err = tx.QueryRow(ctx, getQ, id).Scan(
+		&subscription.ID, &subscription.AccountID, &subscription.PlanID,
+		&subscription.Status, &subscription.Currency,
+		&subscription.CurrentPeriodStart, &subscription.CurrentPeriodEnd,
+		&subscription.CreatedAt,
+	)
+	if err != nil {
+		logger.LogError("ChangePlanSubscription get subscription failed", logger.ErrorField(err), logger.String("id", id))
+		return err
+	}
+
+	// Get the old plan to calculate proration
+	var oldPlanPrice float64
+	const oldPlanQ = `SELECT price FROM plans WHERE id = $1`
+	err = tx.QueryRow(ctx, oldPlanQ, subscription.PlanID).Scan(&oldPlanPrice)
+	if err != nil {
+		logger.LogError("ChangePlanSubscription get old plan failed", logger.ErrorField(err), logger.String("planID", subscription.PlanID))
+		return err
+	}
+
+	// Get the new plan details
+	var newPlanPrice float64
+	const newPlanQ = `SELECT price FROM plans WHERE id = $1`
+	err = tx.QueryRow(ctx, newPlanQ, planID).Scan(&newPlanPrice)
+	if err != nil {
+		logger.LogError("ChangePlanSubscription get new plan failed", logger.ErrorField(err), logger.String("planID", planID))
+		return err
+	}
+
+	// Calculate proration
+	now := time.Now().UTC()
+	totalPeriodDuration := subscription.CurrentPeriodEnd.Sub(subscription.CurrentPeriodStart)
+	remainingDuration := subscription.CurrentPeriodEnd.Sub(now)
+	remainingRatio := float64(remainingDuration) / float64(totalPeriodDuration)
+
+	// Credit for unused portion of old plan
+	unusedAmount := oldPlanPrice * remainingRatio
+
+	// Charge for remaining time on new plan
+	newChargeAmount := newPlanPrice * remainingRatio
+
+	// Calculate net adjustment (positive means charge more, negative means refund)
+	proratedAdjustment := newChargeAmount - unusedAmount
+
+	// Update the subscription with the new plan
+	const updateQ = `UPDATE subscriptions 
+		SET plan_id = $2, 
+			updated_at = $3
+		WHERE id = $1`
+
+	_, err = tx.Exec(ctx, updateQ, id, planID, now)
+	if err != nil {
+		logger.LogError("ChangePlanSubscription update failed", logger.ErrorField(err), logger.String("id", id), logger.String("planID", planID))
+		return err
+	}
+
+	// Record the proration adjustment as a transaction
+	if proratedAdjustment != 0 {
+		const prorateQ = `INSERT INTO subscription_adjustments (
+			id, subscription_id, account_id, amount, currency, reason, created_at
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7
+		)`
+
+		adjustmentID := uuid.New().String()
+		reason := fmt.Sprintf("Plan change proration: %s to %s", subscription.PlanID, planID)
+
+		_, err = tx.Exec(ctx, prorateQ, adjustmentID, id, subscription.AccountID,
+			proratedAdjustment, subscription.Currency, reason, now)
+
+		if err != nil {
+			logger.LogError("ChangePlanSubscription record proration failed",
+				logger.ErrorField(err),
+				logger.String("id", id),
+				logger.Float64("adjustment", proratedAdjustment))
+			return err
+		}
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(ctx); err != nil {
+		logger.LogError("ChangePlanSubscription commit failed", logger.ErrorField(err))
+		return err
+	}
+
 	return nil
 }
 
@@ -373,6 +466,169 @@ func (s *PostgresStore) UpgradeNowSubscription(ctx context.Context, id, planID s
 		logger.LogError("UpgradeNowSubscription failed", logger.ErrorField(err), logger.String("id", id), logger.String("planID", planID))
 		return err
 	}
+	return nil
+}
+
+// ProcessAutoRenewals handles automatic renewal of active subscriptions that are due
+func (s *PostgresStore) ProcessAutoRenewals(ctx context.Context) error {
+	// Find subscriptions that are about to expire (within the next 24 hours)
+	now := time.Now().UTC()
+	renewalCutoff := now.Add(24 * time.Hour)
+
+	// Query for subscriptions that need renewal
+	const q = `
+		SELECT id, account_id, plan_id, currency, current_period_start, current_period_end 
+		FROM subscriptions 
+		WHERE status = 'active' 
+		AND current_period_end <= $1
+		AND (canceled_at IS NULL OR canceled_at > current_period_end)
+		AND (NOT EXISTS (
+			SELECT 1 FROM subscription_renewals 
+			WHERE subscription_id = subscriptions.id 
+			AND renewal_period_end = subscriptions.current_period_end
+		))
+	`
+
+	rows, err := s.DB.Query(ctx, q, renewalCutoff)
+	if err != nil {
+		logger.LogError("ProcessAutoRenewals query failed", logger.ErrorField(err))
+		return err
+	}
+	defer rows.Close()
+
+	// Process each subscription that needs renewal
+	for rows.Next() {
+		var sub Subscription
+		if err := rows.Scan(
+			&sub.ID, &sub.AccountID, &sub.PlanID, &sub.Currency,
+			&sub.CurrentPeriodStart, &sub.CurrentPeriodEnd,
+		); err != nil {
+			logger.LogError("ProcessAutoRenewals scan failed", logger.ErrorField(err))
+			continue
+		}
+
+		// Process this subscription renewal in a separate transaction
+		if err := s.renewSubscription(ctx, sub); err != nil {
+			logger.LogError("ProcessAutoRenewals failed for subscription",
+				logger.ErrorField(err),
+				logger.String("subscription_id", sub.ID),
+				logger.String("account_id", sub.AccountID))
+			// Continue with other subscriptions even if this one fails
+			continue
+		}
+
+		logger.LogInfo("Subscription successfully renewed",
+			logger.String("subscription_id", sub.ID),
+			logger.String("account_id", sub.AccountID))
+	}
+
+	return nil
+}
+
+// renewSubscription handles the renewal of a single subscription
+func (s *PostgresStore) renewSubscription(ctx context.Context, sub Subscription) error {
+	// Start a transaction for this renewal process
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		logger.LogError("renewSubscription begin transaction failed", logger.ErrorField(err))
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// 1. Get the current plan details
+	var plan Plan
+	const planQuery = `SELECT id, name, price, currency FROM plans WHERE id = $1`
+
+	err = tx.QueryRow(ctx, planQuery, sub.PlanID).Scan(
+		&plan.ID, &plan.Name, &plan.Price, &plan.Currency,
+	)
+	if err != nil {
+		logger.LogError("renewSubscription get plan failed",
+			logger.ErrorField(err),
+			logger.String("plan_id", sub.PlanID))
+		return err
+	}
+
+	// 2. Calculate the next billing period
+	periodDuration := sub.CurrentPeriodEnd.Sub(sub.CurrentPeriodStart)
+	newPeriodStart := sub.CurrentPeriodEnd
+	newPeriodEnd := newPeriodStart.Add(periodDuration)
+
+	// 3. Create an invoice for the renewal
+	invoiceID := uuid.New().String()
+	now := time.Now().UTC()
+
+	const createInvoiceQuery = `
+		INSERT INTO invoices (
+			id, account_id, subscription_id, amount, currency, status, 
+			due_date, created_at, updated_at, description
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+		)
+	`
+
+	description := fmt.Sprintf("Subscription renewal for plan: %s", plan.Name)
+
+	_, err = tx.Exec(ctx, createInvoiceQuery,
+		invoiceID, sub.AccountID, sub.ID, plan.Price, plan.Currency,
+		"pending", newPeriodStart, now, now, description,
+	)
+
+	if err != nil {
+		logger.LogError("renewSubscription create invoice failed",
+			logger.ErrorField(err),
+			logger.String("subscription_id", sub.ID))
+		return err
+	}
+
+	// 4. Update the subscription with the new billing period
+	const updateSubQuery = `
+		UPDATE subscriptions 
+		SET current_period_start = $1, 
+			current_period_end = $2, 
+			updated_at = $3
+		WHERE id = $4
+	`
+
+	_, err = tx.Exec(ctx, updateSubQuery,
+		newPeriodStart, newPeriodEnd, now, sub.ID)
+
+	if err != nil {
+		logger.LogError("renewSubscription update subscription failed",
+			logger.ErrorField(err),
+			logger.String("subscription_id", sub.ID))
+		return err
+	}
+
+	// 5. Record the renewal attempt
+	const recordRenewalQuery = `
+		INSERT INTO subscription_renewals (
+			id, subscription_id, account_id, invoice_id,
+			renewal_period_start, renewal_period_end, created_at
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7
+		)
+	`
+
+	renewalID := uuid.New().String()
+
+	_, err = tx.Exec(ctx, recordRenewalQuery,
+		renewalID, sub.ID, sub.AccountID, invoiceID,
+		newPeriodStart, newPeriodEnd, now)
+
+	if err != nil {
+		logger.LogError("renewSubscription record renewal failed",
+			logger.ErrorField(err),
+			logger.String("subscription_id", sub.ID))
+		return err
+	}
+
+	// 6. Commit the transaction
+	if err = tx.Commit(ctx); err != nil {
+		logger.LogError("renewSubscription commit failed", logger.ErrorField(err))
+		return err
+	}
+
 	return nil
 }
 

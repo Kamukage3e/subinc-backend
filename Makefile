@@ -60,7 +60,7 @@ db-reset:
 # Run migrations
 db-migrate:
 	@echo "Running migrations..."
-	@go run cmd/admin-tools/db-migrate.go
+	@atlas schema apply --env local
 
 # Run the automated test script
 run-test:
@@ -74,3 +74,5 @@ test-setup:
 	@chmod +x test_org_endpoints.sh
 	@chmod +x test_project_endpoints.sh
 	@chmod +x run_and_test.sh 
+
+	

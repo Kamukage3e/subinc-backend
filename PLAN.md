@@ -1,104 +1,274 @@
-# SaaS MVP Launch Roadmap (Usage-Based Billing)
+# SubInc Backend Release Plan
 
-## Goal
-Launch a multi-tenant, usage-based billing/subscription SaaS MVP using the existing backend, with Stripe as the primary payment provider. Focus on speed to market and real customer validation.
+## Critical Fixes (Week 1)
 
----
+- [ ] **Security Issues**
+  - [ ] Remove hardcoded password in main.go (`ownerPassword := "falc0nreaper!"`) //lets skip this for now
+  - [x] Implement environment variable loading for all secrets
+      - Created comprehensive config package with typed configuration
+      - Added support for all service configs (DB, Redis, payment providers)
+  - [ ] Add proper secret rotation capabilities
+  - [ ] Audit and fix all panic() calls in production code
 
-## 1. Backend (Core)
-- [x] Multi-tenant architecture (orgs, users, RBAC)
-- [x] Payment provider abstraction (Stripe, PayPal, Braintree)
-- [x] Billing logic, dunning, disputes, refunds
-- [x] Audit logging, notification hooks
-- [x] **Usage metering API** (REST endpoint for usage events, aggregation logic)
-- [x] **Dunning scheduler/worker** (background job for retries)
-- [x] **Stripe webhook handler** (Fiber route, signature validation, event processing: invoice.paid, payment_intent.succeeded, etc.)
-- [x] **Automated dunning** (trigger retries, notify users on failed payments)
-- [x] **Email notifications** (invoices, failed payments, dunning, onboarding, password reset)
+- [x] **Database Migration**
+  - [x] Create migration scripts from schema.hcl
+      - Implemented Atlas-based migration system
+  - [x] Implement versioning for database schema
+  - [x] Add rollback capability for failed migrations
+      - Added rollback functionality to migration manager
+  - [x] Document migration process for deployment
+      - Added documentation in README.md
 
----
+- [x] **Error Handling**
+  - [x] Replace "not implemented" responses with proper error handling
+      - Created standardized APIError struct with consistent formats
+      - Implemented proper error handlers for common error types
+      - Added context-aware error handling with trace IDs
+  - [x] Add consistent error formats across all API endpoints
+      - Added error middleware to ensure consistent JSON responses
+      - Created helper functions for common error patterns (not found, validation, etc.)
+  - [x] Ensure all errors are properly logged with context
+      - Implemented comprehensive logging with appropriate log levels
+      - Added trace ID support for error tracking across microservices
 
-## 2. Usage-to-Invoice Automation
-- [x] Scheduled job or API endpoint to aggregate usage for each account/plan/period
-- [x] Logic to calculate charges using plan/overage pricing
-- [x] Create invoice items for each usage metric
-- [x] Issue invoices automatically (set status, due date, etc.)
-- [x] Trigger payment collection after invoice creation (optional for MVP)
+## Core Features (day 1-2)
 
-> **Note:** Usage-to-invoice automation is fully implemented, production-grade, and SaaS-ready. The job system is robust, type-safe, and ready for scale.
+- [x] **Payment Processing**
+  - [x] Complete Stripe integration with all webhook handlers
+      - Added comprehensive webhook handling for invoices, payments, subscriptions
+      - Implemented proper idempotency and validation
+  - [x] Fix error handling in payment processing flow
+      - Enhanced error handling with proper logging and context
+  - [x] Add idempotency for all payment operations
+      - Implemented idempotency keys for payments and refunds
+      - Added duplicate detection for webhook events
+  - [x] Add transaction reporting endpoints
+      - Implemented comprehensive transaction reports with volume, payment methods, and success/failure metrics
+      - Added daily transaction totals for time series analysis
+      - Created proper filtering by date ranges with validation
+  - [ ] *Frontend Integration:* Payment method management UI, payment history display
 
----
+- [x] **Subscription Management**
+  - [x] Complete subscription creation, modification, and cancellation flows
+      - Implemented complete CRUD operations
+      - Added ability to pause, resume, and cancel subscriptions
+      - Built in subscription status tracking
+  - [x] Add proration handling for subscription changes
+      - Implemented calculation of proration adjustments for plan changes
+      - Created proper transaction handling for adjustments
+  - [x] Implement automatic renewal process
+      - Added renewal logic with period extension and invoice generation
+      - Implemented idempotent renewal processing to prevent duplicates
+      - Created admin endpoint for triggering renewals
+  - [ ] *Frontend Integration:* Subscription management dashboard, plan selection UI
 
-## 3. Stripe Integration
-- [x] PaymentIntent, refund, and status flows
-- [x] **Stripe webhook handler** (Fiber route, signature validation, event processing: invoice.paid, payment_intent.succeeded, etc.)
-- [x] Automated dunning (trigger retries, notify users on failed payments)
+- [x] **Invoicing**
+  - [x] Complete invoice generation with proper tax handling
+      - Implemented tax calculation with pluggable tax providers
+      - Added support for multiple tax types and rates
+      - Created proper fee handling with fixed and percentage fees
+  - [x] Add PDF export functionality for invoices
+      - Implemented professional PDF invoice generation
+      - Added support for line items, fees, and taxes
+      - Included multi-currency support in PDFs
+  - [x] Implement invoice status tracking
+      - Added comprehensive status tracking (draft, open, paid, overdue)
+      - Implemented proper invoice state transitions
+  - [ ] *Frontend Integration:* Invoice viewing and downloading UI
 
----
+- [x] **Multi-Currency**
+  - [x] Complete currency conversion functionality
+  - [x] Add exchange rate updating mechanism
+  - [x] Support for displaying amounts in multiple currencies
+  - [ ] *Frontend Integration:* Currency selection in user settings
 
-## 4. Usage Metering
-- [x] **REST API for usage events** (API key per tenant)
-- [x] **Usage aggregation** (per plan, per customer, per period)
-- [x] **Tie usage to invoice generation**
-- [ ] Docs and code samples for integration
+## Differentiation Features (day 2-3)
 
----
+- [ ] **Plugin System**
+  - [ ] Document plugin API for third-party developers
+  - [ ] Create example custom payment plugin
+  - [ ] Add plugin management endpoints
+  - [ ] *Frontend Integration:* Plugin configuration UI (admin only)
 
-## 5. Self-Serve Onboarding & Admin UI
-- [ ] **Signup/login UI** (Next.js, Shadcn, Tailwind)
-- [x] **Onboarding wizard** (welcome email, account creation notification)
-- [ ] **Admin dashboard** (manage customers, plans, usage, invoices)
-- [ ] **Usage analytics** (charts for usage, MRR, churn, etc.)
-- [ ] **Plan management UI** (create/edit subscription and usage-based plans)
+- [ ] **Multi-Tenant Architecture**
+  - [ ] Verify complete isolation between tenants
+  - [ ] Add tenant provisioning API
+  - [ ] Create tenant migration tools
+  - [ ] *No Frontend Integration Required*
 
----
+- [x] **RBAC System**
+  - [ ] Test and verify all RBAC functionality
+  - [ ] Create predefined role templates
+  - [ ] Add role management API
+  - [ ] *Frontend Integration:* User role management UI
 
-## 6. Notifications
-- [x] Email logic in backend
-- [x] **Trigger email notifications** (invoices, failed payments, dunning, onboarding, password reset)
-- [ ] (Optional) In-app notifications in UI
+## Deployment & Packaging (day 3)
 
----
+- [x] **Containerization**
+  - [x] Create Docker image for backend service
+      - Multi-stage build for smaller, more secure images
+      - Proper health checks and service dependencies
+      - Added non-root user for security
+      - Implemented proper entrypoint script for waiting for dependencies
+  - [x] Develop docker-compose setup with PostgreSQL and Redis
+      - Added full development environment with PostgreSQL, Redis, and PgAdmin
+      - Configured proper networking and volumes
+      - Added health checks for services
+  - [ ] Test scaling with multiple service instances
+  - [ ] *No Frontend Integration Required*
 
-## 7. Docs & Demo
-- [ ] **Quickstart guide** (setup, API, Stripe integration)
-- [ ] **API docs** (usage metering, payment flows)
-- [ ] **Live demo or video walkthrough**
-- [ ] **API docs/quickstart** (OpenAPI spec, Swagger UI route)
+- [ ] **CI/CD Pipeline**
+  - [ ] Set up automated testing
+  - [ ] Create deployment workflows
+  - [ ] Add version tagging for releases
+  - [ ] *No Frontend Integration Required*
 
----
+- [ ] **Monitoring & Alerting**
+  - [ ] Configure Prometheus metrics collection
+  - [ ] Create basic alerting rules
+  - [ ] Set up log aggregation
+  - [ ] *Frontend Integration:* Admin monitoring dashboard (optional)
 
-## 8. Landing Page & Pricing
-- [ ] **Landing page** (clear value prop, pricing, signup)
-- [ ] **Product Hunt/Indie Hackers launch checklist**
+## API Documentation (day 2-3)
 
----
+- [ ] **OpenAPI/Swagger**
+  - [ ] Fix and complete Swagger annotations
+  - [ ] Generate OpenAPI documentation
+  - [ ] Create interactive API explorer
+  - [ ] *Frontend Integration:* Link to documentation from admin panel
 
-## 9. Legal & Licensing
-- [ ] **Commercial license/EULA** (restrict redistribution, require payment)
-- [ ] **Terms of service & privacy policy**
+- [ ] **Integration Guides**
+  - [ ] Write Stripe integration guide
+  - [ ] Create webhooks configuration guide
+  - [ ] Document authentication flow
+  - [ ] *No Frontend Integration Required*
 
----
+## Frontend Integration Points (Priority Order)
 
-## 10. Launch & Feedback
-- [ ] Launch MVP (free trial, usage-based pricing)
-- [ ] Collect feedback from first users
-- [ ] Iterate and improve based on real pain
+### Must-Have
+1. **Authentication & Session Management**
+   - [ ] Implement login/logout flows
+   - [ ] Add session token handling
+   - [ ] Create password reset workflow
 
----
+2. **Account Management**
+   - [ ] User profile screens
+   - [ ] Organization management
+   - [ ] Billing account setup
 
-## **Priorities (Do These Next)**
-1. Docs, demo, and landing page
-2. Self-serve onboarding UI (finish admin dashboard, analytics, plan management UI)
-3. Legal/license
-4. Launch MVP and collect feedback
+3. **Payment Method Management**
+   - [ ] Add/edit/remove payment methods
+   - [ ] Set default payment method
+   - [ ] Display payment method status
 
----
+4. **Invoice Viewing**
+   - [ ] List invoices with status
+   - [ ] View invoice details
+   - [ ] Download invoice PDF
 
-## **Assignment/Progress Tracking**
-- Use this doc to check off completed items and assign tasks.
-- Keep all work focused on launch-critical features only.
+### Should-Have
+5. **Subscription Management**
+   - [ ] View current subscriptions
+   - [ ] Change subscription plans
+   - [ ] Cancel/pause subscriptions
 
----
+6. **Usage Reporting**
+   - [ ] Display usage metrics
+   - [ ] Show billing estimates
 
-**If you need code snippets, UI wireframes, or launch copy, ask for specifics.** 
+7. **Admin Interfaces**
+   - [ ] User management
+   - [ ] Tenant management
+   - [ ] System configuration
+
+### Nice-to-Have
+8. **Plugin Configuration**
+   - [ ] Enable/disable plugins
+   - [ ] Configure plugin settings
+
+9. **Analytics Dashboard**
+   - [ ] Revenue reporting
+   - [ ] Customer metrics
+   - [ ] Churn analysis
+
+## Product Packages & Pricing (day 3)
+
+- [ ] **Basic Tier**
+  - [ ] Define feature limitations
+  - [ ] Set pricing structure
+  - [ ] Create sales materials
+  - [ ] *Frontend Integration:* Pricing page, signup flow
+
+- [ ] **Professional Tier**
+  - [ ] Define additional features
+  - [ ] Set pricing structure
+  - [ ] Create sales materials
+  - [ ] *Frontend Integration:* Upgrade flow
+
+- [ ] **Enterprise Tier**
+  - [ ] Define customization options
+  - [ ] Create custom pricing model
+  - [ ] Develop enterprise sales materials
+  - [ ] *Frontend Integration:* Custom deployment options
+
+## Launch Preparation (day 3-4)
+
+- [ ] **Demo Environment**
+  - [ ] Create sandbox with sample data
+  - [ ] Develop guided demo workflow
+  - [ ] Set up demo reset functionality
+  - [ ] *Frontend Integration:* Demo signup page
+
+- [ ] **Customer Onboarding**
+  - [ ] Create onboarding documentation
+  - [ ] Develop setup wizards
+  - [ ] Add initial configuration templates
+  - [ ] *Frontend Integration:* Onboarding wizard UI
+
+- [ ] **Go-to-Market**
+  - [ ] Prepare technical comparison vs competitors
+  - [ ] Create security and compliance documentation
+  - [ ] Develop client isolation guarantees documentation
+  - [ ] *Frontend Integration:* Marketing website updates
+
+## Technical Debt to Address Post-Launch
+
+- [ ] Complete PayPal integration
+- [ ] Complete Braintree integration
+- [x] Enhance tax handling for international markets
+- [x] Improve dunning system
+- [ ] Enhance webhook subscription management
+- [ ] Add comprehensive test coverage
+
+## Progress Notes
+
+### Week 1 Progress (Completed)
+- Implemented environment variable configuration system
+  - Created comprehensive config package with typed configuration
+  - Added support for all service configs (DB, Redis, payment providers)
+- Created database migration tooling using Atlas
+  - Implemented migration system with init, apply, status, and rollback functionality
+  - Added support for versioning and rollback
+- Set up containerization with Docker and Docker Compose
+  - Created multi-stage build for smaller, more secure images
+  - Implemented proper health checks and service dependencies
+  - Added non-root user for security
+  - Created proper entrypoint script with dependency waiting
+- Added proper documentation in README.md
+- Implemented centralized error handling system
+  - Created consistent API error format with proper status codes
+  - Added middleware for error handling across all endpoints
+  - Integrated logging with trace IDs for error tracking
+
+### Week 2 Progress (Completed)
+- Implemented multi-currency support
+  - Created exchange rate management API
+  - Added automatic currency conversion for invoices
+  - Implemented exchange rate update worker for fetching latest rates
+  - Added support for tenant default currencies
+
+### Next Steps (In Progress)
+1. Complete plugin system
+2. ~~Enhance tax handling for international markets~~ (Completed)
+3. ~~Improve dunning system~~ (Completed)
+4. Enhance webhook subscription management

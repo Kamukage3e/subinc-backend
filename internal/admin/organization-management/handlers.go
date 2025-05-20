@@ -106,7 +106,6 @@ func (h *OrganizationHandler) GetOrganization(c *fiber.Ctx) error {
 }
 
 func (h *OrganizationHandler) ListOrganizations(c *fiber.Ctx) error {
-
 	ownerID := c.Query("owner_id")
 	page := c.QueryInt("page", 1)
 	pageSize := c.QueryInt("page_size", 100)
@@ -115,11 +114,13 @@ func (h *OrganizationHandler) ListOrganizations(c *fiber.Ctx) error {
 		logger.LogError("ListOrganizations: failed", logger.ErrorField(err), logger.String("owner_id", ownerID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
+	if orgs == nil {
+		orgs = make([]Organization, 0)
+	}
 	return c.JSON(fiber.Map{"organizations": orgs, "page": page, "page_size": pageSize})
 }
 
 func (h *OrganizationHandler) GetSettings(c *fiber.Ctx) error {
-
 	orgID := c.Params("id")
 	if orgID == "" {
 		logger.LogError("GetSettings: org_id required", logger.String("org_id", orgID))
@@ -130,11 +131,13 @@ func (h *OrganizationHandler) GetSettings(c *fiber.Ctx) error {
 		logger.LogError("GetSettings: failed", logger.ErrorField(err), logger.String("org_id", orgID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(settings)
+	if settings == nil {
+		settings = map[string]interface{}{}
+	}
+	return c.JSON(fiber.Map{"settings": settings})
 }
 
 func (h *OrganizationHandler) UpdateSettings(c *fiber.Ctx) error {
-
 	orgID := c.Params("id")
 	if orgID == "" {
 		logger.LogError("UpdateSettings: org_id required", logger.String("org_id", orgID))
@@ -155,5 +158,14 @@ func (h *OrganizationHandler) UpdateSettings(c *fiber.Ctx) error {
 		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.String("org_id", orgID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"ok": true})
+	// Fetch and return the updated settings object
+	settings, err := h.OrgSettingsService.GetSettings(c.Context(), orgID)
+	if err != nil {
+		logger.LogError("UpdateSettings: fetch after update failed", logger.ErrorField(err), logger.String("org_id", orgID))
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if settings == nil {
+		settings = map[string]interface{}{}
+	}
+	return c.JSON(fiber.Map{"settings": settings})
 }

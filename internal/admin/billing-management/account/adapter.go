@@ -37,11 +37,23 @@ func (a *BillingAccountServiceAdapter) List(ctx context.Context, accountType Bil
 		for i := range v {
 			list = append(list, v[i])
 		}
+	case []*ProjectBillingAccount:
+		for i := range v {
+			list = append(list, v[i])
+		}
 	case []UserBillingAccount:
 		for i := range v {
 			list = append(list, v[i])
 		}
+	case []*UserBillingAccount:
+		for i := range v {
+			list = append(list, v[i])
+		}
 	case []OrganizationBillingAccount:
+		for i := range v {
+			list = append(list, v[i])
+		}
+	case []*OrganizationBillingAccount:
 		for i := range v {
 			list = append(list, v[i])
 		}

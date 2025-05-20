@@ -2,10 +2,12 @@ package account
 
 import (
 	"context"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -25,6 +27,24 @@ func (h *AccountHandler) CreateAccount(c *fiber.Ctx) error {
 		logger.LogError("CreateAccount: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
+
+	// Generate UUID and set timestamps
+	now := time.Now().UTC()
+	switch v := input.(type) {
+	case *UserBillingAccount:
+		v.ID = commonutil.GenerateUUID()
+		v.CreatedAt = now
+		v.UpdatedAt = now
+	case *OrganizationBillingAccount:
+		v.ID = commonutil.GenerateUUID()
+		v.CreatedAt = now
+		v.UpdatedAt = now
+	case *ProjectBillingAccount:
+		v.ID = commonutil.GenerateUUID()
+		v.CreatedAt = now
+		v.UpdatedAt = now
+	}
+
 	// Validate
 	if v, ok := input.(interface{ Validate() *Error }); ok {
 		if err := v.Validate(); err != nil {
@@ -136,7 +156,17 @@ func (h *AccountHandler) GetAccount(c *fiber.Ctx) error {
 
 func (h *AccountHandler) ListAccounts(c *fiber.Ctx) error {
 	accountType := c.Query("type", "project")
-	ownerID := c.Query("tenant_id")
+	var ownerID string
+	switch accountType {
+	case "project":
+		ownerID = c.Query("project_id")
+	case "user":
+		ownerID = c.Query("user_id")
+	case "organization":
+		ownerID = c.Query("org_id")
+	default:
+		ownerID = ""
+	}
 	page := c.QueryInt("page", 1)
 	pageSize := c.QueryInt("page_size", 100)
 	ctx := c.Context()
@@ -144,6 +174,9 @@ func (h *AccountHandler) ListAccounts(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("ListAccounts: failed", logger.ErrorField(err), logger.String("owner_id", ownerID))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if accounts == nil {
+		accounts = make([]interface{}, 0)
 	}
 	return c.JSON(fiber.Map{"accounts": accounts, "page": page, "page_size": pageSize})
 }
@@ -168,6 +201,9 @@ func (h *AccountHandler) PerformAccountAction(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("PerformAccountAction: failed", logger.ErrorField(err), logger.String("account_id", id), logger.String("action", input.Action))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if result == nil {
+		result = fiber.Map{"action": input.Action, "status": "no result"}
 	}
 	return c.Status(fiber.StatusOK).JSON(result)
 }

@@ -37,6 +37,10 @@ func (a *SubscriptionServiceAdapter) UpgradeNowSubscription(id string) error {
 	return a.Store.UpgradeNowSubscription(context.Background(), id, "")
 }
 
+func (a *SubscriptionServiceAdapter) ProcessAutoRenewals() error {
+	return a.Store.ProcessAutoRenewals(context.Background())
+}
+
 // Add methods as needed, e.g.:
 // func (a *SubscriptionServiceAdapter) CreateSubscription(s Subscription) (Subscription, error) {
 // 	return a.Store.CreateSubscription(context.Background(), s)

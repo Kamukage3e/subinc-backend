@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	apierrors "github.com/subinc/subinc-backend/internal/pkg/errors"
 )
 
 func (h *TaxHandler) SetTaxInfo(c *fiber.Ctx) error {
@@ -156,8 +157,39 @@ func (h *TaxHandler) GetTaxPluginConfig(c *fiber.Ctx) error {
 func (h *TaxHandler) DisableTaxPlugin(c *fiber.Ctx) error {
 	pluginName := c.Params("name")
 	if pluginName == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Plugin name is required"})
+		return apierrors.NewBadRequestError("plugin name is required")
 	}
-	// If runtime disable is not supported, return 501
-	return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"error": "DisableTaxPlugin not implemented for this plugin type"})
+
+	// If plugin exists but doesn't support disabling
+	plugin, exists := TaxPlugins.Lookup(pluginName)
+	if !exists {
+		return apierrors.NewNotFoundError("tax plugin")
+	}
+
+	// Check if plugin implements the Disableable interface
+	disableable, ok := plugin.(DisableableTaxPlugin)
+	if !ok {
+		// Use our standardized "not implemented" error with richer context
+		return apierrors.NewNotImplementedError("disabling tax plugin")
+	}
+
+	// Attempt to disable the plugin
+	tenantID := c.Query("tenant_id")
+	if tenantID == "" {
+		return apierrors.NewBadRequestError("tenant_id is required")
+	}
+
+	if err := disableable.Disable(); err != nil {
+		return apierrors.NewInternalError(err).WithError(err)
+	}
+
+	// Remove the plugin configuration for this tenant
+	if err := h.TaxInfoService.RemoveTaxPluginConfig(c.Context(), tenantID, pluginName); err != nil {
+		return apierrors.NewInternalError(err).WithError(err)
+	}
+
+	return c.JSON(fiber.Map{
+		"status":  "success",
+		"message": fmt.Sprintf("Tax plugin '%s' disabled successfully", pluginName),
+	})
 }

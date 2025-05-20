@@ -391,3 +391,23 @@ func (h *SubscriptionHandler) DisableSubscriptionPlugin(c *fiber.Ctx) error {
 	SubscriptionPlugins.Unregister(pluginName)
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "message": "Subscription plugin '" + pluginName + "' disabled"})
 }
+
+// ProcessAutoRenewals handles automatic renewal of subscriptions
+func (h *SubscriptionHandler) ProcessAutoRenewals(c *fiber.Ctx) error {
+	// Admin permissions are already checked by the route middleware
+	// Just proceed with processing the renewals
+
+	// Process renewals
+	if err := h.SubscriptionService.ProcessAutoRenewals(); err != nil {
+		logger.LogError("ProcessAutoRenewals: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error":   "Failed to process subscription renewals",
+			"details": err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status":  "success",
+		"message": "Subscription renewals processed successfully",
+	})
+}

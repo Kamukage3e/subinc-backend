@@ -26,7 +26,7 @@ func RegisterRoutes(router fiber.Router, handler *SubscriptionHandler, auditLogg
 	route.Post("/", rbacmiddleware.RBACMiddleware("subscription", "create", nil), handler.CreateSubscription)
 	route.Get("/", rbacmiddleware.RBACMiddleware("subscription", "read", nil), handler.ListSubscriptions)
 	route.Get("/:id", rbacmiddleware.RBACMiddleware("subscription", "read", nil), handler.GetSubscription)
-	route.Put("/:id", rbacmiddleware.RBACMiddleware("subscription", "update", nil), handler.UpdateSubscription)    
+	route.Put("/:id", rbacmiddleware.RBACMiddleware("subscription", "update", nil), handler.UpdateSubscription)
 	route.Patch("/:id", rbacmiddleware.RBACMiddleware("subscription", "update", nil), handler.PatchSubscription)
 	route.Delete("/:id", rbacmiddleware.RBACMiddleware("subscription", "delete", nil), handler.DeleteSubscription)
 
@@ -34,6 +34,10 @@ func RegisterRoutes(router fiber.Router, handler *SubscriptionHandler, auditLogg
 	route.Post("/:id/cancel-now", rbacmiddleware.RBACMiddleware("subscription", "cancel", nil), handler.CancelSubscriptionNow)
 	route.Post("/:id/resume", rbacmiddleware.RBACMiddleware("subscription", "resume", nil), handler.ResumeSubscription)
 	route.Post("/:id/upgrade-now", rbacmiddleware.RBACMiddleware("subscription", "upgrade", nil), handler.UpgradeNowSubscription)
+
+	// Subscription management administrative endpoints
+	adminRoutes := router.Group("/admin/subscriptions", rbacmiddleware.RBACMiddleware("subscription", "admin", nil))
+	adminRoutes.Post("/process-renewals", handler.ProcessAutoRenewals)
 
 	// Unified plugin management endpoints
 	pluginRoutes := router.Group("/plugins/subscription")

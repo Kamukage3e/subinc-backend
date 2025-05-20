@@ -139,7 +139,10 @@ func (h *ProjectHandler) GetSettings(c *fiber.Ctx) error {
 		logger.LogError("GetSettings: failed", logger.ErrorField(err), logger.String("project_id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(settings)
+	if settings == nil {
+		settings = map[string]interface{}{}
+	}
+	return c.JSON(fiber.Map{"settings": settings})
 }
 
 func (h *ProjectHandler) UpdateSettings(c *fiber.Ctx) error {
@@ -156,13 +159,12 @@ func (h *ProjectHandler) UpdateSettings(c *fiber.Ctx) error {
 		logger.LogError("UpdateSettings: missing required fields", logger.String("project_id", id))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "settings required"})
 	}
-	err := h.ProjectSettingsService.UpdateSettings(c.Context(), id, input.Settings)
+	updated, err := h.ProjectSettingsService.UpdateSettings(c.Context(), id, input.Settings)
 	if err != nil {
-		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.String("project_id", id))
+		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}
-
-	return c.JSON(fiber.Map{"ok": true})
+	return c.JSON(fiber.Map{"settings": updated})
 }
 
 // getActorID extracts the actor/user id from the request context or headers for audit logging

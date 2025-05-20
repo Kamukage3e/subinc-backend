@@ -179,6 +179,221 @@ func (p ManualTaxPlugin) Capabilities() []string {
 	return []string{"manual_rate", "configurable"}
 }
 
+// NorthAmericaTaxPlugin handles tax calculation for US and Canada
+type NorthAmericaTaxPlugin struct {
+	// State/province tax rates - could be loaded from DB in real implementation
+	usTaxRates map[string]float64
+	caTaxRates map[string]float64
+	// Cache for tax exemptions
+	exemptions map[string]bool
+}
+
+func NewNorthAmericaTaxPlugin() *NorthAmericaTaxPlugin {
+	p := &NorthAmericaTaxPlugin{
+		usTaxRates: map[string]float64{
+			"AL": 4.0,   // Alabama
+			"AK": 0.0,   // Alaska
+			"AZ": 5.6,   // Arizona
+			"AR": 6.5,   // Arkansas
+			"CA": 7.25,  // California
+			"CO": 2.9,   // Colorado
+			"CT": 6.35,  // Connecticut
+			"DE": 0.0,   // Delaware
+			"FL": 6.0,   // Florida
+			"GA": 4.0,   // Georgia
+			"HI": 4.0,   // Hawaii
+			"ID": 6.0,   // Idaho
+			"IL": 6.25,  // Illinois
+			"IN": 7.0,   // Indiana
+			"IA": 6.0,   // Iowa
+			"KS": 6.5,   // Kansas
+			"KY": 6.0,   // Kentucky
+			"LA": 4.45,  // Louisiana
+			"ME": 5.5,   // Maine
+			"MD": 6.0,   // Maryland
+			"MA": 6.25,  // Massachusetts
+			"MI": 6.0,   // Michigan
+			"MN": 6.875, // Minnesota
+			"MS": 7.0,   // Mississippi
+			"MO": 4.225, // Missouri
+			"MT": 0.0,   // Montana
+			"NE": 5.5,   // Nebraska
+			"NV": 6.85,  // Nevada
+			"NH": 0.0,   // New Hampshire
+			"NJ": 6.625, // New Jersey
+			"NM": 5.125, // New Mexico
+			"NY": 4.0,   // New York
+			"NC": 4.75,  // North Carolina
+			"ND": 5.0,   // North Dakota
+			"OH": 5.75,  // Ohio
+			"OK": 4.5,   // Oklahoma
+			"OR": 0.0,   // Oregon
+			"PA": 6.0,   // Pennsylvania
+			"RI": 7.0,   // Rhode Island
+			"SC": 6.0,   // South Carolina
+			"SD": 4.5,   // South Dakota
+			"TN": 7.0,   // Tennessee
+			"TX": 6.25,  // Texas
+			"UT": 6.1,   // Utah
+			"VT": 6.0,   // Vermont
+			"VA": 5.3,   // Virginia
+			"WA": 6.5,   // Washington
+			"WV": 6.0,   // West Virginia
+			"WI": 5.0,   // Wisconsin
+			"WY": 4.0,   // Wyoming
+			"DC": 6.0,   // District of Columbia
+		},
+		caTaxRates: map[string]float64{
+			"AB": 5.0,    // Alberta (GST only)
+			"BC": 12.0,   // British Columbia (GST + PST)
+			"MB": 12.0,   // Manitoba (GST + PST)
+			"NB": 15.0,   // New Brunswick (HST)
+			"NL": 15.0,   // Newfoundland and Labrador (HST)
+			"NT": 5.0,    // Northwest Territories (GST only)
+			"NS": 15.0,   // Nova Scotia (HST)
+			"NU": 5.0,    // Nunavut (GST only)
+			"ON": 13.0,   // Ontario (HST)
+			"PE": 15.0,   // Prince Edward Island (HST)
+			"QC": 14.975, // Quebec (GST + QST)
+			"SK": 11.0,   // Saskatchewan (GST + PST)
+			"YT": 5.0,    // Yukon (GST only)
+		},
+		exemptions: make(map[string]bool),
+	}
+	return p
+}
+
+func (p NorthAmericaTaxPlugin) Name() string {
+	return "north_america"
+}
+
+func (p NorthAmericaTaxPlugin) Version() string {
+	return "1.0.0"
+}
+
+func (p NorthAmericaTaxPlugin) CalculateTax(ctx context.Context, invoice Invoice, account Account, tenantID string) (float64, float64, error) {
+	// Get tax info for the tenant (would come from database in real implementation)
+	var taxInfo TaxInfo
+	// In a real implementation, we would look up tax info for this account/tenant
+
+	// Set default country from invoice if we don't have it
+	country := ""
+
+	// Try to extract country info from either tax info or account
+	if account.TenantID != "" {
+		// Get TaxInfo from database by TenantID (simulated here)
+		taxInfo = TaxInfo{
+			TenantID: account.TenantID,
+			Country:  "", // Would be populated from DB
+			Region:   "", // Would be populated from DB
+			TaxID:    "", // Would be populated from DB
+		}
+		country = taxInfo.Country
+	}
+
+	// Default to invoice currency country code if needed
+	if country == "" {
+		if invoice.Currency == "USD" {
+			country = "US"
+		} else if invoice.Currency == "CAD" {
+			country = "CA"
+		}
+	}
+
+	// Lookup region/state/province based on country
+	region := taxInfo.Region
+
+	// Determine applicable tax rate based on location
+	var taxRate float64
+	switch country {
+	case "US":
+		if rate, ok := p.usTaxRates[region]; ok && region != "" {
+			taxRate = rate
+		} else {
+			// Default US tax rate if state not found
+			taxRate = 0.0 // Most digital services don't have federal sales tax
+		}
+	case "CA":
+		if rate, ok := p.caTaxRates[region]; ok && region != "" {
+			taxRate = rate
+		} else {
+			// Default Canadian tax rate (GST only)
+			taxRate = 5.0
+		}
+	default:
+		// For other countries, no tax by default
+		// In a real implementation, would check for other countries or return an error
+		taxRate = 0.0
+	}
+
+	// Check for tax exemption if there's a tax ID
+	taxID := taxInfo.TaxID
+	if taxID != "" {
+		if exempt, ok := p.exemptions[taxID]; ok && exempt {
+			taxRate = 0.0
+		}
+	}
+
+	// Calculate tax amount
+	amount := invoice.Amount
+	taxAmount := amount * taxRate / 100.0
+
+	return taxAmount, taxRate, nil
+}
+
+func (p NorthAmericaTaxPlugin) ValidateAddress(ctx context.Context, address Address, tenantID string) (bool, error) {
+	// Basic address validation
+	if address.Line1 == "" || address.City == "" || address.PostalCode == "" || address.Country == "" {
+		return false, nil
+	}
+
+	// Validate country
+	validCountries := map[string]bool{"US": true, "CA": true}
+	if !validCountries[address.Country] {
+		return false, nil
+	}
+
+	// Validate postal code format
+	if address.Country == "US" {
+		// Simple US ZIP validation (5 digits or 5+4)
+		if len(address.PostalCode) != 5 && len(address.PostalCode) != 10 {
+			return false, nil
+		}
+	} else if address.Country == "CA" {
+		// Simple Canada postal code validation (A1A 1A1 format)
+		if len(address.PostalCode) != 6 && len(address.PostalCode) != 7 {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+func (p NorthAmericaTaxPlugin) GetTaxExemption(ctx context.Context, taxID string, country string, tenantID string) (bool, string, error) {
+	// Check if tax ID is in exemptions list
+	if exempt, ok := p.exemptions[taxID]; ok && exempt {
+		if country == "US" {
+			return true, "US Tax Exemption", nil
+		}
+		if country == "CA" {
+			return true, "Canadian Tax Exemption", nil
+		}
+	}
+
+	return false, "", nil
+}
+
+func (p NorthAmericaTaxPlugin) Initialize(config map[string]interface{}) error {
+	// For the non-pointer receiver, we can't mutate the state directly
+	// In a real implementation, we would have a proper initialization process
+	// For now, we'll just return success since we initialize in the constructor
+	return nil
+}
+
+func (p NorthAmericaTaxPlugin) Capabilities() []string {
+	return []string{"us_sales_tax", "ca_gst_hst", "exemption_certificates", "address_validation"}
+}
+
 // TaxPlugins is the global registry for all tax plugins.
 var TaxPlugins = func() *TaxPluginRegistry {
 	r := &TaxPluginRegistry{
@@ -187,6 +402,12 @@ var TaxPlugins = func() *TaxPluginRegistry {
 	r.Register(DefaultTaxPlugin{})
 	r.Register(EUTaxPlugin{})
 	r.Register(ManualTaxPlugin{})
+
+	// Initialize North America tax plugin with proper data
+	naPlugin := NewNorthAmericaTaxPlugin()
+	// The plugin instance is properly initialized with constructor
+	r.Register(*naPlugin) // Use value type since our methods use value receiver
+
 	return r
 }()
 

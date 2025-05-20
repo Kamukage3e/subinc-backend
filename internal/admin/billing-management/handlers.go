@@ -3,6 +3,8 @@ package billing_management
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"net/http"
 	"time"
 
 	"strings"
@@ -16,14 +18,18 @@ import (
 	"context"
 
 	"encoding/json"
+	"encoding/xml"
 
 	"reflect"
+
+	"strconv"
 
 	"github.com/stripe/stripe-go/v75/webhook"
 	account "github.com/subinc/subinc-backend/internal/admin/billing-management/account"
 	"github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
 	tax "github.com/subinc/subinc-backend/internal/admin/billing-management/tax"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
@@ -424,6 +430,172 @@ func (h *BillingAdminHandler) DeleteWebhookSubscription(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// GetWebhookSubscription retrieves a webhook subscription by ID
+func (h *BillingAdminHandler) GetWebhookSubscription(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+
+	sub, err := h.WebhookSubscriptionService.GetWebhookSubscription(id)
+	if err != nil {
+		errResp := fiber.Map{"error": err.Error()}
+		if apiErr, ok := err.(*Error); ok {
+			errResp["error"] = apiErr.Message
+			errResp["code"] = apiErr.Code
+			errResp["field"] = apiErr.Field
+		}
+		status := fiber.StatusUnprocessableEntity
+		if e, ok := err.(*Error); ok && e.Code == "not_found" {
+			status = fiber.StatusNotFound
+		}
+		return c.Status(status).JSON(errResp)
+	}
+
+	// Hide the secret in the response, replace with partial value
+	if len(sub.Secret) > 4 {
+		masked := strings.Repeat("*", len(sub.Secret)-4) + sub.Secret[len(sub.Secret)-4:]
+		sub.Secret = masked
+	}
+
+	return c.JSON(sub)
+}
+
+// UpdateWebhookSubscription updates an existing webhook subscription
+func (h *BillingAdminHandler) UpdateWebhookSubscription(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+
+	var input struct {
+		URL    string   `json:"url"`
+		Secret string   `json:"secret"`
+		Events []string `json:"events"`
+		Status string   `json:"status"`
+	}
+
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+
+	err := h.WebhookSubscriptionService.UpdateWebhookSubscription(id, input.URL, input.Secret, input.Events, input.Status)
+	if err != nil {
+		errResp := fiber.Map{"error": err.Error()}
+		if apiErr, ok := err.(*Error); ok {
+			errResp["error"] = apiErr.Message
+			errResp["code"] = apiErr.Code
+			errResp["field"] = apiErr.Field
+		}
+		status := fiber.StatusUnprocessableEntity
+		if e, ok := err.(*Error); ok && e.Code == "not_found" {
+			status = fiber.StatusNotFound
+		}
+		return c.Status(status).JSON(errResp)
+	}
+
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// TestWebhookSubscription sends a test event to a webhook
+func (h *BillingAdminHandler) TestWebhookSubscription(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+
+	var input struct {
+		EventType string                 `json:"event_type"`
+		Payload   map[string]interface{} `json:"payload"`
+	}
+
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+
+	err := h.WebhookSubscriptionService.TestWebhookSubscription(id, input.EventType, input.Payload)
+	if err != nil {
+		errResp := fiber.Map{"error": err.Error()}
+		if apiErr, ok := err.(*Error); ok {
+			errResp["error"] = apiErr.Message
+			errResp["code"] = apiErr.Code
+			errResp["field"] = apiErr.Field
+		}
+		status := fiber.StatusUnprocessableEntity
+		if e, ok := err.(*Error); ok && e.Code == "not_found" {
+			status = fiber.StatusNotFound
+		}
+		return c.Status(status).JSON(errResp)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success": true,
+		"message": "Test webhook sent successfully",
+	})
+}
+
+// GetWebhookDeliveryLogs retrieves delivery logs for a webhook subscription
+func (h *BillingAdminHandler) GetWebhookDeliveryLogs(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 20)
+
+	logs, err := h.WebhookSubscriptionService.GetWebhookDeliveryLogs(id, page, pageSize)
+	if err != nil {
+		errResp := fiber.Map{"error": err.Error()}
+		if apiErr, ok := err.(*Error); ok {
+			errResp["error"] = apiErr.Message
+			errResp["code"] = apiErr.Code
+			errResp["field"] = apiErr.Field
+		}
+		status := fiber.StatusUnprocessableEntity
+		if e, ok := err.(*Error); ok && e.Code == "not_found" {
+			status = fiber.StatusNotFound
+		}
+		return c.Status(status).JSON(errResp)
+	}
+
+	return c.JSON(fiber.Map{
+		"logs": logs,
+		"pagination": fiber.Map{
+			"page":      page,
+			"page_size": pageSize,
+		},
+	})
+}
+
+// RetryWebhookDelivery retries a failed webhook delivery
+func (h *BillingAdminHandler) RetryWebhookDelivery(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+	}
+
+	err := h.WebhookSubscriptionService.RetryWebhookDelivery(id)
+	if err != nil {
+		errResp := fiber.Map{"error": err.Error()}
+		if apiErr, ok := err.(*Error); ok {
+			errResp["error"] = apiErr.Message
+			errResp["code"] = apiErr.Code
+			errResp["field"] = apiErr.Field
+		}
+		status := fiber.StatusUnprocessableEntity
+		if e, ok := err.(*Error); ok && e.Code == "not_found" {
+			status = fiber.StatusNotFound
+		}
+		return c.Status(status).JSON(errResp)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success": true,
+		"message": "Webhook delivery retry initiated",
+	})
 }
 
 func (h *BillingAdminHandler) GetRevenueReport(c *fiber.Ctx) error {
@@ -965,62 +1137,399 @@ func (h *BillingAdminHandler) GetTenantCurrency(c *fiber.Ctx) error {
 	return c.JSON(curr)
 }
 
+// UpdateExchangeRatesFromExternal updates exchange rates from an external API service
+func (h *BillingAdminHandler) UpdateExchangeRatesFromExternal(c *fiber.Ctx) error {
+	var input struct {
+		Source       string   `json:"source"`        // "ecb", "fixer", etc.
+		BaseCurrency string   `json:"base_currency"` // Base currency for all rates
+		Currencies   []string `json:"currencies"`    // List of currencies to update against base
+		APIKey       string   `json:"api_key"`       // Optional API key for some services
+	}
+
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("UpdateExchangeRatesFromExternal: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+
+	// Validate inputs
+	if input.Source == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "source is required"})
+	}
+
+	if input.BaseCurrency == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "base_currency is required"})
+	}
+
+	if len(input.BaseCurrency) != 3 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "base_currency must be ISO 4217 code"})
+	}
+
+	input.BaseCurrency = strings.ToUpper(input.BaseCurrency)
+
+	// If no currencies specified, use some common ones
+	if len(input.Currencies) == 0 {
+		input.Currencies = []string{"USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF"}
+	}
+
+	// Validate all currency codes
+	for i, currency := range input.Currencies {
+		if len(currency) != 3 {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("currency at index %d must be ISO 4217 code", i),
+			})
+		}
+		input.Currencies[i] = strings.ToUpper(currency)
+	}
+
+	// URLs for different external rate providers
+	var ratesURL string
+	var client = http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	switch strings.ToLower(input.Source) {
+	case "ecb":
+		// European Central Bank (free, no API key)
+		ratesURL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
+	case "fixer":
+		// Fixer.io (requires API key)
+		if input.APIKey == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "api_key is required for fixer"})
+		}
+		ratesURL = fmt.Sprintf("http://data.fixer.io/api/latest?access_key=%s&base=%s", input.APIKey, input.BaseCurrency)
+	case "openexchangerates":
+		// Open Exchange Rates (requires API key)
+		if input.APIKey == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "api_key is required for openexchangerates"})
+		}
+		ratesURL = fmt.Sprintf("https://openexchangerates.org/api/latest.json?app_id=%s&base=%s", input.APIKey, input.BaseCurrency)
+	default:
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "unsupported source"})
+	}
+
+	// Make HTTP request to get exchange rates
+	req, err := http.NewRequestWithContext(c.Context(), "GET", ratesURL, nil)
+	if err != nil {
+		logger.LogError("UpdateExchangeRatesFromExternal: request creation failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create request"})
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		logger.LogError("UpdateExchangeRatesFromExternal: request failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch exchange rates"})
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		logger.LogError("UpdateExchangeRatesFromExternal: API returned error",
+			logger.Int("status_code", resp.StatusCode))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("exchange rate API returned status code %d", resp.StatusCode),
+		})
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		logger.LogError("UpdateExchangeRatesFromExternal: failed to read response body", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to read response"})
+	}
+
+	// Parse response based on source
+	rates := make(map[string]float64)
+
+	switch strings.ToLower(input.Source) {
+	case "ecb":
+		// Parse XML from ECB
+		var ecbData struct {
+			Cube struct {
+				Cube struct {
+					Cube []struct {
+						Currency string  `xml:"currency,attr"`
+						Rate     float64 `xml:"rate,attr"`
+					} `xml:"Cube"`
+				} `xml:"Cube"`
+			} `xml:"Cube"`
+		}
+		if err := xml.Unmarshal(body, &ecbData); err != nil {
+			logger.LogError("UpdateExchangeRatesFromExternal: failed to parse ECB XML", logger.ErrorField(err))
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to parse ECB response"})
+		}
+
+		for _, cube := range ecbData.Cube.Cube.Cube {
+			rates[cube.Currency] = cube.Rate
+		}
+
+		// ECB uses EUR as base, so we need to handle conversions if input.BaseCurrency is not EUR
+		if input.BaseCurrency != "EUR" {
+			// Check if we have a rate for the requested base currency
+			baseRate, ok := rates[input.BaseCurrency]
+			if !ok {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": fmt.Sprintf("base currency %s not found in ECB rates", input.BaseCurrency),
+				})
+			}
+
+			// Adjust all rates to the new base
+			for curr, rate := range rates {
+				rates[curr] = rate / baseRate
+			}
+			// Add EUR rate
+			rates["EUR"] = 1.0 / baseRate
+		}
+
+	case "fixer", "openexchangerates":
+		// Parse JSON from Fixer or Open Exchange Rates
+		var data struct {
+			Success bool               `json:"success"`
+			Base    string             `json:"base"`
+			Rates   map[string]float64 `json:"rates"`
+			Error   struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+
+		if err := json.Unmarshal(body, &data); err != nil {
+			logger.LogError("UpdateExchangeRatesFromExternal: failed to parse JSON response", logger.ErrorField(err))
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to parse response"})
+		}
+
+		// Check for API-specific errors
+		if !data.Success {
+			logger.LogError("UpdateExchangeRatesFromExternal: API returned error response",
+				logger.String("error_code", data.Error.Code),
+				logger.String("error_message", data.Error.Message))
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": fmt.Sprintf("exchange rate API error: %s", data.Error.Message),
+			})
+		}
+
+		rates = data.Rates
+	}
+
+	// Store rates in database
+	results := make([]ExchangeRate, 0, len(input.Currencies))
+
+	for _, currency := range input.Currencies {
+		if currency == input.BaseCurrency {
+			// Skip base currency against itself
+			continue
+		}
+
+		rate, ok := rates[currency]
+		if !ok {
+			logger.LogWarn("UpdateExchangeRatesFromExternal: currency not found in response",
+				logger.String("currency", currency))
+			continue
+		}
+
+		// Create exchange rate record
+		exchangeRate := ExchangeRate{
+			ID:            commonutil.GenerateUUID(),
+			BaseCurrency:  input.BaseCurrency,
+			QuoteCurrency: currency,
+			Rate:          rate,
+			Source:        input.Source,
+			UpdatedAt:     time.Now().UTC(),
+		}
+
+		// Store in database
+		storedRate, err := h.Store.CreateExchangeRate(c.Context(), exchangeRate)
+		if err != nil {
+			logger.LogError("UpdateExchangeRatesFromExternal: failed to store rate",
+				logger.ErrorField(err),
+				logger.String("base", exchangeRate.BaseCurrency),
+				logger.String("quote", exchangeRate.QuoteCurrency))
+			continue
+		}
+
+		results = append(results, storedRate)
+	}
+
+	if len(results) == 0 {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update any exchange rates"})
+	}
+
+	return c.JSON(fiber.Map{
+		"updated_rates":   results,
+		"source":          input.Source,
+		"base_currency":   input.BaseCurrency,
+		"updated_count":   len(results),
+		"requested_count": len(input.Currencies),
+	})
+}
+
 func generateInvoicePDF(pdfData map[string]interface{}) ([]byte, error) {
 	pdf := gofpdf.New("P", "mm", "A4", "")
 	if title, ok := pdfData["title"].(string); ok && title != "" {
 		pdf.SetTitle(title, false)
 	}
+
+	// Set up document properties
+	pdf.SetAuthor("SubInc Billing System", false)
+	pdf.SetCreator("SubInc", false)
+
+	// Add page
 	pdf.AddPage()
-	// Logo (optional)
+
+	// Set up default margins
+	const marginLeft = 10
+	const marginTop = 10
+
+	// Company logo and branding
 	if logo, ok := pdfData["logo"].(string); ok && logo != "" {
-		pdf.ImageOptions(logo, 10, 10, 30, 0, false, gofpdf.ImageOptions{}, 0, "")
-		pdf.Ln(20)
-	}
-
-	// Header lines (optional)
-	if header, ok := pdfData["header"].([]string); ok {
-		pdf.SetFont("Arial", "B", 20)
-		for _, line := range header {
-			pdf.Cell(0, 12, line)
-			pdf.Ln(8)
-		}
-		pdf.Ln(4)
-	}
-
-	// Fields (label/value pairs)
-	if fields, ok := pdfData["fields"].([][2]string); ok {
-		pdf.SetFont("Arial", "", 12)
-		for _, pair := range fields {
-			pdf.Cell(40, 8, pair[0])
-			pdf.Cell(0, 8, pair[1])
-			pdf.Ln(8)
-		}
-		pdf.Ln(4)
-	}
-
-	// Table (rows: description, amount, currency)
-	if table, ok := pdfData["table"].([][3]string); ok && len(table) > 0 {
-		pdf.SetFont("Arial", "B", 12)
-		pdf.Cell(60, 8, "Description")
-		pdf.Cell(40, 8, "Amount")
-		pdf.Cell(40, 8, "Currency")
-		pdf.Ln(8)
-		pdf.SetFont("Arial", "", 12)
-		for _, row := range table {
-			pdf.Cell(60, 8, row[0])
-			pdf.Cell(40, 8, row[1])
-			pdf.Cell(40, 8, row[2])
-			pdf.Ln(8)
-		}
-		pdf.Ln(4)
-	}
-
-	// Footer/notes (optional)
-	if footer, ok := pdfData["footer"].(string); ok && footer != "" {
+		pdf.ImageOptions(logo, marginLeft, marginTop, 30, 0, false, gofpdf.ImageOptions{}, 0, "")
+	} else {
+		// No logo provided, use text header instead
+		pdf.SetFont("Arial", "B", 24)
+		pdf.SetTextColor(50, 50, 150)
+		pdf.Text(marginLeft, marginTop+10, "SubInc")
 		pdf.SetFont("Arial", "I", 10)
-		pdf.MultiCell(0, 7, footer, "", "L", false)
+		pdf.SetTextColor(100, 100, 100)
+		pdf.Text(marginLeft, marginTop+16, "Billing Management System")
+		pdf.SetTextColor(0, 0, 0) // Reset to black
 	}
 
+	// Top-right corner: Invoice title and number
+	pdf.SetFont("Arial", "B", 18)
+	pdf.SetTextColor(50, 50, 50)
+	pdf.SetXY(120, marginTop)
+	pdf.Cell(80, 10, "INVOICE")
+	if invoiceNum, ok := pdfData["invoice_number"].(string); ok && invoiceNum != "" {
+		pdf.SetXY(120, marginTop+10)
+		pdf.SetFont("Arial", "", 12)
+		pdf.Cell(80, 10, "# "+invoiceNum)
+	}
+	pdf.SetTextColor(0, 0, 0) // Reset to black
+
+	// Draw a line to separate header
+	pdf.Line(marginLeft, marginTop+25, 200, marginTop+25)
+
+	// Date and billing information section
+	pdf.SetXY(marginLeft, marginTop+30)
+	pdf.SetFont("Arial", "B", 11)
+	pdf.Cell(40, 6, "Invoice Date:")
+	pdf.SetXY(marginLeft+40, marginTop+30)
+	pdf.SetFont("Arial", "", 11)
+	if date, ok := pdfData["invoice_date"].(string); ok && date != "" {
+		pdf.Cell(60, 6, date)
+	}
+
+	pdf.SetXY(marginLeft, marginTop+36)
+	pdf.SetFont("Arial", "B", 11)
+	pdf.Cell(40, 6, "Due Date:")
+	pdf.SetXY(marginLeft+40, marginTop+36)
+	pdf.SetFont("Arial", "", 11)
+	if dueDate, ok := pdfData["due_date"].(string); ok && dueDate != "" {
+		pdf.Cell(60, 6, dueDate)
+	}
+
+	pdf.SetXY(marginLeft, marginTop+42)
+	pdf.SetFont("Arial", "B", 11)
+	pdf.Cell(40, 6, "Invoice Status:")
+	pdf.SetXY(marginLeft+40, marginTop+42)
+	pdf.SetFont("Arial", "", 11)
+	if status, ok := pdfData["status"].(string); ok && status != "" {
+		pdf.Cell(60, 6, status)
+	}
+
+	// Account information
+	pdf.SetXY(120, marginTop+30)
+	pdf.SetFont("Arial", "B", 11)
+	pdf.Cell(40, 6, "Bill To:")
+	pdf.SetXY(120, marginTop+36)
+	pdf.SetFont("Arial", "", 11)
+	if accountEmail, ok := pdfData["account_email"].(string); ok && accountEmail != "" {
+		pdf.Cell(80, 6, accountEmail)
+	}
+	pdf.SetXY(120, marginTop+42)
+	if accountID, ok := pdfData["account_id"].(string); ok && accountID != "" {
+		pdf.Cell(80, 6, "Account: "+accountID)
+	}
+
+	// Draw a line to separate billing info from items
+	pdf.Line(marginLeft, marginTop+50, 200, marginTop+50)
+
+	// Invoice line items (if provided)
+	if lineItems, ok := pdfData["line_items"].([]map[string]string); ok && len(lineItems) > 0 {
+		// Table header
+		pdf.SetXY(marginLeft, marginTop+55)
+		pdf.SetFont("Arial", "B", 11)
+		pdf.SetFillColor(240, 240, 240)
+
+		// Draw table header - gofpdf method signature is different than what we tried
+		pdf.CellFormat(100, 8, "Description", "1", 0, "", true, 0, "")
+		pdf.CellFormat(30, 8, "Quantity", "1", 0, "C", true, 0, "")
+		pdf.CellFormat(30, 8, "Unit Price", "1", 0, "R", true, 0, "")
+		pdf.CellFormat(30, 8, "Amount", "1", 0, "R", true, 0, "")
+
+		// Table items
+		yPos := float64(marginTop + 63)
+		pdf.SetFont("Arial", "", 10)
+		for _, item := range lineItems {
+			pdf.SetXY(marginLeft, yPos)
+			pdf.CellFormat(100, 6, item["description"], "1", 0, "", false, 0, "")
+			pdf.CellFormat(30, 6, item["quantity"], "1", 0, "C", false, 0, "")
+			pdf.CellFormat(30, 6, item["unit_price"], "1", 0, "R", false, 0, "")
+			pdf.CellFormat(30, 6, item["amount"], "1", 0, "R", false, 0, "")
+			yPos += 6
+		}
+	} else {
+		// Summary table
+		if table, ok := pdfData["table"].([][3]string); ok && len(table) > 0 {
+			// Table header
+			pdf.SetXY(marginLeft, marginTop+55)
+			pdf.SetFont("Arial", "B", 11)
+			pdf.SetFillColor(240, 240, 240)
+
+			// Draw table header - use CellFormat instead of Cell
+			pdf.CellFormat(130, 8, "Description", "1", 0, "", true, 0, "")
+			pdf.CellFormat(30, 8, "Amount", "1", 0, "R", true, 0, "")
+			pdf.CellFormat(30, 8, "Currency", "1", 0, "C", true, 0, "")
+
+			// Table items
+			yPos := float64(marginTop + 63)
+			pdf.SetFont("Arial", "", 10)
+			for _, row := range table {
+				pdf.SetXY(marginLeft, yPos)
+				pdf.CellFormat(130, 6, row[0], "1", 0, "", false, 0, "")
+				pdf.CellFormat(30, 6, row[1], "1", 0, "R", false, 0, "")
+				pdf.CellFormat(30, 6, row[2], "1", 0, "C", false, 0, "")
+				yPos += 6
+			}
+		}
+	}
+
+	// Footer/terms
+	if footer, ok := pdfData["footer"].(string); ok && footer != "" {
+		pdf.SetY(-40) // Position at 40mm from bottom
+		pdf.SetFont("Arial", "I", 10)
+		pdf.MultiCell(0, 5, footer, "", "L", false)
+	}
+
+	// Company details at the very bottom
+	pdf.SetFont("Arial", "", 8)
+	pdf.SetY(-25)
+	if company, ok := pdfData["company_name"].(string); ok && company != "" {
+		pdf.MultiCell(0, 4, company, "", "C", false)
+	} else {
+		pdf.MultiCell(0, 4, "SubInc - Multi-tenant SaaS Billing Management", "", "C", false)
+	}
+
+	pdf.SetY(-20)
+	if contactInfo, ok := pdfData["contact_info"].(string); ok && contactInfo != "" {
+		pdf.MultiCell(0, 4, contactInfo, "", "C", false)
+	} else {
+		pdf.MultiCell(0, 4, "support@subinc.example.com | www.subinc-example.com", "", "C", false)
+	}
+
+	// Page numbering
+	pdf.SetY(-15)
+	pdf.SetFont("Arial", "I", 8)
+	pdf.CellFormat(0, 10, fmt.Sprintf("Page %d", pdf.PageNo()), "", 0, "C", false, 0, "")
+
+	// Output to buffer
 	var buf bytes.Buffer
 	if err := pdf.Output(&buf); err != nil {
 		return nil, err
@@ -1028,48 +1537,127 @@ func generateInvoicePDF(pdfData map[string]interface{}) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// DownloadInvoicePDF returns the invoice PDF as an attachment. Only JSON body allowed.
+// DownloadInvoicePDF returns the invoice PDF as an attachment.
+// Supports all invoice types and includes comprehensive details.
 func (h *BillingAdminHandler) DownloadInvoicePDF(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})
 	}
+
+	// Get the invoice
 	invoice, err := h.InvoiceService.GetInvoice(id)
 	if err != nil {
+		logger.LogError("DownloadInvoicePDF: invoice not found", logger.ErrorField(err), logger.String("id", id))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "invoice not found"})
 	}
+
+	// Get account details
 	res, err := h.AccountService.Get(c.Context(), account.AccountTypeProject, invoice.AccountID)
 	if err != nil {
+		logger.LogError("DownloadInvoicePDF: account not found",
+			logger.ErrorField(err),
+			logger.String("invoice_id", id),
+			logger.String("account_id", invoice.AccountID))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "account not found"})
 	}
 	accountObj, _ := res.(account.ProjectBillingAccount)
+
+	// Get company info from config if available
+	companyName := "SubInc"
+	companyContact := "support@subinc-example.com"
+
+	// Get company info from billing config
+	if h.InvoiceService != nil {
+		billingConfig, configErr := h.InvoiceService.GetBillingConfig()
+		if configErr == nil {
+			if compName, ok := billingConfig["company_name"].(string); ok && compName != "" {
+				companyName = compName
+			}
+			if contact, ok := billingConfig["support_email"].(string); ok && contact != "" {
+				companyContact = contact
+			}
+		}
+	}
+
+	// Default to empty line items
+	lineItems := []map[string]string{}
+
+	// Build PDF data
 	pdfData := map[string]interface{}{
-		"title":  "Invoice " + invoice.ID,
-		"header": []string{"INVOICE"},
-		"fields": [][2]string{
-			{"Invoice ID:", invoice.ID},
-			{"Status:", invoice.Status},
-			{"Account Email:", accountObj.Email},
-			{"Account ID:", accountObj.ID},
-			{"Created:", invoice.CreatedAt.Format("2006-01-02 15:04")},
-			{"Due Date:", invoice.DueDate.Format("2006-01-02")},
-		},
+		"title":          "Invoice " + invoice.ID,
+		"invoice_number": invoice.ID,
+		"invoice_date":   invoice.CreatedAt.Format("2006-01-02"),
+		"due_date":       invoice.DueDate.Format("2006-01-02"),
+		"status":         invoice.Status,
+		"account_email":  accountObj.Email,
+		"account_id":     accountObj.ID,
+		"company_name":   companyName,
+		"contact_info":   companyContact,
 		"table": [][3]string{
 			{"Subtotal", fmt.Sprintf("%.2f", invoice.Amount-invoice.TaxAmount), invoice.Currency},
 			{"Tax", fmt.Sprintf("%.2f (%.2f%%)", invoice.TaxAmount, invoice.TaxRate), invoice.Currency},
 			{"Total", fmt.Sprintf("%.2f", invoice.Amount), invoice.Currency},
 		},
-		"footer": "Thank you for your business. If you have any questions, contact support@company.com.",
+		"footer": "Thank you for your business. For questions about this invoice, please contact our billing team.",
 	}
+
+	// Add line items if available
+	if len(lineItems) > 0 {
+		pdfData["line_items"] = lineItems
+	}
+
+	// Handle multi-currency invoices
 	if invoice.OriginalAmount > 0 && invoice.OriginalCurrency != "" {
 		table := pdfData["table"].([][3]string)
-		table = append(table, [3]string{"Original Amount", fmt.Sprintf("%.2f", invoice.OriginalAmount), invoice.OriginalCurrency})
+		table = append(table, [3]string{
+			"Original Amount",
+			fmt.Sprintf("%.2f", invoice.OriginalAmount),
+			invoice.OriginalCurrency,
+		})
 		pdfData["table"] = table
 	}
+
+	// Parse fees if present
+	if invoice.Fees != "" {
+		var fees []map[string]interface{}
+		feeErr := json.Unmarshal([]byte(invoice.Fees), &fees)
+		if feeErr == nil && len(fees) > 0 {
+			for _, fee := range fees {
+				feeType, ok1 := fee["type"].(string)
+				feeAmount, ok2 := fee["amount"].(float64)
+				if ok1 && ok2 {
+					description := "Fee"
+					if feeType == "fixed" {
+						description = "Processing Fee"
+					} else if feeType == "percent" {
+						description = fmt.Sprintf("Service Fee (%.2f%%)", feeAmount)
+						// Convert percentage to actual amount for consistent display
+						feeAmount = (invoice.Amount - invoice.TaxAmount) * feeAmount / 100
+					}
+
+					table := pdfData["table"].([][3]string)
+					table = append(table, [3]string{
+						description,
+						fmt.Sprintf("%.2f", feeAmount),
+						invoice.Currency,
+					})
+					pdfData["table"] = table
+				}
+			}
+		}
+	}
+
+	// Generate PDF
 	pdfBytes, pdfErr := generateInvoicePDF(pdfData)
 	if pdfErr != nil {
-		return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"error": pdfErr.Error()})
+		logger.LogError("DownloadInvoicePDF: PDF generation failed",
+			logger.ErrorField(pdfErr),
+			logger.String("invoice_id", id))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate PDF"})
 	}
+
+	// Set response headers and return PDF
 	c.Set("Content-Type", "application/pdf")
 	c.Set("Content-Disposition", "attachment; filename=invoice-"+invoice.ID+".pdf")
 	return c.Send(pdfBytes)
@@ -1082,93 +1670,240 @@ func (h *BillingAdminHandler) StripeWebhookHandler(c *fiber.Ctx) error {
 		logger.LogError("stripe.webhook.body_too_large")
 		return c.SendStatus(fiber.StatusOK)
 	}
+
+	// Get webhook secret from environment or configuration
 	secret := os.Getenv("STRIPE_WEBHOOK_SECRET")
 	if secret == "" {
+		// Just use the environment variable for now
 		logger.LogError("stripe.webhook.secret_missing")
 		return c.SendStatus(fiber.StatusOK)
 	}
+
+	// Verify Stripe signature
 	sig := c.Get("Stripe-Signature")
 	if sig == "" {
 		logger.LogError("stripe.webhook.signature_missing")
 		return c.SendStatus(fiber.StatusOK)
 	}
+
+	// Construct the event
 	event, err := webhook.ConstructEvent(body, sig, secret)
 	if err != nil {
-		logger.LogError("stripe.webhook.invalid_signature", logger.ErrorField(err))
+		logger.LogError("stripe.webhook.invalid_signature",
+			logger.ErrorField(err),
+			logger.String("signature", sig))
 		return c.SendStatus(fiber.StatusOK)
 	}
+
+	// Check for duplicate events (idempotency)
 	processed, err := h.Store.IsStripeEventProcessed(c.Context(), event.ID)
 	if err != nil {
-		logger.LogError("stripe.webhook.idempotency_check_failed", logger.ErrorField(err), logger.String("event_id", event.ID))
+		logger.LogError("stripe.webhook.idempotency_check_failed",
+			logger.ErrorField(err),
+			logger.String("event_id", event.ID))
+		// Continue processing even if the check fails
+	} else if processed {
+		logger.LogInfo("stripe.webhook.duplicate_event",
+			logger.String("event_id", event.ID),
+			logger.String("type", string(event.Type)))
 		return c.SendStatus(fiber.StatusOK)
 	}
-	if processed {
-		logger.LogInfo("stripe.webhook.duplicate_event", logger.String("event_id", event.ID), logger.String("type", string(event.Type)))
-		return c.SendStatus(fiber.StatusOK)
-	}
-	logger.LogInfo("stripe.webhook.event_received", logger.String("type", string(event.Type)))
+
+	logger.LogInfo("stripe.webhook.event_received",
+		logger.String("event_id", event.ID),
+		logger.String("type", string(event.Type)))
+
+	// Process the event based on its type
+	processed = true // Assume we'll mark it as processed
+
 	switch event.Type {
+	// Invoice events
 	case "invoice.paid":
 		invoiceObj := event.Data.Object
 		invoiceID, ok := invoiceObj["id"].(string)
 		if !ok || invoiceID == "" {
 			logger.LogError("stripe.webhook.invoice_paid.missing_id")
+			processed = false
 			break
 		}
 		err := h.Store.UpdateInvoiceStatus(c.Context(), invoiceID, "paid")
 		if err != nil {
-			logger.LogError("stripe.webhook.invoice_paid.update_failed", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
+			logger.LogError("stripe.webhook.invoice_paid.update_failed",
+				logger.ErrorField(err),
+				logger.String("invoice_id", invoiceID))
+			processed = false
 		} else {
-			logger.LogInfo("stripe.webhook.invoice_paid.updated", logger.String("invoice_id", invoiceID))
-			h.Store.MarkStripeEventProcessed(c.Context(), event.ID, string(event.Type))
+			logger.LogInfo("stripe.webhook.invoice_paid.updated",
+				logger.String("invoice_id", invoiceID))
+
+			// Just log that the invoice is paid - payments will be updated separately
+			logger.LogInfo("stripe.webhook.invoice_paid.payments_update",
+				logger.String("invoice_id", invoiceID))
 		}
+
+	// Payment intent events
 	case "payment_intent.succeeded":
 		intentObj := event.Data.Object
+		paymentIntentID, ok := intentObj["id"].(string)
+		if !ok || paymentIntentID == "" {
+			logger.LogError("stripe.webhook.payment_intent_succeeded.missing_id")
+			processed = false
+			break
+		}
+
+		// Update payment status directly
+		if err := h.PaymentStore.UpdatePaymentStatus(c.Context(), paymentIntentID, "succeeded"); err != nil {
+			logger.LogError("stripe.webhook.payment_intent_succeeded.update_status_failed",
+				logger.ErrorField(err),
+				logger.String("payment_id", paymentIntentID))
+		}
+
+		// If attached to an invoice, update the invoice too
 		invoiceID, ok := intentObj["invoice"].(string)
 		if ok && invoiceID != "" {
 			err := h.Store.UpdateInvoiceStatus(c.Context(), invoiceID, "paid")
 			if err != nil {
-				logger.LogError("stripe.webhook.payment_intent_succeeded.update_failed", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
+				logger.LogError("stripe.webhook.payment_intent_succeeded.update_invoice_failed",
+					logger.ErrorField(err),
+					logger.String("invoice_id", invoiceID))
+				processed = false
 			} else {
-				logger.LogInfo("stripe.webhook.payment_intent_succeeded.updated", logger.String("invoice_id", invoiceID))
-				h.Store.MarkStripeEventProcessed(c.Context(), event.ID, string(event.Type))
+				logger.LogInfo("stripe.webhook.payment_intent_succeeded.updated",
+					logger.String("payment_id", paymentIntentID),
+					logger.String("invoice_id", invoiceID))
 			}
 		} else {
-			logger.LogInfo("stripe.webhook.payment_intent_succeeded.no_invoice")
+			logger.LogInfo("stripe.webhook.payment_intent_succeeded.standalone",
+				logger.String("payment_id", paymentIntentID))
 		}
+
+	case "payment_intent.payment_failed":
+		intentObj := event.Data.Object
+		paymentIntentID, ok := intentObj["id"].(string)
+		if !ok || paymentIntentID == "" {
+			logger.LogError("stripe.webhook.payment_intent_failed.missing_id")
+			processed = false
+			break
+		}
+
+		// Update payment status directly
+		if err := h.PaymentStore.UpdatePaymentStatus(c.Context(), paymentIntentID, "failed"); err != nil {
+			logger.LogError("stripe.webhook.payment_intent_failed.update_status_failed",
+				logger.ErrorField(err),
+				logger.String("payment_id", paymentIntentID))
+		}
+
+		// If attached to an invoice, update the invoice too
+		invoiceID, ok := intentObj["invoice"].(string)
+		if ok && invoiceID != "" {
+			err := h.Store.UpdateInvoiceStatus(c.Context(), invoiceID, "payment_failed")
+			if err != nil {
+				logger.LogError("stripe.webhook.payment_intent_failed.update_invoice_failed",
+					logger.ErrorField(err),
+					logger.String("invoice_id", invoiceID))
+				processed = false
+			} else {
+				logger.LogInfo("stripe.webhook.payment_intent_failed.updated",
+					logger.String("payment_id", paymentIntentID),
+					logger.String("invoice_id", invoiceID))
+			}
+		} else {
+			logger.LogInfo("stripe.webhook.payment_intent_failed.standalone",
+				logger.String("payment_id", paymentIntentID))
+		}
+
 	case "invoice.payment_failed":
 		invoiceObj := event.Data.Object
 		invoiceID, ok := invoiceObj["id"].(string)
 		if !ok || invoiceID == "" {
 			logger.LogError("stripe.webhook.invoice_payment_failed.missing_id")
+			processed = false
 			break
 		}
 		err := h.Store.UpdateInvoiceStatus(c.Context(), invoiceID, "payment_failed")
 		if err != nil {
-			logger.LogError("stripe.webhook.invoice_payment_failed.update_failed", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
+			logger.LogError("stripe.webhook.invoice_payment_failed.update_failed",
+				logger.ErrorField(err),
+				logger.String("invoice_id", invoiceID))
+			processed = false
 		} else {
-			logger.LogInfo("stripe.webhook.invoice_payment_failed.updated", logger.String("invoice_id", invoiceID))
-			h.Store.MarkStripeEventProcessed(c.Context(), event.ID, string(event.Type))
+			logger.LogInfo("stripe.webhook.invoice_payment_failed.updated",
+				logger.String("invoice_id", invoiceID))
 		}
+
+	// Subscription events
+	case "customer.subscription.created":
+		subObj := event.Data.Object
+		subID, ok := subObj["id"].(string)
+		if !ok || subID == "" {
+			logger.LogError("stripe.webhook.subscription_created.missing_id")
+			processed = false
+			break
+		}
+		err := h.Store.UpdateSubscriptionStatus(c.Context(), subID, "active")
+		if err != nil {
+			logger.LogError("stripe.webhook.subscription_created.update_failed",
+				logger.ErrorField(err),
+				logger.String("subscription_id", subID))
+			processed = false
+		} else {
+			logger.LogInfo("stripe.webhook.subscription_created.updated",
+				logger.String("subscription_id", subID))
+		}
+
+	case "customer.subscription.updated":
+		subObj := event.Data.Object
+		subID, ok := subObj["id"].(string)
+		if !ok || subID == "" {
+			logger.LogError("stripe.webhook.subscription_updated.missing_id")
+			processed = false
+			break
+		}
+		status, ok := subObj["status"].(string)
+		if !ok || status == "" {
+			logger.LogError("stripe.webhook.subscription_updated.missing_status")
+			processed = false
+			break
+		}
+		err := h.Store.UpdateSubscriptionStatus(c.Context(), subID, status)
+		if err != nil {
+			logger.LogError("stripe.webhook.subscription_updated.update_failed",
+				logger.ErrorField(err),
+				logger.String("subscription_id", subID))
+			processed = false
+		} else {
+			logger.LogInfo("stripe.webhook.subscription_updated.updated",
+				logger.String("subscription_id", subID),
+				logger.String("status", status))
+		}
+
 	case "customer.subscription.deleted":
 		subObj := event.Data.Object
 		subID, ok := subObj["id"].(string)
 		if !ok || subID == "" {
 			logger.LogError("stripe.webhook.subscription_deleted.missing_id")
+			processed = false
 			break
 		}
 		err := h.Store.UpdateSubscriptionStatus(c.Context(), subID, "canceled")
 		if err != nil {
-			logger.LogError("stripe.webhook.subscription_deleted.update_failed", logger.ErrorField(err), logger.String("subscription_id", subID))
+			logger.LogError("stripe.webhook.subscription_deleted.update_failed",
+				logger.ErrorField(err),
+				logger.String("subscription_id", subID))
+			processed = false
 		} else {
-			logger.LogInfo("stripe.webhook.subscription_deleted.updated", logger.String("subscription_id", subID))
-			h.Store.MarkStripeEventProcessed(c.Context(), event.ID, string(event.Type))
+			logger.LogInfo("stripe.webhook.subscription_deleted.updated",
+				logger.String("subscription_id", subID))
 		}
+
+	// Other invoice status changes
 	case "invoice.upcoming", "invoice.finalized", "invoice.voided", "invoice.marked_uncollectible":
 		invoiceObj := event.Data.Object
 		invoiceID, ok := invoiceObj["id"].(string)
 		if !ok || invoiceID == "" {
-			logger.LogError("stripe.webhook.invoice_event.missing_id", logger.String("type", string(event.Type)))
+			logger.LogError("stripe.webhook.invoice_event.missing_id",
+				logger.String("type", string(event.Type)))
+			processed = false
 			break
 		}
 		status := ""
@@ -1185,29 +1920,70 @@ func (h *BillingAdminHandler) StripeWebhookHandler(c *fiber.Ctx) error {
 		if status != "" {
 			err := h.Store.UpdateInvoiceStatus(c.Context(), invoiceID, status)
 			if err != nil {
-				logger.LogError("stripe.webhook.invoice_event.update_failed", logger.ErrorField(err), logger.String("invoice_id", invoiceID), logger.String("status", status))
+				logger.LogError("stripe.webhook.invoice_event.update_failed",
+					logger.ErrorField(err),
+					logger.String("invoice_id", invoiceID),
+					logger.String("status", status))
+				processed = false
 			} else {
-				logger.LogInfo("stripe.webhook.invoice_event.updated", logger.String("invoice_id", invoiceID), logger.String("status", status))
-				h.Store.MarkStripeEventProcessed(c.Context(), event.ID, string(event.Type))
+				logger.LogInfo("stripe.webhook.invoice_event.updated",
+					logger.String("invoice_id", invoiceID),
+					logger.String("status", status))
 			}
 		}
+
+	// Refund events
 	case "charge.refunded":
 		chargeObj := event.Data.Object
 		paymentID, ok := chargeObj["payment_intent"].(string)
 		if !ok || paymentID == "" {
 			logger.LogError("stripe.webhook.charge_refunded.missing_payment_intent")
+			processed = false
 			break
 		}
 		err := h.PaymentStore.UpdatePaymentStatus(c.Context(), paymentID, "refunded")
 		if err != nil {
-			logger.LogError("stripe.webhook.charge_refunded.update_failed", logger.ErrorField(err), logger.String("payment_id", paymentID))
+			logger.LogError("stripe.webhook.charge_refunded.update_failed",
+				logger.ErrorField(err),
+				logger.String("payment_id", paymentID))
+			processed = false
 		} else {
-			logger.LogInfo("stripe.webhook.charge_refunded.updated", logger.String("payment_id", paymentID))
-			h.Store.MarkStripeEventProcessed(c.Context(), event.ID, string(event.Type))
+			logger.LogInfo("stripe.webhook.charge_refunded.updated",
+				logger.String("payment_id", paymentID))
 		}
+
+		// Dispute events
+	case "charge.dispute.created":
+		disputeObj := event.Data.Object
+		disputeID, ok := disputeObj["id"].(string)
+		if !ok || disputeID == "" {
+			logger.LogError("stripe.webhook.dispute_created.missing_id")
+			processed = false
+			break
+		}
+
+		// Just log the dispute event for now
+		// Implement proper dispute handling in a future update
+		logger.LogInfo("stripe.webhook.dispute_created.received",
+			logger.String("dispute_id", disputeID))
+
 	default:
-		logger.LogInfo("stripe.webhook.unhandled_event", logger.String("type", string(event.Type)))
+		logger.LogInfo("stripe.webhook.unhandled_event",
+			logger.String("type", string(event.Type)))
+		// We still mark it as processed so we don't keep trying to process it
 	}
+
+	// Mark the event as processed if successful
+	if processed {
+		if err := h.Store.MarkStripeEventProcessed(c.Context(), event.ID, string(event.Type)); err != nil {
+			logger.LogError("stripe.webhook.mark_processed_failed",
+				logger.ErrorField(err),
+				logger.String("event_id", event.ID))
+		}
+	}
+
+	// Always return 200 OK to Stripe, even if we had errors processing the event
+	// This prevents Stripe from retrying events that we can't process
 	return c.SendStatus(fiber.StatusOK)
 }
 
@@ -1215,68 +1991,302 @@ func DunningWorker(store *PostgresStore, paymentStore payment.StoreInterface, ac
 	ctx := context.Background()
 	logger.LogInfo("dunning.worker.starting")
 	for {
-		dunningConfig, err := store.GetDunningConfig(ctx, "") // pass tenantID if multi-tenant
-		if err != nil || dunningConfig == nil {
-			logger.LogError("dunning.worker.get_dunning_config_failed", logger.ErrorField(err))
-			time.Sleep(5 * time.Minute)
-			continue
-		}
-		invoices, err := store.ListInvoicesForDunning(ctx, time.Now().UTC(), dunningConfig.MaxAttempts)
+		// Process all tenants with active dunning configs
+		tenants, err := store.ListTenantsWithDunningConfig(ctx)
 		if err != nil {
-			logger.LogError("dunning.worker.list_invoices_failed", logger.ErrorField(err))
+			logger.LogError("dunning.worker.list_tenants_failed", logger.ErrorField(err))
 			time.Sleep(5 * time.Minute)
 			continue
 		}
-		for _, inv := range invoices {
-			res, err := accountService.Get(ctx, account.AccountTypeProject, inv.AccountID)
+
+		// Process each tenant with its own dunning configuration
+		for _, tenantID := range tenants {
+			// Get tenant-specific dunning configuration
+			dunningConfig, err := store.GetDunningConfig(ctx, tenantID)
+			if err != nil || dunningConfig == nil {
+				logger.LogError("dunning.worker.get_dunning_config_failed",
+					logger.ErrorField(err),
+					logger.String("tenant_id", tenantID))
+				continue
+			}
+
+			// Get invoices eligible for dunning from this tenant
+			invoices, err := store.ListInvoicesForDunning(ctx, time.Now().UTC(), dunningConfig.MaxAttempts, tenantID)
 			if err != nil {
-				logger.LogError("dunning.worker.account_not_found", logger.ErrorField(err), logger.String("account_id", inv.AccountID))
+				logger.LogError("dunning.worker.list_invoices_failed",
+					logger.ErrorField(err),
+					logger.String("tenant_id", tenantID))
 				continue
 			}
-			acct, _ := res.(account.ProjectBillingAccount)
-			if acct.Email == "" {
-				logger.LogError("dunning.worker.account_no_email", logger.String("account_id", inv.AccountID))
-				continue
-			}
-			logger.LogInfo("dunning.worker.retrying_payment", logger.String("invoice_id", inv.ID), logger.String("account_id", inv.AccountID))
-			failedPayment := &payment.FailedPayment{ID: inv.ID, InvoiceID: inv.ID, DunningAttempts: inv.DunningAttempts, DunningState: inv.DunningStatus, LastDunningAttempt: inv.DunningNextAttemptAt}
-			result, payErr := payment.RetryPayment(ctx, paymentStore, failedPayment)
-			if payErr == nil && result != nil && result.Status == "succeeded" {
-				err := store.UpdateInvoiceStatus(ctx, inv.ID, "paid")
+
+			logger.LogInfo("dunning.worker.processing_tenant",
+				logger.String("tenant_id", tenantID),
+				logger.Int("invoices_to_process", len(invoices)))
+
+			// Process each invoice eligible for dunning
+			for _, inv := range invoices {
+				// Get account details
+				res, err := accountService.Get(ctx, account.AccountTypeProject, inv.AccountID)
 				if err != nil {
-					logger.LogError("dunning.worker.update_invoice_status_failed", logger.ErrorField(err), logger.String("invoice_id", inv.ID))
+					logger.LogError("dunning.worker.account_not_found",
+						logger.ErrorField(err),
+						logger.String("account_id", inv.AccountID),
+						logger.String("invoice_id", inv.ID))
+					continue
 				}
-				details := map[string]interface{}{
-					"invoice_id":    inv.ID,
-					"amount":        inv.Amount,
-					"currency":      inv.Currency,
-					"status":        "paid",
-					"account_id":    acct.ID,
-					"account_email": acct.Email,
+
+				acct, _ := res.(account.ProjectBillingAccount)
+				if acct.Email == "" {
+					logger.LogError("dunning.worker.account_no_email",
+						logger.String("account_id", inv.AccountID),
+						logger.String("invoice_id", inv.ID))
+					continue
 				}
-				nErr := notificationService.SendNotification(ctx, acct.TenantID, security_management.NotificationEmail, []string{acct.Email}, "invoice.paid", details, 3)
-				if nErr != nil {
-					logger.LogError("dunning.worker.notify_paid_failed", logger.ErrorField(nErr), logger.String("account_id", acct.ID))
+
+				// Create dunning event to record the attempt
+				eventID := commonutil.GenerateUUID()
+				event := &DunningEvent{
+					ID:        eventID,
+					AccountID: inv.AccountID,
+					InvoiceID: inv.ID,
+					EventType: "automated_retry",
+					Details: map[string]interface{}{
+						"attempt":      inv.DunningAttempts + 1,
+						"max_attempts": dunningConfig.MaxAttempts,
+						"amount":       inv.Amount,
+						"currency":     inv.Currency,
+					},
+					CreatedAt: time.Now().UTC(),
 				}
-				logger.LogInfo("dunning.worker.payment_success", logger.String("invoice_id", inv.ID))
-				continue
+
+				// Store event (don't fail if this fails)
+				_ = store.CreateDunningEvent(ctx, event)
+
+				logger.LogInfo("dunning.worker.retrying_payment",
+					logger.String("invoice_id", inv.ID),
+					logger.String("account_id", inv.AccountID),
+					logger.String("tenant_id", acct.TenantID),
+					logger.Int("attempt", inv.DunningAttempts+1),
+					logger.Int("max_attempts", dunningConfig.MaxAttempts))
+
+				// Set up failed payment object for retry
+				failedPayment := &payment.FailedPayment{
+					ID:                 inv.ID,
+					InvoiceID:          inv.ID,
+					DunningAttempts:    inv.DunningAttempts,
+					DunningState:       inv.DunningStatus,
+					LastDunningAttempt: inv.DunningNextAttemptAt,
+				}
+
+				// Retry the payment
+				result, payErr := payment.RetryPayment(ctx, paymentStore, failedPayment)
+
+				// Handle success
+				if payErr == nil && result != nil && result.Status == "succeeded" {
+					// Update invoice status
+					err := store.UpdateInvoiceStatus(ctx, inv.ID, "paid")
+					if err != nil {
+						logger.LogError("dunning.worker.update_invoice_status_failed",
+							logger.ErrorField(err),
+							logger.String("invoice_id", inv.ID))
+					}
+
+					// Create success event
+					successEvent := &DunningEvent{
+						ID:        commonutil.GenerateUUID(),
+						AccountID: inv.AccountID,
+						InvoiceID: inv.ID,
+						EventType: "payment_success",
+						Details: map[string]interface{}{
+							"attempt":        inv.DunningAttempts + 1,
+							"payment_id":     result.PaymentID,
+							"payment_method": getPaymentMethodOrDefault(result),
+							"amount":         inv.Amount,
+							"currency":       inv.Currency,
+						},
+						CreatedAt: time.Now().UTC(),
+					}
+					_ = store.CreateDunningEvent(ctx, successEvent)
+
+					// Send success notification
+					details := map[string]interface{}{
+						"invoice_id":      inv.ID,
+						"amount":          inv.Amount,
+						"currency":        inv.Currency,
+						"status":          "paid",
+						"account_id":      acct.ID,
+						"account_email":   acct.Email,
+						"payment_id":      result.PaymentID,
+						"dunning_attempt": inv.DunningAttempts + 1,
+					}
+
+					nErr := notificationService.SendNotification(
+						ctx,
+						acct.TenantID,
+						security_management.NotificationEmail,
+						[]string{acct.Email},
+						"invoice.paid_after_retry",
+						details,
+						3,
+					)
+
+					if nErr != nil {
+						logger.LogError("dunning.worker.notify_paid_failed",
+							logger.ErrorField(nErr),
+							logger.String("account_id", acct.ID))
+					}
+
+					logger.LogInfo("dunning.worker.payment_success",
+						logger.String("invoice_id", inv.ID),
+						logger.String("tenant_id", acct.TenantID),
+						logger.Int("attempts", inv.DunningAttempts+1))
+
+					continue
+				}
+
+				// Handle failure - determine next steps based on attempt count
+				newAttempts := inv.DunningAttempts + 1
+
+				// Calculate next attempt time based on retry intervals
+				var nextAttemptAt time.Time
+
+				if newAttempts >= dunningConfig.MaxAttempts {
+					// Mark as failed if max attempts reached
+					err := store.UpdateInvoiceDunning(ctx, inv.ID, "failed", newAttempts, time.Now().UTC())
+					if err != nil {
+						logger.LogError("dunning.worker.update_dunning_failed",
+							logger.ErrorField(err),
+							logger.String("invoice_id", inv.ID))
+					}
+
+					// Create final failure event
+					failEvent := &DunningEvent{
+						ID:        commonutil.GenerateUUID(),
+						AccountID: inv.AccountID,
+						InvoiceID: inv.ID,
+						EventType: "dunning_failed",
+						Details: map[string]interface{}{
+							"final_attempt": true,
+							"max_attempts":  dunningConfig.MaxAttempts,
+							"amount":        inv.Amount,
+							"currency":      inv.Currency,
+							"error":         payErr.Error(),
+						},
+						CreatedAt: time.Now().UTC(),
+					}
+					_ = store.CreateDunningEvent(ctx, failEvent)
+
+					// Send final failure notification with escalation info
+					details := map[string]interface{}{
+						"invoice_id":    inv.ID,
+						"amount":        inv.Amount,
+						"currency":      inv.Currency,
+						"status":        "dunning_failed",
+						"account_id":    acct.ID,
+						"account_email": acct.Email,
+						"final_attempt": true,
+						"attempts":      newAttempts,
+						"max_attempts":  dunningConfig.MaxAttempts,
+					}
+
+					// Send notification about failed dunning with escalation
+					nErr := notificationService.SendNotification(
+						ctx,
+						acct.TenantID,
+						security_management.NotificationEmail,
+						[]string{acct.Email},
+						"invoice.dunning_failed",
+						details,
+						3,
+					)
+
+					if nErr != nil {
+						logger.LogError("dunning.worker.notify_final_failed",
+							logger.ErrorField(nErr),
+							logger.String("account_id", acct.ID))
+					}
+
+					logger.LogError("dunning.worker.dunning_failed",
+						logger.String("invoice_id", inv.ID),
+						logger.Int("attempts", newAttempts),
+						logger.String("tenant_id", acct.TenantID))
+
+				} else {
+					// Schedule next attempt based on configured intervals
+					intervalIndex := newAttempts - 1
+					if intervalIndex < len(dunningConfig.RetryIntervals) {
+						nextAttemptAt = time.Now().UTC().Add(dunningConfig.RetryIntervals[intervalIndex])
+					} else {
+						// Default to 24 hours if no specific interval is configured
+						nextAttemptAt = time.Now().UTC().Add(24 * time.Hour)
+					}
+
+					// Update invoice with new dunning information
+					err := store.UpdateInvoiceDunning(ctx, inv.ID, "active", newAttempts, nextAttemptAt)
+					if err != nil {
+						logger.LogError("dunning.worker.update_dunning_failed",
+							logger.ErrorField(err),
+							logger.String("invoice_id", inv.ID))
+					}
+
+					// Create retry failure event
+					failEvent := &DunningEvent{
+						ID:        commonutil.GenerateUUID(),
+						AccountID: inv.AccountID,
+						InvoiceID: inv.ID,
+						EventType: "payment_retry_failed",
+						Details: map[string]interface{}{
+							"attempt":         newAttempts,
+							"max_attempts":    dunningConfig.MaxAttempts,
+							"next_attempt_at": nextAttemptAt,
+							"amount":          inv.Amount,
+							"currency":        inv.Currency,
+							"error":           payErr.Error(),
+						},
+						CreatedAt: time.Now().UTC(),
+					}
+					_ = store.CreateDunningEvent(ctx, failEvent)
+
+					// Send failure notification with next attempt info
+					details := map[string]interface{}{
+						"invoice_id":      inv.ID,
+						"amount":          inv.Amount,
+						"currency":        inv.Currency,
+						"status":          "payment_failed",
+						"account_id":      acct.ID,
+						"account_email":   acct.Email,
+						"attempt":         newAttempts,
+						"max_attempts":    dunningConfig.MaxAttempts,
+						"next_attempt_at": nextAttemptAt.Format(time.RFC3339),
+					}
+
+					nErr := notificationService.SendNotification(
+						ctx,
+						acct.TenantID,
+						security_management.NotificationEmail,
+						[]string{acct.Email},
+						"invoice.payment_retry_failed",
+						details,
+						3,
+					)
+
+					if nErr != nil {
+						logger.LogError("dunning.worker.notify_failed_failed",
+							logger.ErrorField(nErr),
+							logger.String("account_id", acct.ID))
+					}
+
+					logger.LogError("dunning.worker.payment_retry_failed",
+						logger.ErrorField(payErr),
+						logger.String("invoice_id", inv.ID),
+						logger.Int("attempt", newAttempts),
+						logger.String("next_attempt", nextAttemptAt.Format(time.RFC3339)))
+				}
 			}
-			logger.LogError("dunning.worker.payment_retry_failed", logger.ErrorField(payErr), logger.String("invoice_id", inv.ID))
-			details := map[string]interface{}{
-				"invoice_id":    inv.ID,
-				"amount":        inv.Amount,
-				"currency":      inv.Currency,
-				"status":        "payment_failed",
-				"account_id":    acct.ID,
-				"account_email": acct.Email,
-			}
-			nErr := notificationService.SendNotification(ctx, acct.TenantID, security_management.NotificationEmail, []string{acct.Email}, "invoice.payment_failed", details, 3)
-			if nErr != nil {
-				logger.LogError("dunning.worker.notify_failed_failed", logger.ErrorField(nErr), logger.String("account_id", acct.ID))
-			}
-			// Optionally: escalate after N failures, e.g. mark as "collections" or similar
 		}
-		time.Sleep(1 * time.Hour)
+
+		// Sleep before next cycle - check every 15 minutes
+		time.Sleep(15 * time.Minute)
 	}
 }
 
@@ -1775,4 +2785,526 @@ func (h *BillingAdminHandler) ConfigurePlugin(c *fiber.Ctx) error {
 
 	logger.LogInfo("ConfigurePlugin: plugin configured", logger.String("type", pluginType), logger.String("plugin", pluginName))
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "message": "plugin configured"})
+}
+
+// ExchangeRateWorker updates exchange rates automatically at scheduled intervals
+func ExchangeRateWorker(store *PostgresStore, serverConfig *server_config.Service) {
+	ctx := context.Background()
+	logger.LogInfo("exchange_rate.worker.starting")
+
+	// Configure which currencies to update
+	majorCurrencies := []string{"USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "HKD", "SGD"}
+
+	// Default update interval is 24 hours (daily updates)
+	updateInterval := 24 * time.Hour
+
+	for {
+		// Get configuration from server config if available
+		var source string
+		var apiKey string
+		var baseCurrency string
+
+		if serverConfig != nil {
+			// Try to get exchange rate provider config
+			exchCfg, err := serverConfig.Get(ctx, "exchange_rate")
+			if err == nil && exchCfg.Value != "" {
+				// Parse the JSON config
+				var cfg map[string]interface{}
+				if jsonErr := json.Unmarshal([]byte(exchCfg.Value), &cfg); jsonErr == nil {
+					if s, ok := cfg["source"].(string); ok && s != "" {
+						source = s
+					}
+					if key, ok := cfg["api_key"].(string); ok && key != "" {
+						apiKey = key
+					}
+					if base, ok := cfg["base_currency"].(string); ok && base != "" {
+						baseCurrency = base
+					}
+					if interval, ok := cfg["update_interval"].(string); ok && interval != "" {
+						// Try to parse interval (e.g., "12h", "1d", etc.)
+						if d, err := time.ParseDuration(interval); err == nil && d > 0 {
+							updateInterval = d
+						}
+					}
+				}
+			}
+		}
+
+		// Default values if not configured
+		if source == "" {
+			source = "ecb" // European Central Bank (free, no API key required)
+		}
+		if baseCurrency == "" {
+			baseCurrency = "EUR" // Default base currency
+		}
+
+		logger.LogInfo("exchange_rate.worker.updating",
+			logger.String("source", source),
+			logger.String("base_currency", baseCurrency))
+
+		// URLs for different external rate providers
+		var ratesURL string
+		var client = http.Client{
+			Timeout: 30 * time.Second,
+		}
+
+		switch strings.ToLower(source) {
+		case "ecb":
+			// European Central Bank (free, no API key)
+			ratesURL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
+		case "fixer":
+			// Fixer.io (requires API key)
+			if apiKey == "" {
+				logger.LogError("exchange_rate.worker.missing_api_key", logger.String("source", source))
+				time.Sleep(updateInterval)
+				continue
+			}
+			ratesURL = fmt.Sprintf("http://data.fixer.io/api/latest?access_key=%s&base=%s", apiKey, baseCurrency)
+		case "openexchangerates":
+			// Open Exchange Rates (requires API key)
+			if apiKey == "" {
+				logger.LogError("exchange_rate.worker.missing_api_key", logger.String("source", source))
+				time.Sleep(updateInterval)
+				continue
+			}
+			ratesURL = fmt.Sprintf("https://openexchangerates.org/api/latest.json?app_id=%s&base=%s", apiKey, baseCurrency)
+		default:
+			logger.LogError("exchange_rate.worker.unsupported_source", logger.String("source", source))
+			time.Sleep(updateInterval)
+			continue
+		}
+
+		// Make HTTP request to get exchange rates
+		req, err := http.NewRequestWithContext(ctx, "GET", ratesURL, nil)
+		if err != nil {
+			logger.LogError("exchange_rate.worker.request_creation_failed", logger.ErrorField(err))
+			time.Sleep(updateInterval)
+			continue
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			logger.LogError("exchange_rate.worker.request_failed", logger.ErrorField(err))
+			time.Sleep(updateInterval)
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			logger.LogError("exchange_rate.worker.api_error", logger.Int("status_code", resp.StatusCode))
+			resp.Body.Close()
+			time.Sleep(updateInterval)
+			continue
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			logger.LogError("exchange_rate.worker.read_body_failed", logger.ErrorField(err))
+			time.Sleep(updateInterval)
+			continue
+		}
+
+		// Parse response based on source
+		rates := make(map[string]float64)
+
+		switch strings.ToLower(source) {
+		case "ecb":
+			// Parse XML from ECB
+			var ecbData struct {
+				Cube struct {
+					Cube struct {
+						Cube []struct {
+							Currency string  `xml:"currency,attr"`
+							Rate     float64 `xml:"rate,attr"`
+						} `xml:"Cube"`
+					} `xml:"Cube"`
+				} `xml:"Cube"`
+			}
+			if err := xml.Unmarshal(body, &ecbData); err != nil {
+				logger.LogError("exchange_rate.worker.parse_xml_failed", logger.ErrorField(err))
+				time.Sleep(updateInterval)
+				continue
+			}
+
+			for _, cube := range ecbData.Cube.Cube.Cube {
+				rates[cube.Currency] = cube.Rate
+			}
+
+			// ECB uses EUR as base, so we need to handle conversions if baseCurrency is not EUR
+			if baseCurrency != "EUR" {
+				// Check if we have a rate for the requested base currency
+				baseRate, ok := rates[baseCurrency]
+				if !ok {
+					logger.LogError("exchange_rate.worker.base_currency_not_found",
+						logger.String("base_currency", baseCurrency))
+					time.Sleep(updateInterval)
+					continue
+				}
+
+				// Adjust all rates to the new base
+				for curr, rate := range rates {
+					rates[curr] = rate / baseRate
+				}
+				// Add EUR rate
+				rates["EUR"] = 1.0 / baseRate
+			}
+
+		case "fixer", "openexchangerates":
+			// Parse JSON from Fixer or Open Exchange Rates
+			var data struct {
+				Success bool               `json:"success"`
+				Base    string             `json:"base"`
+				Rates   map[string]float64 `json:"rates"`
+				Error   struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+
+			if err := json.Unmarshal(body, &data); err != nil {
+				logger.LogError("exchange_rate.worker.parse_json_failed", logger.ErrorField(err))
+				time.Sleep(updateInterval)
+				continue
+			}
+
+			// Check for API-specific errors
+			if !data.Success {
+				logger.LogError("exchange_rate.worker.api_error_response",
+					logger.String("error_code", data.Error.Code),
+					logger.String("error_message", data.Error.Message))
+				time.Sleep(updateInterval)
+				continue
+			}
+
+			rates = data.Rates
+		}
+
+		// Store rates in database
+		updatedCount := 0
+
+		for _, currency := range majorCurrencies {
+			if currency == baseCurrency {
+				// Skip base currency against itself
+				continue
+			}
+
+			rate, ok := rates[currency]
+			if !ok {
+				logger.LogWarn("exchange_rate.worker.currency_not_found",
+					logger.String("currency", currency))
+				continue
+			}
+
+			// Create exchange rate record
+			exchangeRate := ExchangeRate{
+				ID:            commonutil.GenerateUUID(),
+				BaseCurrency:  baseCurrency,
+				QuoteCurrency: currency,
+				Rate:          rate,
+				Source:        source,
+				UpdatedAt:     time.Now().UTC(),
+			}
+
+			// Store in database
+			_, err := store.CreateExchangeRate(ctx, exchangeRate)
+			if err != nil {
+				logger.LogError("exchange_rate.worker.store_rate_failed",
+					logger.ErrorField(err),
+					logger.String("base", exchangeRate.BaseCurrency),
+					logger.String("quote", exchangeRate.QuoteCurrency))
+				continue
+			}
+
+			updatedCount++
+		}
+
+		logger.LogInfo("exchange_rate.worker.rates_updated",
+			logger.Int("count", updatedCount),
+			logger.String("source", source),
+			logger.String("base", baseCurrency))
+
+		// Sleep until next update
+		time.Sleep(updateInterval)
+	}
+}
+
+// --- Dunning Configuration Handlers ---
+
+// GetDunningConfig retrieves the current dunning configuration for a tenant
+func (h *BillingAdminHandler) GetDunningConfig(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id")
+	if tenantID == "" {
+		logger.LogError("GetDunningConfig: tenant_id required", logger.String("tenant_id", tenantID))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	}
+
+	config, err := h.Store.GetDunningConfig(c.Context(), tenantID)
+	if err != nil {
+		logger.LogError("GetDunningConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "dunning configuration not found"})
+	}
+
+	// Convert durations to strings for easier client handling
+	intervals := make([]string, len(config.RetryIntervals))
+	for i, duration := range config.RetryIntervals {
+		intervals[i] = duration.String()
+	}
+
+	return c.JSON(fiber.Map{
+		"tenant_id":       tenantID,
+		"max_attempts":    config.MaxAttempts,
+		"retry_intervals": intervals,
+	})
+}
+
+// UpdateDunningConfig updates the dunning configuration for a tenant
+func (h *BillingAdminHandler) UpdateDunningConfig(c *fiber.Ctx) error {
+	var input struct {
+		TenantID       string   `json:"tenant_id"`
+		MaxAttempts    int      `json:"max_attempts"`
+		RetryIntervals []string `json:"retry_intervals"`
+	}
+
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("UpdateDunningConfig: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+
+	if input.TenantID == "" {
+		logger.LogError("UpdateDunningConfig: tenant_id required", logger.String("tenant_id", input.TenantID))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	}
+
+	if input.MaxAttempts < 1 || input.MaxAttempts > 10 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "max_attempts must be between 1 and 10"})
+	}
+
+	if len(input.RetryIntervals) != input.MaxAttempts {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fmt.Sprintf("retry_intervals length must match max_attempts (%d)", input.MaxAttempts),
+		})
+	}
+
+	// Validate and parse retry intervals
+	intervals := make([]time.Duration, len(input.RetryIntervals))
+	for i, intervalStr := range input.RetryIntervals {
+		duration, err := time.ParseDuration(intervalStr)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("invalid duration format at position %d: %s (use 1h, 24h, 7d format)", i, intervalStr),
+			})
+		}
+		if duration < 1*time.Hour || duration > 30*24*time.Hour {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("interval at position %d must be between 1 hour and 30 days", i),
+			})
+		}
+		intervals[i] = duration
+	}
+
+	// Create DunningConfig object
+	config := &payment.DunningConfig{
+		MaxAttempts:    input.MaxAttempts,
+		RetryIntervals: intervals,
+	}
+
+	// Store the configuration
+	if err := h.Store.SetDunningConfig(c.Context(), input.TenantID, config); err != nil {
+		logger.LogError("UpdateDunningConfig: failed to save", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to save dunning configuration"})
+	}
+
+	return c.JSON(fiber.Map{
+		"tenant_id":       input.TenantID,
+		"max_attempts":    input.MaxAttempts,
+		"retry_intervals": input.RetryIntervals,
+		"status":          "success",
+	})
+}
+
+// ManualRetryDunning allows an admin to manually retry a failed payment for an invoice
+func (h *BillingAdminHandler) ManualRetryDunning(c *fiber.Ctx) error {
+	invoiceID := c.Params("id")
+	if invoiceID == "" {
+		logger.LogError("ManualRetryDunning: invoice_id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})
+	}
+
+	// Get the invoice
+	invoice, err := h.Store.GetInvoice(c.Context(), invoiceID)
+	if err != nil {
+		logger.LogError("ManualRetryDunning: invoice not found", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "invoice not found"})
+	}
+
+	// Create a dunning event for this manual attempt
+	event := &DunningEvent{
+		ID:        commonutil.GenerateUUID(),
+		AccountID: invoice.AccountID,
+		InvoiceID: invoice.ID,
+		EventType: "manual_retry",
+		Details: map[string]interface{}{
+			"attempt":  invoice.DunningAttempts + 1,
+			"manual":   true,
+			"amount":   invoice.Amount,
+			"currency": invoice.Currency,
+			"actor_id": commonutil.GetActorOrSystem(c),
+		},
+		CreatedAt: time.Now().UTC(),
+	}
+
+	// Store event
+	err = h.Store.CreateDunningEvent(c.Context(), event)
+	if err != nil {
+		logger.LogError("ManualRetryDunning: failed to create event", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
+		// Continue even if event creation fails
+	}
+
+	// Prepare the failed payment for retry
+	failedPayment := &payment.FailedPayment{
+		ID:                 invoice.ID,
+		InvoiceID:          invoice.ID,
+		DunningAttempts:    invoice.DunningAttempts,
+		DunningState:       invoice.DunningStatus,
+		LastDunningAttempt: invoice.DunningNextAttemptAt,
+	}
+
+	// Attempt the payment
+	result, payErr := payment.RetryPayment(c.Context(), h.PaymentStore, failedPayment)
+
+	// Handle success
+	if payErr == nil && result != nil && result.Status == "succeeded" {
+		// Update invoice status
+		err := h.Store.UpdateInvoiceStatus(c.Context(), invoice.ID, "paid")
+		if err != nil {
+			logger.LogError("ManualRetryDunning: update invoice status failed",
+				logger.ErrorField(err),
+				logger.String("invoice_id", invoice.ID))
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "payment succeeded but failed to update invoice",
+			})
+		}
+
+		// Create success event
+		successEvent := &DunningEvent{
+			ID:        commonutil.GenerateUUID(),
+			AccountID: invoice.AccountID,
+			InvoiceID: invoice.ID,
+			EventType: "payment_success_manual",
+			Details: map[string]interface{}{
+				"manual":         true,
+				"payment_id":     result.PaymentID,
+				"payment_method": getPaymentMethodOrDefault(result),
+				"amount":         invoice.Amount,
+				"currency":       invoice.Currency,
+				"actor_id":       commonutil.GetActorOrSystem(c),
+			},
+			CreatedAt: time.Now().UTC(),
+		}
+		_ = h.Store.CreateDunningEvent(c.Context(), successEvent)
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"success":    true,
+			"message":    "Payment successful",
+			"status":     "paid",
+			"invoice_id": invoice.ID,
+		})
+	}
+
+	// Handle failure
+	// Create failure event
+	failEvent := &DunningEvent{
+		ID:        commonutil.GenerateUUID(),
+		AccountID: invoice.AccountID,
+		InvoiceID: invoice.ID,
+		EventType: "payment_retry_failed_manual",
+		Details: map[string]interface{}{
+			"manual":   true,
+			"amount":   invoice.Amount,
+			"currency": invoice.Currency,
+			"error":    payErr.Error(),
+			"actor_id": commonutil.GetActorOrSystem(c),
+		},
+		CreatedAt: time.Now().UTC(),
+	}
+	_ = h.Store.CreateDunningEvent(c.Context(), failEvent)
+
+	return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+		"success":    false,
+		"message":    "Payment failed",
+		"error":      payErr.Error(),
+		"invoice_id": invoice.ID,
+	})
+}
+
+// GetDunningEvents returns the history of dunning events for a specific invoice
+func (h *BillingAdminHandler) GetDunningEvents(c *fiber.Ctx) error {
+	invoiceID := c.Params("id")
+	if invoiceID == "" {
+		logger.LogError("GetDunningEvents: invoice_id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})
+	}
+
+	// Get pagination parameters
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	pageSize, _ := strconv.Atoi(c.Query("page_size", "10"))
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 10
+	}
+
+	// Retrieve the events from the database
+	events, err := h.Store.ListDunningEvents(c.Context(), invoiceID, page, pageSize)
+	if err != nil {
+		logger.LogError("GetDunningEvents: failed", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to retrieve dunning events"})
+	}
+
+	return c.JSON(fiber.Map{
+		"events": events,
+		"pagination": fiber.Map{
+			"page":         page,
+			"page_size":    pageSize,
+			"total_events": len(events), // This should ideally be a count query
+		},
+	})
+}
+
+// GetDunningDashboard returns stats about the dunning system
+func (h *BillingAdminHandler) GetDunningDashboard(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id")
+	if tenantID == "" {
+		logger.LogError("GetDunningDashboard: tenant_id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	}
+
+	// Retrieve the dashboard data
+	dashboard, err := h.Store.GetDunningDashboard(c.Context(), tenantID)
+	if err != nil {
+		logger.LogError("GetDunningDashboard: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to retrieve dunning dashboard"})
+	}
+
+	return c.JSON(dashboard)
+}
+
+// getPaymentMethodOrDefault safely extracts a payment method from a payment result
+func getPaymentMethodOrDefault(result *payment.PaymentResult) string {
+	if result == nil {
+		return ""
+	}
+
+	// Try to extract method from Raw field which may contain a map
+	if result.Raw != nil {
+		if m, ok := result.Raw.(map[string]interface{}); ok {
+			if method, ok := m["method"].(string); ok {
+				return method
+			}
+		}
+	}
+
+	return "unknown" // Fallback value
 }

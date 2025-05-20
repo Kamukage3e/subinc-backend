@@ -418,3 +418,32 @@ type PaymentPluginConfig struct {
 	CreatedAt  time.Time              `json:"created_at"`
 	UpdatedAt  time.Time              `json:"updated_at"`
 }
+
+// TransactionReport represents a transaction activity report for a specific time period
+type TransactionReport struct {
+	StartDate          time.Time               `json:"start_date"`
+	EndDate            time.Time               `json:"end_date"`
+	TotalAmount        float64                 `json:"total_amount"`
+	Currency           string                  `json:"currency"`
+	TransactionCount   int                     `json:"transaction_count"`
+	SuccessCount       int                     `json:"success_count"`
+	FailedCount        int                     `json:"failed_count"`
+	RefundCount        int                     `json:"refund_count"`
+	RefundAmount       float64                 `json:"refund_amount"`
+	NetAmount          float64                 `json:"net_amount"`
+	DisputeCount       int                     `json:"dispute_count"`
+	DisputeAmount      float64                 `json:"dispute_amount"`
+	PaymentMethodStats map[string]int          `json:"payment_method_stats"`
+	DailyTotals        []DailyTransactionTotal `json:"daily_totals,omitempty"`
+}
+
+// DailyTransactionTotal represents transaction totals for a single day
+type DailyTransactionTotal struct {
+	Date          time.Time `json:"date"`
+	Amount        float64   `json:"amount"`
+	Count         int       `json:"count"`
+	RefundAmount  float64   `json:"refund_amount"`
+	RefundCount   int       `json:"refund_count"`
+	DisputeAmount float64   `json:"dispute_amount"`
+	DisputeCount  int       `json:"dispute_count"`
+}

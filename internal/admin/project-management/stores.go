@@ -245,23 +245,23 @@ func (s *PostgresStore) GetSettings(ctx context.Context, projectID string) (map[
 	return settings, nil
 }
 
-func (s *PostgresStore) UpdateSettings(ctx context.Context, projectID string, settings map[string]interface{}) error {
+func (s *PostgresStore) UpdateSettings(ctx context.Context, projectID string, settings map[string]interface{}) (map[string]interface{}, error) {
 	if projectID == "" {
 		logger.LogError("project id required")
-		return errors.New("project id required")
+		return nil, errors.New("project id required")
 	}
 	key := "project_settings_" + projectID
 	b, err := json.Marshal(settings)
 	if err != nil {
 		logger.LogError("marshal project settings failed", logger.ErrorField(err), logger.String("project_id", projectID))
-		return errors.New("invalid project settings")
+		return nil, errors.New("invalid project settings")
 	}
 	_, err = s.ServerConfigService.Set(ctx, key, string(b), "system")
 	if err != nil {
 		logger.LogError("failed to set project settings", logger.ErrorField(err), logger.String("project_id", projectID))
-		return err
+		return nil, err
 	}
-	return nil
+	return settings, nil
 }
 
 func NewPostgresStore(db *pgxpool.Pool, serverConfigService *server_config.Service, auditLogger security_management.AuditLogger) *PostgresStore {

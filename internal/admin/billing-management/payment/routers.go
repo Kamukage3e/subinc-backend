@@ -3,7 +3,6 @@ package payment
 import (
 	"github.com/gofiber/fiber/v2"
 
-
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
@@ -58,6 +57,12 @@ func RegisterRoutes(router fiber.Router, handler *PaymentHandler, jwtSecret stri
 	route.Get("/disputes/evidence/:evidence_id", rbacmiddleware.RBACMiddleware("evidence", "read", nil), handler.GetEvidence)
 	route.Put("/disputes/evidence/:evidence_id", rbacmiddleware.RBACMiddleware("evidence", "update", nil), handler.UpdateEvidence)
 	route.Delete("/disputes/evidence/:evidence_id", rbacmiddleware.RBACMiddleware("evidence", "delete", nil), handler.DeleteEvidence)
+
+	// Transaction reporting routes
+	reportRoutes := route.Group("/reports")
+	reportRoutes.Get("/transactions", rbacmiddleware.RBACMiddleware("payment-reporting", "read", nil), handler.GetTransactionReport)
+	reportRoutes.Get("/payment-methods", rbacmiddleware.RBACMiddleware("payment-reporting", "read", nil), handler.GetPaymentMethodDistribution)
+	reportRoutes.Get("/volume", rbacmiddleware.RBACMiddleware("payment-reporting", "read", nil), handler.GetTransactionVolume)
 
 	// Plugin management routes
 	pluginRoutes := router.Group("/payments/plugins")

@@ -4,38 +4,39 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
 const (
 	qGetExchangeRate = `SELECT id, base_currency, quote_currency, rate, source, updated_at FROM exchange_rates WHERE base_currency = $1 AND quote_currency = $2`
-	qCreateCredit = `INSERT INTO credits (id, account_id, invoice_id, amount, currency, original_amount, original_currency, type, status, created_at, updated_at, metadata)
+	qCreateCredit    = `INSERT INTO credits (id, account_id, invoice_id, amount, currency, original_amount, original_currency, type, status, created_at, updated_at, metadata)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING id, account_id, invoice_id, amount, currency, original_amount, original_currency, type, status, created_at, updated_at, metadata`
 	qUpdateCredit = `UPDATE credits SET account_id = $2, invoice_id = $3, amount = $4, currency = $5, original_amount = $6, original_currency = $7, type = $8, status = $9, updated_at = $10, metadata = $11 WHERE id = $1
 		RETURNING id, account_id, invoice_id, amount, currency, original_amount, original_currency, type, status, created_at, updated_at, metadata`
-	qListCredits = `SELECT id, account_id, invoice_id, amount, currency, original_amount, original_currency, type, status, created_at, updated_at, metadata FROM credits WHERE 1=1`
-	qGetCoupon = `SELECT id, max_redemptions, redeemed, is_active, start_at, end_at FROM coupons WHERE code = $1`
-	qUpdateCoupon = `UPDATE coupons SET redeemed = redeemed + 1 WHERE code = $1 RETURNING id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata`
+	qListCredits    = `SELECT id, account_id, invoice_id, amount, currency, original_amount, original_currency, type, status, created_at, updated_at, metadata FROM credits WHERE 1=1`
+	qGetCoupon      = `SELECT id, max_redemptions, redeemed, is_active, start_at, end_at FROM coupons WHERE code = $1`
+	qUpdateCoupon   = `UPDATE coupons SET redeemed = redeemed + 1 WHERE code = $1 RETURNING id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata`
 	qCreateDiscount = `INSERT INTO discounts (id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata`
 	qListDiscounts = `SELECT id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM discounts WHERE 1=1`
-	qCreateCoupon = `INSERT INTO coupons (id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata)
+	qCreateCoupon  = `INSERT INTO coupons (id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata`
 	qUpdateDiscount = `UPDATE discounts SET code=$2, type=$3, value=$4, max_redemptions=$5, redeemed=$6, start_at=$7, end_at=$8, is_active=$9, updated_at=$10, metadata=$11 WHERE id=$1
 		RETURNING id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata`
-	qDeleteDiscount = `DELETE FROM discounts WHERE id = $1`
-	qGetDiscount = `SELECT id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM discounts WHERE id = $1`
-	qGetDiscountByCode = `SELECT id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM discounts WHERE code = $1`
-	qDeleteCoupon = `DELETE FROM coupons WHERE id = $1`
-	qListCoupons = `SELECT id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM coupons WHERE 1=1`
-	qUpdateCreditConsume = `UPDATE credits SET amount = amount - $2, status = $3, updated_at = NOW() WHERE id = $1 AND status = $4 AND amount >= $2`
-	qUpdateCreditExpire = `UPDATE credits SET status = $2, updated_at = NOW() WHERE id = $1 AND status = $3`
-	qDeleteCredit = `DELETE FROM credits WHERE id = $1`
-	qGetCouponByCode = `SELECT id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM coupons WHERE code = $1`
+	qDeleteDiscount        = `DELETE FROM discounts WHERE id = $1`
+	qGetDiscount           = `SELECT id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM discounts WHERE id = $1`
+	qGetDiscountByCode     = `SELECT id, code, type, value, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM discounts WHERE code = $1`
+	qDeleteCoupon          = `DELETE FROM coupons WHERE id = $1`
+	qListCoupons           = `SELECT id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM coupons WHERE 1=1`
+	qUpdateCreditConsume   = `UPDATE credits SET amount = amount - $2, status = $3, updated_at = NOW() WHERE id = $1 AND status = $4 AND amount >= $2`
+	qUpdateCreditExpire    = `UPDATE credits SET status = $2, updated_at = NOW() WHERE id = $1 AND status = $3`
+	qDeleteCredit          = `DELETE FROM credits WHERE id = $1`
+	qGetCouponByCode       = `SELECT id, code, discount_id, max_redemptions, redeemed, start_at, end_at, is_active, created_at, updated_at, metadata FROM coupons WHERE code = $1`
 	qListCreditsForInvoice = `SELECT id, amount FROM credits WHERE invoice_id = $1 AND status = $2 ORDER BY created_at ASC`
 )
 
@@ -223,11 +224,13 @@ func (s *PostgresStore) ListDiscounts(ctx context.Context, activeOnly bool, page
 	}
 	q := qListDiscounts
 	args := []interface{}{}
+	argIdx := 1
 	if activeOnly {
 		q += " AND is_active = $1"
 		args = append(args, true)
+		argIdx++
 	}
-	q += " ORDER BY created_at DESC LIMIT $2 OFFSET $3"
+	q += " ORDER BY created_at DESC LIMIT $" + fmt.Sprint(argIdx) + " OFFSET $" + fmt.Sprint(argIdx+1)
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := s.DB.Query(ctx, q, args...)
 	if err != nil {

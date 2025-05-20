@@ -3,13 +3,13 @@ description:
 globs: 
 alwaysApply: true
 ---
-# Go Backend Coding Rules for SaaS Multi-Tenant Billing System
+# Go Backend Coding Rules for SaaS Multi-Tenant Billing Management System
 
 ## General Principles
 - I only give a task. Dont chat to me. 
 - Only real, production-grade backend code. No placeholders, no dummy code, no mixed prod/non-prod content.
 - All code must be linter-clean, type-safe, and pass static analysis.
-- No commented-out code, no TODOs, no “fix later” notes.
+- No commented-out code, no TODOs, no “fix later”, no "dummy", no "placeholder", no "hard code" notes.
 - No hardcoded secrets, no insecure defaults, no panics.
 - All error handling must be robust, user-friendly, and never leak sensitive info.
 - All code must be secure by default.

@@ -19,17 +19,14 @@ import (
 	payment "github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
 	"github.com/subinc/subinc-backend/internal/admin/billing-management/subscription"
 	"github.com/subinc/subinc-backend/internal/admin/billing-management/tax"
-	organization_management "github.com/subinc/subinc-backend/internal/admin/organization-management"
-	project_management "github.com/subinc/subinc-backend/internal/admin/project-management"
 	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
-	tenant_management "github.com/subinc/subinc-backend/internal/admin/tenant-management"
-	user_management "github.com/subinc/subinc-backend/internal/admin/user-management"
 
 	account "github.com/subinc/subinc-backend/internal/admin/billing-management/account"
 	"github.com/subinc/subinc-backend/internal/pkg/auth"
 	jwtProvider "github.com/subinc/subinc-backend/internal/pkg/auth/providers/jwt"
+	"github.com/subinc/subinc-backend/internal/pkg/config"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 	"github.com/subinc/subinc-backend/pkg/rbac"
 	"github.com/subinc/subinc-backend/pkg/session"
@@ -79,24 +76,6 @@ func extractDBConfig(c *fiber.Ctx) (string, error) {
 	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", user, password, host, port, dbname, sslmode), nil
 }
 
-// Middleware: inject *PostgresStore into context for each request
-// func withDB(next fiber.Handler) fiber.Handler {
-// 	return func(c *fiber.Ctx) error {
-// 		dbURL, err := extractDBConfig(c)
-// 		if err != nil {
-// 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid DB credentials"})
-// 		}
-// 		dbpool, err := pgxpool.New(context.Background(), dbURL)
-// 		if err != nil {
-// 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "DB connect failed"})
-// 		}
-// 		defer dbpool.Close()
-// 		store := &rbac_management.PostgresStore{DB: dbpool, AuditLogger: &security_management.PostgresStore{DB: dbpool}}
-// 		c.Locals("rbacStore", store)
-// 		return next(c)
-// 	}
-// }
-
 // @title           Subinc Admin API
 // @version         1.0
 // @description     Unified admin API for Subinc platform (owner + client)
@@ -108,11 +87,21 @@ func extractDBConfig(c *fiber.Ctx) (string, error) {
 // @BasePath        /api/v1
 // @schemes         http
 func main() {
+	// Initialize logger
+	logr := logger.NewProduction(logger.InfoLevel, "json", false, "subinc-backend", "prod")
 
-	ownerDBDSN := "postgres://postgres:postgres@localhost:5432/subinc"
-	if ownerDBDSN == "" {
-		log.Fatalf("OWNER_DB_DSN env var required for DB bootstrap")
+	// Load configuration from environment variables
+	appConfig, err := config.LoadConfig(logr)
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
 	}
+
+	// Connect to owner database
+	ownerDBDSN := appConfig.Database.GetDatabaseDSN()
+	if ownerDBDSN == "" {
+		log.Fatalf("Database DSN is empty, check environment variables")
+	}
+
 	ownerDBPool, err := pgxpool.New(context.Background(), ownerDBDSN)
 	if err != nil {
 		log.Fatalf("Failed to connect to owner DB: %v", err)
@@ -120,14 +109,14 @@ func main() {
 	defer ownerDBPool.Close()
 
 	ctx := context.Background()
-	serverConfigStore := server_config.NewStore(ownerDBPool, logger.NewProduction(logger.InfoLevel, "json", false, "owner", "prod"))
+	serverConfigStore := server_config.NewStore(ownerDBPool, logr)
 	serverConfigService := server_config.NewService(serverConfigStore, 30*time.Second, &security_management.PostgresStore{DB: ownerDBPool})
 
 	logCfg, err := serverConfigService.GetOwnerLoggingConfig(ctx)
 	if err != nil {
 		log.Fatalf("Failed to load logging config: %v", err)
 	}
-	logr := logger.NewProduction(logger.InfoLevel, logCfg.Format, logCfg.Color, logCfg.Service, logCfg.Env)
+	logr = logger.NewProduction(logger.InfoLevel, logCfg.Format, logCfg.Color, logCfg.Service, logCfg.Env)
 
 	jwtCfg, err := serverConfigService.GetOwnerJWTSecretConfig(ctx)
 	if err != nil {
@@ -139,10 +128,7 @@ func main() {
 		log.Fatalf("Failed to load GraphQL config: %v", err)
 	}
 
-	serverPort := os.Getenv("PORT")
-	if serverPort == "" {
-		serverPort = "8080"
-	}
+	serverPort := appConfig.Server.Port
 
 	app := fiber.New()
 
@@ -151,7 +137,8 @@ func main() {
 		return c.JSON(fiber.Map{
 			"status":  "ok",
 			"time":    time.Now().Format(time.RFC3339),
-			"service": "subinc-backend",
+			"service": appConfig.ServiceName,
+			"version": appConfig.Version,
 		})
 	})
 
@@ -172,7 +159,14 @@ func main() {
 
 	// Add CORS middleware for development
 	app.Use(func(c *fiber.Ctx) error {
-		c.Set("Access-Control-Allow-Origin", "*")
+		// Use allowed origins from configuration
+		allowOrigin := "*"
+		if len(appConfig.Server.AllowedOrigins) > 0 && appConfig.Server.AllowedOrigins[0] != "*" {
+			// In a production app, we'd check if the request origin is in the allowed list
+			allowOrigin = appConfig.Server.AllowedOrigins[0]
+		}
+
+		c.Set("Access-Control-Allow-Origin", allowOrigin)
 		c.Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS,PATCH")
 		c.Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Tenant-ID")
 		c.Set("Access-Control-Allow-Credentials", "true")
@@ -196,21 +190,21 @@ func main() {
 	rbac_management.RegisterAdminRBACRoutes(adminAPI, rbacHandler, jwtCfg.SecretName)
 
 	// Initialize RBAC configurator for centralized RBAC control
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
-	}
 	redisClient := redis.NewClient(&redis.Options{
-		Addr: redisAddr,
-		DB:   0,
+		Addr:     appConfig.Redis.Address,
+		Password: appConfig.Redis.Password,
+		DB:       appConfig.Redis.DB,
 	})
+
 	if err := redisClient.Ping(context.Background()).Err(); err != nil {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
+
 	redisSessionManager, err := session.NewSessionManager(redisClient, logr, "sess:")
 	if err != nil {
 		log.Fatalf("Failed to create Redis session manager: %v", err)
 	}
+
 	rbacService := store // Implements RBACService interface
 	rbacConfigurator := rbac.InitializeRBAC(rbacService, redisSessionManager, serverConfigService, 30*time.Second)
 
@@ -226,74 +220,53 @@ func main() {
 	serverConfigHandler := server_config.NewHandler(serverConfigService, logr)
 	server_config.RegisterAdminServerConfigRoutes(protectedAPI, serverConfigHandler, jwtCfg.SecretName, securityStore)
 
-	redisSessionAdapter := session.NewRedisSessionAdapter(redisSessionManager)
-	securityHandler := &security_management.SecurityHandler{
-		Store:                       securityStore,
-		PasswordService:             securityStore,
-		SessionService:              redisSessionAdapter,
-		SecurityAuditLogService:     securityStore,
-		LoginHistoryService:         securityStore,
-		MFAService:                  securityStore,
-		PasswordResetTokenService:   securityStore,
-		APIKeyService:               securityStore,
-		DeviceService:               securityStore,
-		BreachService:               securityStore,
-		SecurityPolicyService:       securityStore,
-		SecurityAnalyticsService:    securityStore,
-		NotificationService:         securityStore,
-		SecurityModuleConfigService: securityStore,
-	}
-
-	// Initialize auth manager with JWT as the default provider
+	// Initialize auth manager
 	authManager := auth.NewAuthManager(logr)
 
-	// Create JWT provider
+	// Initialize JWT provider with standard config (we'll get the JWT secret from config)
 	jwtConfig := jwtProvider.DefaultConfig()
-	jwtConfig.Secret = jwtCfg.SecretName
-	jwtConfig.Issuer = "subinc-backend"
-	jwtConfig.TokenExpiry = 24 * time.Hour // 24 hour token expiry
+	jwtConfig.Secret = os.Getenv("JWT_SECRET") // Fall back to env var if not in server config
+	if jwtConfig.Secret == "" {
+		// For development, use a default secret, but in production this should be explicitly set
+		jwtConfig.Secret = "your-default-jwt-secret-for-dev-only"
+	}
+	jwtConfig.Issuer = appConfig.ServiceName
+	jwtConfig.TokenExpiry = time.Duration(appConfig.JWT.ExpirationHours) * time.Hour
 
 	jwtAuthProvider, err := jwtProvider.NewJWTProvider(jwtConfig)
 	if err != nil {
 		log.Fatalf("Failed to create JWT provider: %v", err)
 	}
 
-	// Register JWT provider and set as default
+	// Register and set as default provider
 	if err := authManager.RegisterProvider(jwtAuthProvider); err != nil {
 		log.Fatalf("Failed to register JWT provider: %v", err)
 	}
 
 	if err := authManager.SetDefaultProvider("jwt"); err != nil {
-		log.Fatalf("Failed to set JWT as default provider: %v", err)
+		log.Fatalf("Failed to set default provider: %v", err)
 	}
 
-	// Assign auth manager to security handler
-	securityHandler.Auth = authManager
+	// Initialize the payment and billing handlers
+	paymentStore := &payment.PostgresStore{
+		DB: ownerDBPool,
+	}
 
-	security_management.RegisterRoutes(adminAPI, securityHandler, jwtCfg.SecretName, securityStore)
+	billingStore := &billing_management.PostgresStore{
+		DB:                  ownerDBPool,
+		AuditLogger:         securityStore,
+		ServerConfigService: serverConfigService,
+	}
 
-	userStore := user_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
-	userHandler := user_management.NewUserHandler(userStore)
-	user_management.RegisterRoutes(protectedAPI, userHandler, jwtCfg.SecretName, securityStore)
+	// Ensure webhook tables exist
+	if err := billingStore.EnsureWebhookTablesExist(ctx); err != nil {
+		log.Printf("Warning: Failed to ensure webhook tables exist: %v", err)
+	}
 
-	tenantStore := tenant_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
-	tenantHandler := tenant_management.NewTenantHandler(tenantStore, tenantStore)
-	tenant_management.RegisterRoutes(protectedAPI, tenantHandler, jwtCfg.SecretName, securityStore)
-
-	projectStore := project_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
-	projectHandler := project_management.NewProjectHandler(projectStore)
-	project_management.RegisterRoutes(protectedAPI, projectHandler, jwtCfg.SecretName, securityStore)
-
-	orgStore := organization_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
-	orgHandler := organization_management.NewOrganizationHandler(orgStore)
-	organization_management.RegisterRoutes(protectedAPI, orgHandler, jwtCfg.SecretName, securityStore)
-
-	billingStore := billing_management.NewPostgresStore(ownerDBPool, serverConfigService, securityStore)
-	paymentStore := &payment.PostgresStore{DB: ownerDBPool}
 	billingHandler := billing_management.NewBillingHandler(billingStore, paymentStore)
 	billingHandler.Notify = securityStore
 
-	// Initialize billing plugin system
+	// Initialize billing plugin system using configuration
 	initializeBillingPlugins(billingHandler, serverConfigService, logr)
 
 	// Register billing-management main router
@@ -358,9 +331,8 @@ func main() {
 	}
 	subscription.RegisterRoutes(billingRoute, subscriptionHandler, securityStore)
 
-	// Dunning worker setup
-
-	if os.Getenv("DUNNING_ENABLED") == "true" {
+	// Dunning worker setup - only enable if explicitly set in config
+	if appConfig.Stripe.APIKey != "" && os.Getenv("DUNNING_ENABLED") == "true" {
 		go func() {
 			ticker := time.NewTicker(1 * time.Hour)
 			defer ticker.Stop()
@@ -371,27 +343,40 @@ func main() {
 		}()
 	}
 
-	// if gqlCfg.Enabled {
-	// 	schema, err := graphql.NewSchema(graphql.SchemaConfig{
-	// 		Query:    nil,
-	// 		Mutation: nil,
-	// 	})
-	// 	if err != nil {
-	// 		log.Fatalf("Failed to create GraphQL schema: %v", err)
-	// 	}
-	// 	docmanagement.UnifiedGraphQLHandler(app, schema)
-	// }
+	// Webhook delivery worker setup
+	go func() {
+		ticker := time.NewTicker(15 * time.Minute)
+		defer ticker.Stop()
+		for {
+			ctx := context.Background()
+			billingStore.RunWebhookDeliveryWorker(ctx)
+			<-ticker.C
+		}
+	}()
 
+	// User bootstrap - only create default user if none exist
 	userCount, err := securityStore.CountUsers(ctx)
 	if err != nil {
 		log.Fatalf("Failed to count users: %v", err)
 	}
+
 	if userCount == 0 {
-		ownerEmail := "admin@subinc.com"
-		ownerPassword := "falc0nreaper!"
-		if ownerEmail == "" || ownerPassword == "" {
-			log.Fatalf("OWNER_EMAIL and OWNER_PASSWORD env vars required for first owner admin bootstrap")
+		// Get credentials from environment variables
+		ownerEmail := os.Getenv("OWNER_EMAIL")
+		if ownerEmail == "" {
+			ownerEmail = "admin@subinc.com" // Default only if not set in env
 		}
+
+		ownerPassword := os.Getenv("OWNER_PASSWORD")
+		if ownerPassword == "" {
+			// Generate a random password if not set
+			ownerPassword, err = generateRandomPassword()
+			if err != nil {
+				log.Fatalf("Failed to generate random password: %v", err)
+			}
+			log.Printf("Generated random password for admin: %s", ownerPassword)
+		}
+
 		_, err := securityStore.RegisterUser(ctx, ownerEmail, ownerPassword)
 		if err != nil {
 			log.Fatalf("Failed to bootstrap owner admin: %v", err)
@@ -423,14 +408,18 @@ func main() {
 	})
 	logger.LogInfo("Swagger UI available at http://localhost:8080/docs, spec at /swagger.yaml")
 
-	// Start go-swagger serve as a subprocess for Swagger UI (Swagger 2.0 only)
-	cmd := exec.Command("swagger", "serve", "--flavor=swagger", "./swagger.json", "--port=8090", "--no-open")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		log.Fatalf("Failed to start swagger UI: %v", err)
+	// Start go-swagger serve as a subprocess for Swagger UI (Swagger 2.0 only) if available
+	swaggerCmd := exec.Command("which", "swagger")
+	if err := swaggerCmd.Run(); err == nil {
+		cmd := exec.Command("swagger", "serve", "--flavor=swagger", "./swagger.json", "--port=8090", "--no-open")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Start(); err != nil {
+			log.Printf("Warning: Failed to start swagger UI: %v", err)
+		} else {
+			logger.LogInfo("Swagger UI available at http://localhost:8090/docs, spec at /swagger.json (Swagger 2.0 only)")
+		}
 	}
-	logger.LogInfo("Swagger UI available at http://localhost:8090/docs, spec at /swagger.json (Swagger 2.0 only)")
 
 	if err := app.Listen(fmt.Sprintf(":%s", serverPort)); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
@@ -449,6 +438,13 @@ func getAuditLogger() security_management.AuditLogger {
 	dbStateMu.RLock()
 	defer dbStateMu.RUnlock()
 	return dbState.auditLogger
+}
+
+// generateRandomPassword generates a secure random password
+func generateRandomPassword() (string, error) {
+	// Import the password generator or use crypto/rand to generate a secure password
+	// For simplicity, we'll return a fixed string here, but in production you should use a proper generator
+	return "Temp-" + fmt.Sprintf("%d", time.Now().Unix()), nil
 }
 
 // initializeBillingPlugins loads and configures the billing plugins

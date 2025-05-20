@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  # SubInc Backend Service
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: subinc-backend
+    environment:
+      - APP_ENV=dev
+      - SERVICE_NAME=subinc-backend
+      - APP_VERSION=0.1.0
+      - PORT=8080
+      # Database
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=subinc
+      - DB_SSLMODE=disable
+      - DB_MAX_CONNECTIONS=25
+      - DB_MAX_IDLE_TIME=15m
+      # Redis
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=
+      - REDIS_DB=0
+      # JWT
+      - JWT_SECRET=your-dev-secret-key
+      - JWT_EXPIRATION_HOURS=24
+      # Logging
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+      - LOG_COLOR=true
+      # Startup configuration
+      - WAIT_FOR_DEPS=true
+      - RUN_MIGRATIONS=true
+      # Initial admin user (used only if no users exist)
+      - OWNER_EMAIL=admin@subinc.com
+      # If OWNER_PASSWORD is not set, a random password will be generated
+      #- OWNER_PASSWORD=your-secure-password
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    volumes:
+      - migrations:/app/migrations
+    networks:
+      - subinc-network
+
+  # PostgreSQL Service
+  postgres:
+    image: postgres:15-alpine
+    container_name: subinc-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: subinc
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - subinc-network
+
+  # Redis Service
+  redis:
+    image: redis:7-alpine
+    container_name: subinc-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - subinc-network
+
+  # PgAdmin for database management (optional)
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: subinc-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@subinc.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    networks:
+      - subinc-network
+
+volumes:
+  postgres-data:
+  redis-data:
+  pgadmin-data:
+  migrations:
+
+networks:
+  subinc-network:
+    driver: bridge 

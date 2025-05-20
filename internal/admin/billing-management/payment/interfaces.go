@@ -36,6 +36,11 @@ type StoreInterface interface {
 	ListPaymentPluginConfigs(ctx context.Context, tenantID string) ([]*PaymentPluginConfig, error)
 	DisablePaymentPlugin(ctx context.Context, tenantID, pluginName string) error
 	GetDefaultPaymentPlugin(ctx context.Context, tenantID string) (*PaymentPluginConfig, error)
+
+	// Transaction reporting
+	GetTransactionReport(ctx context.Context, tenantID string, startDate, endDate time.Time, includeDailyTotals bool) (*TransactionReport, error)
+	GetPaymentMethodReport(ctx context.Context, tenantID string, startDate, endDate time.Time) (map[string]int, error)
+	GetTransactionVolume(ctx context.Context, tenantID string, startDate, endDate time.Time) (float64, int, error)
 }
 
 // DisputeDataStoreInterface abstracts dispute and evidence storage for testability and multi-tenant support

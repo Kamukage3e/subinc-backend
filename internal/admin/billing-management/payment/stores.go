@@ -534,6 +534,229 @@ func (s *PostgresStore) GetDisputeEvidence(ctx context.Context, evidenceID strin
 }
 
 // ListDisputeEvidence returns evidence for a dispute/tenant
+func (s *PostgresStore) GetTransactionReport(ctx context.Context, tenantID string, startDate, endDate time.Time, includeDailyTotals bool) (*TransactionReport, error) {
+	if tenantID == "" {
+		return nil, errors.New("tenant ID is required")
+	}
+
+	// Initialize report
+	report := &TransactionReport{
+		StartDate:          startDate,
+		EndDate:            endDate,
+		PaymentMethodStats: make(map[string]int),
+	}
+
+	// Get overall transaction totals (successful payments)
+	const paymentQuery = `
+		SELECT 
+			COALESCE(SUM(amount), 0) as total_amount, 
+			COUNT(*) as transaction_count,
+			SUM(CASE WHEN status = 'succeeded' OR status = 'paid' THEN 1 ELSE 0 END) as success_count,
+			SUM(CASE WHEN status = 'failed' OR status = 'payment_failed' THEN 1 ELSE 0 END) as failed_count,
+			MAX(currency) as currency
+		FROM payments
+		WHERE tenant_id = $1 AND created_at BETWEEN $2 AND $3
+	`
+
+	err := s.DB.QueryRow(ctx, paymentQuery, tenantID, startDate, endDate).Scan(
+		&report.TotalAmount,
+		&report.TransactionCount,
+		&report.SuccessCount,
+		&report.FailedCount,
+		&report.Currency,
+	)
+	if err != nil {
+		logger.LogError("GetTransactionReport: payment query failed", logger.ErrorField(err))
+		return nil, err
+	}
+
+	// Get refund totals
+	const refundQuery = `
+		SELECT 
+			COALESCE(SUM(amount), 0) as refund_amount, 
+			COUNT(*) as refund_count
+		FROM refunds
+		JOIN payments ON refunds.payment_id = payments.id
+		WHERE payments.tenant_id = $1 AND refunds.created_at BETWEEN $2 AND $3
+	`
+
+	err = s.DB.QueryRow(ctx, refundQuery, tenantID, startDate, endDate).Scan(
+		&report.RefundAmount,
+		&report.RefundCount,
+	)
+	if err != nil {
+		logger.LogError("GetTransactionReport: refund query failed", logger.ErrorField(err))
+		// Continue with report, don't fail because of refund query
+	}
+
+	// Get dispute totals
+	const disputeQuery = `
+		SELECT 
+			COALESCE(SUM(amount), 0) as dispute_amount, 
+			COUNT(*) as dispute_count
+		FROM disputes
+		WHERE tenant_id = $1 AND created_at BETWEEN $2 AND $3
+	`
+
+	err = s.DB.QueryRow(ctx, disputeQuery, tenantID, startDate, endDate).Scan(
+		&report.DisputeAmount,
+		&report.DisputeCount,
+	)
+	if err != nil {
+		logger.LogError("GetTransactionReport: dispute query failed", logger.ErrorField(err))
+		// Continue with report, don't fail because of dispute query
+	}
+
+	// Calculate net amount (total - refunds - disputes)
+	report.NetAmount = report.TotalAmount - report.RefundAmount - report.DisputeAmount
+
+	// Get payment method distribution
+	paymentMethodStats, err := s.GetPaymentMethodReport(ctx, tenantID, startDate, endDate)
+	if err != nil {
+		logger.LogError("GetTransactionReport: payment method query failed", logger.ErrorField(err))
+		// Continue with report
+	} else {
+		report.PaymentMethodStats = paymentMethodStats
+	}
+
+	// Get daily totals if requested
+	if includeDailyTotals {
+		const dailyQuery = `
+			SELECT 
+				DATE(created_at) as day,
+				COALESCE(SUM(amount), 0) as daily_amount,
+				COUNT(*) as daily_count
+			FROM payments
+			WHERE tenant_id = $1 AND created_at BETWEEN $2 AND $3
+			GROUP BY DATE(created_at)
+			ORDER BY day
+		`
+
+		rows, err := s.DB.Query(ctx, dailyQuery, tenantID, startDate, endDate)
+		if err != nil {
+			logger.LogError("GetTransactionReport: daily totals query failed", logger.ErrorField(err))
+			// Continue with report
+		} else {
+			defer rows.Close()
+
+			for rows.Next() {
+				var day time.Time
+				var dailyTotal DailyTransactionTotal
+
+				if err := rows.Scan(&day, &dailyTotal.Amount, &dailyTotal.Count); err != nil {
+					logger.LogError("GetTransactionReport: daily totals scan failed", logger.ErrorField(err))
+					continue
+				}
+
+				dailyTotal.Date = day
+
+				// For each day, get refund and dispute data
+				const dailyRefundQuery = `
+					SELECT 
+						COALESCE(SUM(r.amount), 0) as refund_amount,
+						COUNT(*) as refund_count
+					FROM refunds r
+					JOIN payments p ON r.payment_id = p.id
+					WHERE p.tenant_id = $1 AND DATE(r.created_at) = $2
+				`
+
+				err = s.DB.QueryRow(ctx, dailyRefundQuery, tenantID, day).Scan(
+					&dailyTotal.RefundAmount,
+					&dailyTotal.RefundCount,
+				)
+				if err != nil {
+					logger.LogError("GetTransactionReport: daily refund query failed", logger.ErrorField(err), logger.String("date", day.String()))
+					// Continue with daily report
+				}
+
+				const dailyDisputeQuery = `
+					SELECT 
+						COALESCE(SUM(amount), 0) as dispute_amount,
+						COUNT(*) as dispute_count
+					FROM disputes
+					WHERE tenant_id = $1 AND DATE(created_at) = $2
+				`
+
+				err = s.DB.QueryRow(ctx, dailyDisputeQuery, tenantID, day).Scan(
+					&dailyTotal.DisputeAmount,
+					&dailyTotal.DisputeCount,
+				)
+				if err != nil {
+					logger.LogError("GetTransactionReport: daily dispute query failed", logger.ErrorField(err), logger.String("date", day.String()))
+					// Continue with daily report
+				}
+
+				report.DailyTotals = append(report.DailyTotals, dailyTotal)
+			}
+		}
+	}
+
+	return report, nil
+}
+
+func (s *PostgresStore) GetPaymentMethodReport(ctx context.Context, tenantID string, startDate, endDate time.Time) (map[string]int, error) {
+	if tenantID == "" {
+		return nil, errors.New("tenant ID is required")
+	}
+
+	const query = `
+		SELECT 
+			method,
+			COUNT(*) as count
+		FROM payments
+		WHERE tenant_id = $1 AND created_at BETWEEN $2 AND $3
+		GROUP BY method
+	`
+
+	rows, err := s.DB.Query(ctx, query, tenantID, startDate, endDate)
+	if err != nil {
+		logger.LogError("GetPaymentMethodReport: query failed", logger.ErrorField(err))
+		return nil, err
+	}
+	defer rows.Close()
+
+	methodStats := make(map[string]int)
+	for rows.Next() {
+		var method string
+		var count int
+
+		if err := rows.Scan(&method, &count); err != nil {
+			logger.LogError("GetPaymentMethodReport: scan failed", logger.ErrorField(err))
+			continue
+		}
+
+		methodStats[method] = count
+	}
+
+	return methodStats, nil
+}
+
+func (s *PostgresStore) GetTransactionVolume(ctx context.Context, tenantID string, startDate, endDate time.Time) (float64, int, error) {
+	if tenantID == "" {
+		return 0, 0, errors.New("tenant ID is required")
+	}
+
+	const query = `
+		SELECT 
+			COALESCE(SUM(amount), 0) as total_amount,
+			COUNT(*) as transaction_count
+		FROM payments
+		WHERE tenant_id = $1 AND created_at BETWEEN $2 AND $3
+		AND (status = 'succeeded' OR status = 'paid')
+	`
+
+	var totalAmount float64
+	var transactionCount int
+
+	err := s.DB.QueryRow(ctx, query, tenantID, startDate, endDate).Scan(&totalAmount, &transactionCount)
+	if err != nil {
+		logger.LogError("GetTransactionVolume: query failed", logger.ErrorField(err))
+		return 0, 0, err
+	}
+
+	return totalAmount, transactionCount, nil
+}
+
 func (s *PostgresStore) ListDisputeEvidence(ctx context.Context, disputeID, tenantID string, page, pageSize int) ([]*DisputeEvidence, error) {
 	if disputeID == "" || tenantID == "" {
 		logger.LogError("ListDisputeEvidence: dispute_id and tenant_id must not be empty", logger.ErrorField(errors.New("dispute_id and tenant_id must not be empty")))
@@ -1175,7 +1398,6 @@ func (s *PostgresStore) ListEvidence(ctx context.Context, disputeID, tenantID st
 	}
 	return out, nil
 }
-
 
 func (s *PostgresStore) UpdateDispute(ctx context.Context, input Dispute) (Dispute, error) {
 	if input.ID == "" {

@@ -40,7 +40,6 @@ func (e *Error) Unwrap() error {
 
 // NewValidationError returns a validation error for a specific field
 
-
 // NewNotFoundError returns a not found error for a resource
 func NewNotFoundError(resource string) *Error {
 	return &Error{
@@ -50,10 +49,14 @@ func NewNotFoundError(resource string) *Error {
 }
 
 // NewConflictError returns a conflict error for a resource
-func NewConflictError(resource string) *Error {
+func NewConflictError(resource string, details string) *Error {
+	message := fmt.Sprintf("%s already exists", resource)
+	if details != "" {
+		message = fmt.Sprintf("%s: %s", message, details)
+	}
 	return &Error{
 		Code:    "CONFLICT",
-		Message: fmt.Sprintf("%s conflict", resource),
+		Message: message,
 	}
 }
 
@@ -74,8 +77,10 @@ func IsValidationError(err error) bool {
 
 // IsNotFoundError returns true if err is a not found error
 func IsNotFoundError(err error) bool {
-	e, ok := err.(*Error)
-	return ok && e.Code == "NOT_FOUND"
+	if e, ok := err.(*Error); ok {
+		return e.Code == "not_found"
+	}
+	return false
 }
 
 // IsConflictError returns true if err is a conflict error
@@ -90,11 +95,30 @@ func IsInternalError(err error) bool {
 	return ok && e.Code == "INTERNAL_ERROR"
 }
 
-
 func NewValidationError(field, msg string) *Error {
 	return &Error{
 		Code:    "VALIDATION_ERROR",
 		Message: msg,
 		Field:   field,
+	}
+}
+
+// UnauthorizedError represents an authorization error
+func NewUnauthorizedError(message string) *Error {
+	return &Error{
+		Code:    "unauthorized",
+		Message: message,
+	}
+}
+
+// ConflictError represents a conflict with existing resources
+func NewConflictErrorWithDetails(resource string, details string) *Error {
+	message := fmt.Sprintf("%s already exists", resource)
+	if details != "" {
+		message = fmt.Sprintf("%s: %s", message, details)
+	}
+	return &Error{
+		Code:    "conflict",
+		Message: message,
 	}
 }

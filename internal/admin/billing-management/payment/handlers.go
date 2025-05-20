@@ -172,7 +172,7 @@ func (h *PaymentHandler) CreatePaymentMethod(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
 
-	method, err := h.PaymentMethodService.CreatePaymentMethod(c.Context(), input.PaymentMethod, input.PaymentData) 
+	method, err := h.PaymentMethodService.CreatePaymentMethod(c.Context(), input.PaymentMethod, input.PaymentData)
 	if err != nil {
 		logger.LogError("CreatePaymentMethod: failed", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create payment method"})
@@ -966,6 +966,47 @@ func (s *StripeProvider) CreatePayment(ctx context.Context, req *CreatePaymentRe
 		logger.LogError("stripe.create_payment.api_key_missing", logger.ErrorField(err))
 		return nil, err
 	}
+
+	// Check for idempotency key
+	idempotencyKey := ""
+	if req.Metadata != nil {
+		idempotencyKey = req.Metadata["idempotency_key"]
+	}
+
+	// If idempotency key exists, check if we already processed this payment
+	if idempotencyKey != "" {
+		// Convert store to a PaymentService to access the GetPaymentByIdempotencyKey method
+		if store, ok := s.Store.(interface {
+			GetPaymentByIdempotencyKey(ctx context.Context, idempotencyKey string) (Payment, error)
+		}); ok {
+			existingPayment, err := store.GetPaymentByIdempotencyKey(ctx, idempotencyKey)
+			if err != nil {
+				logger.LogError("stripe.create_payment.idempotency_check_failed", logger.ErrorField(err), logger.String("idempotency_key", idempotencyKey))
+				// Continue with payment creation even if idempotency check fails
+			} else if existingPayment.ID != "" {
+				// Payment with this idempotency key already exists, return stored result
+				logger.LogInfo("stripe.create_payment.idempotent_match", logger.String("payment_id", existingPayment.ID), logger.String("idempotency_key", idempotencyKey))
+
+				// Try to get the complete payment result
+				result, err := s.Store.GetPaymentResult(ctx, existingPayment.ID)
+				if err != nil {
+					logger.LogError("stripe.create_payment.get_existing_result_failed", logger.ErrorField(err), logger.String("payment_id", existingPayment.ID))
+					// Return a basic result constructed from the existingPayment
+					return &PaymentResult{
+						PaymentID: existingPayment.ID,
+						Status:    existingPayment.Status,
+						Amount:    existingPayment.Amount,
+						Currency:  existingPayment.Currency,
+						CreatedAt: existingPayment.CreatedAt,
+						Provider:  "stripe",
+					}, nil
+				}
+
+				return result, nil
+			}
+		}
+	}
+
 	stripe.Key = s.APIKey
 	params := &stripe.PaymentIntentParams{
 		Amount:      stripe.Int64(int64(req.Amount * 100)),
@@ -973,6 +1014,12 @@ func (s *StripeProvider) CreatePayment(ctx context.Context, req *CreatePaymentRe
 		Confirm:     stripe.Bool(true),
 		Description: stripe.String(req.Description),
 	}
+
+	// Add idempotency key to Stripe API params if available
+	if idempotencyKey != "" {
+		params.Params.IdempotencyKey = stripe.String(idempotencyKey)
+	}
+
 	switch req.Source {
 	case PaymentMethodCard, "visa", "mastercard":
 		params.PaymentMethodTypes = []*string{stripe.String("card")}
@@ -990,15 +1037,30 @@ func (s *StripeProvider) CreatePayment(ctx context.Context, req *CreatePaymentRe
 		logger.LogError("stripe.create_payment.unsupported_method", logger.ErrorField(err), logger.String("source", req.Source))
 		return nil, err
 	}
-	if req.Metadata != nil && params.Metadata == nil {
-		params.Metadata = req.Metadata
+
+	// Ensure we preserve all metadata, including idempotency key
+	if req.Metadata != nil {
+		if params.Metadata == nil {
+			params.Metadata = req.Metadata
+		} else {
+			for k, v := range req.Metadata {
+				params.Metadata[k] = v
+			}
+		}
 	}
+
 	intent, err := paymentintent.New(params)
 	if err != nil {
 		logger.LogError("stripe.create_payment.failed", logger.ErrorField(err), logger.String("currency", req.Currency), logger.Float64("amount", req.Amount))
 		return nil, errors.New("stripe: failed to create payment intent")
 	}
-	logger.LogInfo("stripe.create_payment.success", logger.String("intent_id", intent.ID), logger.Float64("amount", float64(intent.Amount)/100.0), logger.String("currency", string(intent.Currency)))
+
+	logger.LogInfo("stripe.create_payment.success",
+		logger.String("intent_id", intent.ID),
+		logger.Float64("amount", float64(intent.Amount)/100.0),
+		logger.String("currency", string(intent.Currency)),
+		logger.String("idempotency_key", idempotencyKey))
+
 	result := &PaymentResult{
 		PaymentID: intent.ID,
 		Status:    string(intent.Status),
@@ -1008,10 +1070,12 @@ func (s *StripeProvider) CreatePayment(ctx context.Context, req *CreatePaymentRe
 		Provider:  "stripe",
 		Raw:       intent,
 	}
+
 	if err := s.Store.SavePayment(ctx, result); err != nil {
 		logger.LogError("stripe.create_payment.save_payment_failed", logger.ErrorField(err))
 		return nil, err
 	}
+
 	return result, nil
 }
 
@@ -1041,17 +1105,66 @@ func (s *StripeProvider) RefundPayment(ctx context.Context, req *RefundPaymentRe
 		logger.LogError("stripe.refund_payment.api_key_missing", logger.ErrorField(err))
 		return nil, err
 	}
+
+	// Generate idempotency key if not provided (using payment_id + amount as a basis)
+	idempotencyKey := fmt.Sprintf("refund_%s_%d", req.PaymentID, int64(req.Amount*100))
+
 	stripe.Key = s.APIKey
 	params := &stripe.RefundParams{
 		PaymentIntent: stripe.String(req.PaymentID),
 		Amount:        stripe.Int64(int64(req.Amount * 100)),
+		Params: stripe.Params{
+			IdempotencyKey: stripe.String(idempotencyKey),
+		},
 	}
+
+	// Add reason if provided
+	if req.Reason != "" {
+		params.Reason = stripe.String(req.Reason)
+	}
+
+	// Check if this refund was already processed
+	// Look for payments with the same payment_id in refunded status
+	existingResult, err := s.Store.GetPaymentResult(ctx, req.PaymentID)
+	if err == nil && existingResult != nil && existingResult.Status == "refunded" {
+		logger.LogInfo("stripe.refund_payment.already_refunded",
+			logger.String("payment_id", req.PaymentID),
+			logger.String("idempotency_key", idempotencyKey))
+		return existingResult, nil
+	}
+
 	refund, err := refund.New(params)
 	if err != nil {
-		logger.LogError("stripe.refund_payment.failed", logger.ErrorField(err), logger.String("payment_id", req.PaymentID))
+		// Check if it's an idempotency error (refund already exists)
+		if strErr, ok := err.(*stripe.Error); ok && strErr.Code == "idempotency_error" {
+			logger.LogInfo("stripe.refund_payment.idempotency_error",
+				logger.String("payment_id", req.PaymentID),
+				logger.String("idempotency_key", idempotencyKey))
+
+			// Try to fetch the original refund
+			result := &PaymentResult{
+				PaymentID: req.PaymentID,
+				Status:    "refunded", // Assume refunded since we got an idempotency error
+				Amount:    req.Amount,
+				Currency:  req.Currency,
+				CreatedAt: time.Now().UTC(),
+				Provider:  "stripe",
+			}
+			return result, nil
+		}
+
+		logger.LogError("stripe.refund_payment.failed",
+			logger.ErrorField(err),
+			logger.String("payment_id", req.PaymentID))
 		return nil, errors.New("stripe: failed to refund payment")
 	}
-	logger.LogInfo("stripe.refund_payment.success", logger.String("refund_id", refund.ID), logger.Float64("amount", float64(refund.Amount)/100.0), logger.String("currency", string(refund.Currency)))
+
+	logger.LogInfo("stripe.refund_payment.success",
+		logger.String("refund_id", refund.ID),
+		logger.Float64("amount", float64(refund.Amount)/100.0),
+		logger.String("currency", string(refund.Currency)),
+		logger.String("idempotency_key", idempotencyKey))
+
 	result := &PaymentResult{
 		PaymentID: req.PaymentID,
 		Status:    string(refund.Status),
@@ -1061,10 +1174,20 @@ func (s *StripeProvider) RefundPayment(ctx context.Context, req *RefundPaymentRe
 		Provider:  "stripe",
 		Raw:       refund,
 	}
+
 	if err := s.Store.SavePayment(ctx, result); err != nil {
 		logger.LogError("stripe.refund_payment.save_payment_failed", logger.ErrorField(err))
 		return nil, err
 	}
+
+	// Update the payment status to reflect the refund
+	if err := s.Store.UpdatePaymentStatus(ctx, req.PaymentID, "refunded"); err != nil {
+		logger.LogWarn("stripe.refund_payment.update_status_failed",
+			logger.ErrorField(err),
+			logger.String("payment_id", req.PaymentID))
+		// Continue anyway since the refund was successful
+	}
+
 	return result, nil
 }
 
@@ -1266,6 +1389,137 @@ func (h *PaymentHandler) ListPaymentPlugins(c *fiber.Ctx) error {
 	})
 }
 
+// GetTransactionReport handles transaction reporting requests for a specific time period
+func (h *PaymentHandler) GetTransactionReport(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id is required"})
+	}
+
+	// Parse date parameters with defaults
+	startStr := c.Query("start_date", time.Now().AddDate(0, -1, 0).Format("2006-01-02"))
+	endStr := c.Query("end_date", time.Now().Format("2006-01-02"))
+	includeDailyTotals := c.QueryBool("include_daily_totals", false)
+
+	startDate, err := time.Parse("2006-01-02", startStr)
+	if err != nil {
+		logger.LogError("GetTransactionReport: invalid start_date", logger.ErrorField(err), logger.String("start_date", startStr))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid start_date format, use YYYY-MM-DD"})
+	}
+
+	endDate, err := time.Parse("2006-01-02", endStr)
+	if err != nil {
+		logger.LogError("GetTransactionReport: invalid end_date", logger.ErrorField(err), logger.String("end_date", endStr))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid end_date format, use YYYY-MM-DD"})
+	}
+
+	// Ensure end date is inclusive by extending to the end of the day
+	endDate = endDate.Add(24*time.Hour - 1*time.Second)
+
+	// Validate date range
+	if startDate.After(endDate) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "start_date must be before end_date"})
+	}
+
+	// Maximum report period is 1 year
+	maxPeriod := 365 * 24 * time.Hour
+	if endDate.Sub(startDate) > maxPeriod {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "date range exceeds maximum allowed period of 1 year",
+		})
+	}
+
+	// Get the transaction report
+	report, err := h.Store.GetTransactionReport(c.Context(), tenantID, startDate, endDate, includeDailyTotals)
+	if err != nil {
+		logger.LogError("GetTransactionReport: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to generate transaction report"})
+	}
+
+	return c.JSON(report)
+}
+
+// GetPaymentMethodDistribution returns the distribution of payment methods used in a time period
+func (h *PaymentHandler) GetPaymentMethodDistribution(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id is required"})
+	}
+
+	// Parse date parameters with defaults
+	startStr := c.Query("start_date", time.Now().AddDate(0, -1, 0).Format("2006-01-02"))
+	endStr := c.Query("end_date", time.Now().Format("2006-01-02"))
+
+	startDate, err := time.Parse("2006-01-02", startStr)
+	if err != nil {
+		logger.LogError("GetPaymentMethodDistribution: invalid start_date", logger.ErrorField(err), logger.String("start_date", startStr))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid start_date format, use YYYY-MM-DD"})
+	}
+
+	endDate, err := time.Parse("2006-01-02", endStr)
+	if err != nil {
+		logger.LogError("GetPaymentMethodDistribution: invalid end_date", logger.ErrorField(err), logger.String("end_date", endStr))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid end_date format, use YYYY-MM-DD"})
+	}
+
+	// Ensure end date is inclusive by extending to the end of the day
+	endDate = endDate.Add(24*time.Hour - 1*time.Second)
+
+	// Get the payment method distribution
+	distribution, err := h.Store.GetPaymentMethodReport(c.Context(), tenantID, startDate, endDate)
+	if err != nil {
+		logger.LogError("GetPaymentMethodDistribution: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to generate payment method distribution"})
+	}
+
+	return c.JSON(fiber.Map{
+		"start_date":                  startDate.Format("2006-01-02"),
+		"end_date":                    endDate.Format("2006-01-02"),
+		"payment_method_distribution": distribution,
+	})
+}
+
+// GetTransactionVolume returns the total transaction volume and count for a time period
+func (h *PaymentHandler) GetTransactionVolume(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id")
+	if tenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id is required"})
+	}
+
+	// Parse date parameters with defaults
+	startStr := c.Query("start_date", time.Now().AddDate(0, -1, 0).Format("2006-01-02"))
+	endStr := c.Query("end_date", time.Now().Format("2006-01-02"))
+
+	startDate, err := time.Parse("2006-01-02", startStr)
+	if err != nil {
+		logger.LogError("GetTransactionVolume: invalid start_date", logger.ErrorField(err), logger.String("start_date", startStr))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid start_date format, use YYYY-MM-DD"})
+	}
+
+	endDate, err := time.Parse("2006-01-02", endStr)
+	if err != nil {
+		logger.LogError("GetTransactionVolume: invalid end_date", logger.ErrorField(err), logger.String("end_date", endStr))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid end_date format, use YYYY-MM-DD"})
+	}
+
+	// Ensure end date is inclusive by extending to the end of the day
+	endDate = endDate.Add(24*time.Hour - 1*time.Second)
+
+	// Get the transaction volume and count
+	volume, count, err := h.Store.GetTransactionVolume(c.Context(), tenantID, startDate, endDate)
+	if err != nil {
+		logger.LogError("GetTransactionVolume: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to calculate transaction volume"})
+	}
+
+	return c.JSON(fiber.Map{
+		"start_date":         startDate.Format("2006-01-02"),
+		"end_date":           endDate.Format("2006-01-02"),
+		"transaction_volume": volume,
+		"transaction_count":  count,
+	})
+}
+
 // GetPaymentPlugin returns details about a specific payment plugin
 func (h *PaymentHandler) GetPaymentPlugin(c *fiber.Ctx) error {
 	pluginName := c.Params("name")
@@ -1396,16 +1650,15 @@ func (h *PaymentHandler) DisablePaymentPlugin(c *fiber.Ctx) error {
 	})
 }
 
-
 func (h *PaymentHandler) CreateManualRefund(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
 	}
 	var input struct {
-		Reason  string  `json:"reason"`
-		Amount  float64 `json:"amount"`
-		Currency string `json:"currency"`
+		Reason   string  `json:"reason"`
+		Amount   float64 `json:"amount"`
+		Currency string  `json:"currency"`
 	}
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
