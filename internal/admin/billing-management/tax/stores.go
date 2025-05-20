@@ -3,9 +3,7 @@ package tax
 import (
 	"context"
 	"fmt"
-	"time"
 
-	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -103,24 +101,6 @@ func (s *PostgresStore) RemoveTaxPluginConfig(ctx context.Context, tenantID, plu
 
 	if result.RowsAffected() == 0 {
 		return fmt.Errorf("tax plugin config not found for tenant %s and plugin %s", tenantID, pluginName)
-	}
-
-	// Log the action
-	if s.AuditLogger != nil {
-		// Create a SecurityAuditLog for the AuditLogger
-		auditLog := security_management.SecurityAuditLog{
-			UserID:     "", // Can be empty if not applicable
-			Action:     "plugin.tax.config.remove",
-			Resource:   "tax_plugin_config",
-			ResourceID: pluginName,
-			Details:    fmt.Sprintf("Removed tax plugin %s configuration for tenant %s", pluginName, tenantID),
-			CreatedAt:  time.Now(),
-		}
-
-		// Try to create the audit log, but don't fail if it doesn't work
-		if _, err := s.AuditLogger.CreateSecurityAuditLog(ctx, auditLog); err != nil {
-			logger.LogError("Failed to create audit log", logger.ErrorField(err))
-		}
 	}
 
 	return nil

@@ -12,7 +12,6 @@ func NewProjectHandler(store *PostgresStore) *ProjectHandler {
 		Store:                  store,
 		ProjectService:         store,
 		ProjectSettingsService: store,
-		SecurityAuditLogger:    store.AuditLogger,
 		RateLimitService:       nil, // This will be set by the router
 	}
 }

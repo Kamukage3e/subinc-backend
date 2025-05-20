@@ -26,7 +26,7 @@ type ServerConfigService interface {
 
 type PostgresStore struct {
 	DB                  *pgxpool.Pool
-	AuditLogger         AuditLogger
+
 	ServerConfigService ServerConfigService
 }
 

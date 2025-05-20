@@ -19,7 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	payment "github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
 
-	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+ 
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
@@ -581,7 +581,7 @@ func (s *PostgresStore) GetDunningConfig(ctx context.Context, tenantID string) (
 
 // GetPaymentResult implements payment.StoreInterface for provider compatibility.
 
-func NewPostgresStore(db *pgxpool.Pool, serverConfigService *server_config.Service, auditLogger security_management.AuditLogger) *PostgresStore {
+func NewPostgresStore(db *pgxpool.Pool, serverConfigService *server_config.Service) *PostgresStore {
 	if db == nil {
 		panic("PostgresStore: DB must not be nil")
 	}
@@ -591,7 +591,6 @@ func NewPostgresStore(db *pgxpool.Pool, serverConfigService *server_config.Servi
 	return &PostgresStore{
 		DB:                  db,
 		ServerConfigService: serverConfigService,
-		AuditLogger:         auditLogger,
 	}
 }
 

@@ -3,16 +3,14 @@ package server_config
 import (
 	"github.com/gofiber/fiber/v2"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
 // RegisterAdminServerConfigRoutes registers admin API routes for server config management.
-func RegisterAdminServerConfigRoutes(router fiber.Router, handler *Handler, jwtSecret string, auditLogger security_management.AuditLogger) {
+func RegisterAdminServerConfigRoutes(router fiber.Router, handler *Handler, jwtSecret string) {
 	cfg := router.Group(
 		"/server-config",
 		security_management.OIDCMiddleware(jwtSecret),
-		auditmiddleware.AuditLoggerMiddleware(auditLogger),
 	)
 	cfg.Get("/list", rbacmiddleware.RBACMiddleware("server-config", "read", nil), handler.ListConfig)
 	cfg.Get("/get/:key", rbacmiddleware.RBACMiddleware("server-config", "read", nil), handler.GetConfig)

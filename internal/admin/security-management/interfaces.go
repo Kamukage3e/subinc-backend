@@ -88,11 +88,6 @@ type SecurityPolicyService interface {
 	DeleteSecurityPolicy(ctx context.Context, id string) error
 }
 
-// AuditLogger is the canonical interface for audit logging. All modules must depend on this, not a concrete implementation.
-type AuditLogger interface {
-	CreateSecurityAuditLog(ctx context.Context, log SecurityAuditLog) (SecurityAuditLog, error)
-}
-
 type SecurityAnalyticsService interface {
 	GetSecurityAnalytics(ctx context.Context, tenantID string) (SecurityAnalytics, error)
 	ListAnomalies(ctx context.Context, tenantID string, page, pageSize int) ([]Anomaly, error)

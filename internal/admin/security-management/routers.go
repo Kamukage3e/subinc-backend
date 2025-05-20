@@ -5,12 +5,12 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
-	// "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
+
 )
 
 // Architectural decision: All security-management endpoints use in-memory rate limiting and strict security headers.
 // Sensitive endpoints have stricter limits.
-func RegisterRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretName string, auditLogger AuditLogger) {
+func RegisterRoutes(router fiber.Router, handler *SecurityHandler, jwtSecretName string) {
 	// General rate limiter: 30 req/min/IP
 	generalLimiter := newInMemoryRateLimiter(30, time.Minute)
 	// Sensitive: 10 req/min/IP

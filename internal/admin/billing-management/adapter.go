@@ -19,7 +19,7 @@ type BillingAdapter struct {
 func NewBillingAdapter(db *pgxpool.Pool) *BillingAdapter {
 	return &BillingAdapter{
 		db:    db,
-		store: NewPostgresStore(db, nil, nil),
+		store: NewPostgresStore(db, nil),
 	}
 }
 

@@ -21,8 +21,11 @@ func RBACMiddleware(resource, action string, handler *RBACHandler) fiber.Handler
 // RegisterAdminRBACRoutes enforces RBAC/ABAC by default for owner/admin routes.
 func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler, jwtSecretName string) {
 	rbac := router.Group("/rbac-management") // security_management.OIDCMiddleware(jwtSecretName),
+
+	// Rate limiter middleware commented out
 	// security_management.NewRateLimitMiddleware(handler.RateLimitService, rbacScopeExtractor),
-	// auditmiddleware.AuditLoggerMiddleware(auditLogger),
+
+	// Note: Audit logging should be added in main.go to avoid import cycles
 
 	// Roles
 	rbac.Post("/roles", RBACMiddleware("role", "create", handler), handler.CreateRole)
@@ -80,6 +83,10 @@ func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler, jwtSecre
 	rbac.Post("/permission-templates", RBACMiddleware("permission-template", "create", handler), handler.CreatePermissionTemplate)
 	rbac.Get("/permission-templates", RBACMiddleware("permission-template", "read", handler), handler.ListPermissionTemplates)
 	rbac.Post("/permission-templates/:id/apply", RBACMiddleware("permission-template", "apply", handler), handler.ApplyPermissionTemplate)
+
+	// Role templates - predefined roles with common permission sets
+	rbac.Get("/role-templates", RBACMiddleware("role-template", "read", handler), handler.ListRoleTemplates)
+	rbac.Post("/role-templates/:id/apply", RBACMiddleware("role-template", "apply", handler), handler.ApplyRoleTemplate)
 
 	// ABAC Policies
 	rbac.Post("/abac-policies", RBACMiddleware("abac-policy", "create", handler), handler.CreateABACPolicy)

@@ -5,7 +5,7 @@ import (
 
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
+
 )
 
 // tenantScopeExtractor extracts tenant-specific identifiers for rate limiting
@@ -20,12 +20,12 @@ func tenantScopeExtractor(c *fiber.Ctx) (string, string) {
 // - POST collection: create resource
 // - PUT item: update resource
 // - DELETE item: delete resource
-func RegisterRoutes(router fiber.Router, handler *TenantAdminHandler, jwtSecret string, auditLogger security_management.AuditLogger) {
+func RegisterRoutes(router fiber.Router, handler *TenantAdminHandler, jwtSecret string) {
 	route := router.Group(
 		"/tenant-management",
 		security_management.OIDCMiddleware(jwtSecret),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, tenantScopeExtractor),
-		auditmiddleware.AuditLoggerMiddleware(auditLogger),
+
 	)
 	// Tenants CRUD
 	route.Post("/tenants", rbacmiddleware.RBACMiddleware("tenant", "create", nil), handler.CreateTenant)

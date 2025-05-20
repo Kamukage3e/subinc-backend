@@ -17,7 +17,6 @@ type RBACHandler struct {
 	PolicyService        PolicyService
 	APIPermissionService APIPermissionService
 	ResourceService      ResourceService
-	AuditLogService      AuditLogService
 	Store                *PostgresStore
 	RBACService          RBACService // optional, may be nil
 }

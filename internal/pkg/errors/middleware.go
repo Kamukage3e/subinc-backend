@@ -111,22 +111,4 @@ func generateTraceID() string {
 	return hex.EncodeToString(bytes)
 }
 
-// // Fix for APIError.MarshalJSON to use proper JSON marshal
-// func (e *APIError) MarshalJSON() ([]byte, error) {
-// 	response := map[string]interface{}{
-// 		"error": map[string]interface{}{
-// 			"code":    e.Code,
-// 			"message": e.Message,
-// 		},
-// 	}
 
-// 	if e.Field != "" {
-// 		response["error"].(map[string]interface{})["field"] = e.Field
-// 	}
-
-// 	if e.TraceID != "" {
-// 		response["error"].(map[string]interface{})["trace_id"] = e.TraceID
-// 	}
-
-// 	return json.Marshal(response)
-// }

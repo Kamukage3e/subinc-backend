@@ -6,7 +6,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	account "github.com/subinc/subinc-backend/internal/admin/billing-management/account"
-	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
@@ -21,7 +20,6 @@ type DiscountHandler struct {
 
 type PostgresStore struct {
 	DB                  *pgxpool.Pool
-	AuditLogger         security_management.AuditLogger
 	ServerConfigService *server_config.Service
 }
 

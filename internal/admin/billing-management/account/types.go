@@ -51,7 +51,6 @@ type OrganizationBillingAccount struct {
 
 type PostgresStore struct {
 	DB                  *pgxpool.Pool
-	AuditLogger         security_management.AuditLogger
 	ServerConfigService *server_config.Service
 }
 

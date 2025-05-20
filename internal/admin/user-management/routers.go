@@ -3,7 +3,7 @@ package user_management
 import (
 	"github.com/gofiber/fiber/v2"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-	auditutil "github.com/subinc/subinc-backend/internal/pkg/auditutil"
+
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
@@ -17,12 +17,11 @@ func userScopeExtractor(c *fiber.Ctx) (string, string) {
 // - Single resources identified by ID (/users/:id)
 // - HTTP method determines action (GET, POST, PUT, DELETE)
 // - Nested resources use hierarchical paths (/orgs/:org_id/users)
-func RegisterRoutes(router fiber.Router, handler *UserHandler, jwtSecret string, auditLogger security_management.AuditLogger) {
+func RegisterRoutes(router fiber.Router, handler *UserHandler, jwtSecret string) {
 	route := router.Group(
 		"/user-management",
 		security_management.OIDCMiddleware(jwtSecret),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, userScopeExtractor),
-		auditutil.AuditLoggerMiddleware(auditLogger),
 	)
 	// Users resource
 	route.Post("/users", rbacmiddleware.RBACMiddleware("user", "create", nil), handler.CreateUser)

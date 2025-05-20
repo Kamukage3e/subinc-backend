@@ -549,7 +549,7 @@ func (r *ProviderRegistry) Lookup(name string) (PaymentProvider, bool) {
 // tenantID: the tenant to look up
 // auditLogger: for audit logging
 // configService: for fetching global provider config
-func GetProviderForTenant(ctx context.Context, store StoreInterface, tenantID string, auditLogger security_management.AuditLogger, configService *server_config.Service) (PaymentProvider, error) {
+func GetProviderForTenant(ctx context.Context, store StoreInterface, tenantID string, configService *server_config.Service) (PaymentProvider, error) {
 	cfg, err := store.GetTenantPaymentProviderConfig(ctx, tenantID)
 	if err != nil {
 		logger.LogError("GetProviderForTenant: failed to get tenant config", logger.ErrorField(err))
@@ -574,7 +574,7 @@ func GetProviderForTenant(ctx context.Context, store StoreInterface, tenantID st
 			logger.LogError("GetProviderForTenant: stripe api_key missing", logger.String("tenant_id", tenantID))
 			return nil, errors.New("stripe api_key missing for tenant and owner")
 		}
-		return &StripeProvider{APIKey: apiKey, AuditLogger: auditLogger, Store: store}, nil
+		return &StripeProvider{APIKey: apiKey,  Store: store}, nil
 	case "paypal":
 		clientID := ownerCfg.PaypalClientID
 		clientSecret := ownerCfg.PaypalClientSecret
@@ -604,7 +604,7 @@ func GetProviderForTenant(ctx context.Context, store StoreInterface, tenantID st
 			logger.LogError("GetProviderForTenant: paypal client init failed", logger.ErrorField(err))
 			return nil, err
 		}
-		return &PaypalProvider{Client: client, AuditLogger: auditLogger, Store: store}, nil
+		return &PaypalProvider{Client: client,  Store: store}, nil
 	case "braintree":
 		merchantID := ownerCfg.BraintreeMerchantID
 		publicKey := ownerCfg.BraintreePublicKey
@@ -638,7 +638,7 @@ func GetProviderForTenant(ctx context.Context, store StoreInterface, tenantID st
 		}
 		client := braintree.New(btEnv, merchantID, publicKey, privateKey)
 		_, err = client.Transaction().Search(ctx, &braintree.SearchQuery{})
-		return &BraintreeProvider{Client: client, AuditLogger: auditLogger, Store: store}, nil
+		return &BraintreeProvider{Client: client,  Store: store}, nil
 	default:
 		logger.LogError("GetProviderForTenant: unsupported provider", logger.String("provider", cfg.Provider))
 		return nil, errors.New("unsupported provider: " + cfg.Provider)
@@ -759,7 +759,7 @@ func RetryPayment(ctx context.Context, store StoreInterface, p interface{}) (*Pa
 		logger.LogError("RetryPayment: failed to load provider config", logger.ErrorField(err))
 		return nil, err
 	}
-	provider, err := GetProviderForTenant(ctx, store, cfg.TenantID, nil, nil)
+	provider, err := GetProviderForTenant(ctx, store, cfg.TenantID, nil)
 	if err != nil {
 		logger.LogError("RetryPayment: failed to get provider", logger.ErrorField(err))
 		return nil, err

@@ -71,7 +71,7 @@ type TenantAdminHandler struct {
 
 	// AuditLogger records security-relevant tenant operations
 	// Optional for deployments that don't require audit logging
-	AuditLogger security_management.AuditLogger
+
 
 	// UserHandler handles delegated user operations
 	// Optional for deployments that don't need user management integration
@@ -90,7 +90,7 @@ type PostgresStore struct {
 	DB *pgxpool.Pool
 
 	// AuditLogger records security-relevant database operations
-	AuditLogger security_management.AuditLogger
+
 
 	// ServerConfigService provides access to server configuration
 	ServerConfigService *server_config.Service

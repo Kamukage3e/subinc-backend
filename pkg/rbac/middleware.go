@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	"github.com/subinc/subinc-backend/internal/pkg/interfaces"
+	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
 // Config holds RBAC middleware config
@@ -43,8 +44,24 @@ func Middleware(cfg Config) fiber.Handler {
 	if !cfg.Enable {
 		return func(c *fiber.Ctx) error { return c.Next() }
 	}
+
+	// Validate configuration
 	if cfg.RBACService == nil || cfg.SessionManager == nil || (cfg.ResourceResolver == nil && cfg.RoutePermissionMap == nil) {
-		panic("RBAC middleware misconfigured: required fields missing")
+		// Log error instead of panic
+		logger.LogError(
+			"RBAC middleware misconfigured",
+			logger.Bool("rbac_service_nil", cfg.RBACService == nil),
+			logger.Bool("session_manager_nil", cfg.SessionManager == nil),
+			logger.Bool("resource_resolver_nil", cfg.ResourceResolver == nil),
+			logger.Bool("route_permission_map_nil", cfg.RoutePermissionMap == nil),
+		)
+
+		// Return a middleware that always returns an error
+		return func(c *fiber.Ctx) error {
+			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
+				"error": "server configuration error: RBAC middleware misconfigured",
+			})
+		}
 	}
 
 	return func(c *fiber.Ctx) error {
@@ -103,7 +120,7 @@ func Middleware(cfg Config) fiber.Handler {
 		}
 
 		// Check permission
-		allowed, err := cfg.RBACService.CheckPermission(context.Background(), userID, resource, action)
+		allowed, err := cfg.RBACService.CheckAccess(context.Background(), userID, resource, action, nil)
 		if err != nil {
 			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "rbac check failed"})
 		}

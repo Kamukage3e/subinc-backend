@@ -529,19 +529,6 @@ func (e *DBError) Error() string {
 	return "db error: " + e.Op + ": " + e.Err.Error()
 }
 
-// Use a functional implementation for NoopAuditLogger for testability and DI.
-func NewNoopAuditLogger() AuditLogger {
-	return auditLoggerFunc(func(ctx context.Context, log SecurityAuditLog) (SecurityAuditLog, error) {
-		return SecurityAuditLog{}, nil
-	})
-}
-
-type auditLoggerFunc func(ctx context.Context, log SecurityAuditLog) (SecurityAuditLog, error)
-
-func (f auditLoggerFunc) CreateSecurityAuditLog(ctx context.Context, log SecurityAuditLog) (SecurityAuditLog, error) {
-	return f(ctx, log)
-}
-
 // --- SecurityAnalyticsService ---
 
 func (s *PostgresStore) GetSecurityAnalytics(ctx context.Context, tenantID string) (SecurityAnalytics, error) {
@@ -1827,7 +1814,7 @@ func (s *PostgresStore) GetOwnerJWTSecretConfig(ctx context.Context) (JWTSecretC
 	return jwtCfg, nil
 }
 
-func NewPostgresStore(db *pgxpool.Pool, serverConfigService ServerConfigService, auditLogger AuditLogger) *PostgresStore {
+func NewPostgresStore(db *pgxpool.Pool, serverConfigService ServerConfigService) *PostgresStore {
 	if db == nil {
 		panic("PostgresStore: DB must not be nil")
 	}
@@ -1837,7 +1824,6 @@ func NewPostgresStore(db *pgxpool.Pool, serverConfigService ServerConfigService,
 	return &PostgresStore{
 		DB:                  db,
 		ServerConfigService: serverConfigService,
-		AuditLogger:         auditLogger,
 	}
 }
 

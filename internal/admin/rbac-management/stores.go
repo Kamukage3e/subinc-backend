@@ -2,6 +2,7 @@ package rbac_management
 
 import (
 	"context"
+	"fmt"
 
 	"errors"
 	"time"
@@ -1007,4 +1008,301 @@ func (s *PostgresStore) CheckAccess(ctx context.Context, userID, resource, actio
 		}
 	}
 	return false, nil
+}
+
+// InitPredefinedRoleTemplates creates predefined role templates for common billing system roles
+func (s *PostgresStore) InitPredefinedRoleTemplates() error {
+	ctx := context.Background()
+
+	// Define standard role templates for billing system
+	templates := []struct {
+		name        string
+		description string
+		roles       []struct {
+			name  string
+			desc  string
+			perms []struct {
+				resource string
+				action   string
+			}
+		}
+	}{
+		{
+			name:        "billing_admin",
+			description: "Full access to all billing system features",
+			roles: []struct {
+				name  string
+				desc  string
+				perms []struct {
+					resource string
+					action   string
+				}
+			}{
+				{
+					name: "BillingAdmin",
+					desc: "Comprehensive access to all billing resources",
+					perms: []struct {
+						resource string
+						action   string
+					}{
+						{"invoice", "create"},
+						{"invoice", "read"},
+						{"invoice", "update"},
+						{"invoice", "delete"},
+						{"invoice", "apply-credits"},
+						{"invoice", "manual-adjustment"},
+						{"payment", "create"},
+						{"payment", "read"},
+						{"payment", "update"},
+						{"payment", "refund"},
+						{"payment-method", "create"},
+						{"payment-method", "read"},
+						{"payment-method", "update"},
+						{"payment-method", "delete"},
+						{"subscription", "create"},
+						{"subscription", "read"},
+						{"subscription", "update"},
+						{"subscription", "cancel"},
+						{"dunning", "read"},
+						{"dunning", "update"},
+						{"webhook-event", "create"},
+						{"webhook-event", "read"},
+						{"webhook-event", "update"},
+						{"webhook-event", "delete"},
+						{"webhook-subscription", "create"},
+						{"webhook-subscription", "read"},
+						{"webhook-subscription", "update"},
+						{"webhook-subscription", "delete"},
+						{"billing-config", "read"},
+						{"billing-config", "update"},
+						{"report", "read"},
+						{"tenant-currency", "read"},
+						{"tenant-currency", "update"},
+					},
+				},
+			},
+		},
+		{
+			name:        "billing_viewer",
+			description: "Read-only access to billing system features",
+			roles: []struct {
+				name  string
+				desc  string
+				perms []struct {
+					resource string
+					action   string
+				}
+			}{
+				{
+					name: "BillingViewer",
+					desc: "Read-only access to billing resources",
+					perms: []struct {
+						resource string
+						action   string
+					}{
+						{"invoice", "read"},
+						{"payment", "read"},
+						{"payment-method", "read"},
+						{"subscription", "read"},
+						{"dunning", "read"},
+						{"webhook-event", "read"},
+						{"webhook-subscription", "read"},
+						{"billing-config", "read"},
+						{"report", "read"},
+						{"tenant-currency", "read"},
+					},
+				},
+			},
+		},
+		{
+			name:        "payment_manager",
+			description: "Manage payments and payment methods",
+			roles: []struct {
+				name  string
+				desc  string
+				perms []struct {
+					resource string
+					action   string
+				}
+			}{
+				{
+					name: "PaymentManager",
+					desc: "Create, read, and manage payments",
+					perms: []struct {
+						resource string
+						action   string
+					}{
+						{"payment", "create"},
+						{"payment", "read"},
+						{"payment", "update"},
+						{"payment", "refund"},
+						{"payment-method", "create"},
+						{"payment-method", "read"},
+						{"payment-method", "update"},
+						{"payment-method", "delete"},
+						{"invoice", "read"},
+					},
+				},
+			},
+		},
+		{
+			name:        "subscription_manager",
+			description: "Manage subscriptions",
+			roles: []struct {
+				name  string
+				desc  string
+				perms []struct {
+					resource string
+					action   string
+				}
+			}{
+				{
+					name: "SubscriptionManager",
+					desc: "Create, read, and manage subscriptions",
+					perms: []struct {
+						resource string
+						action   string
+					}{
+						{"subscription", "create"},
+						{"subscription", "read"},
+						{"subscription", "update"},
+						{"subscription", "cancel"},
+						{"invoice", "read"},
+					},
+				},
+			},
+		},
+	}
+
+	// Create each template and its permissions
+	for _, tmpl := range templates {
+		for _, role := range tmpl.roles {
+			// Create a new PermissionTemplate
+			id := uuid.New().String()
+
+			// First create all permissions
+			permissionIDs := []string{}
+			for _, perm := range role.perms {
+				// Check if permission already exists
+				exists, permID, err := s.permissionExists(ctx, perm.resource, perm.action)
+				if err != nil {
+					return fmt.Errorf("failed to check if permission exists: %w", err)
+				}
+
+				if exists {
+					permissionIDs = append(permissionIDs, permID)
+					continue
+				}
+
+				// Create the permission
+				permID = uuid.New().String()
+				p := Permission{
+					ID:       permID,
+					Name:     fmt.Sprintf("%s:%s", perm.resource, perm.action),
+					Resource: perm.resource,
+					Action:   perm.action,
+					Desc:     fmt.Sprintf("Permission to %s on %s resources", perm.action, perm.resource),
+				}
+
+				_, err = s.CreatePermission(ctx, p)
+				if err != nil {
+					return fmt.Errorf("failed to create permission: %w", err)
+				}
+
+				permissionIDs = append(permissionIDs, permID)
+			}
+
+			// Create template
+			template := PermissionTemplate{
+				ID:          id,
+				Name:        role.name,
+				Description: role.desc,
+				Permissions: permissionIDs,
+				CreatedAt:   time.Now(),
+			}
+
+			permissionTemplates[id] = template
+		}
+	}
+
+	return nil
+}
+
+// permissionExists checks if a permission with the given resource and action exists
+func (s *PostgresStore) permissionExists(ctx context.Context, resource, action string) (bool, string, error) {
+	query := `
+		SELECT id FROM permissions 
+		WHERE resource = $1 AND action = $2
+		LIMIT 1
+	`
+
+	var id string
+	err := s.DB.QueryRow(ctx, query, resource, action).Scan(&id)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return false, "", nil
+		}
+		return false, "", err
+	}
+
+	return true, id, nil
+}
+
+// ListPredefinedRoleTemplates returns a list of all predefined role templates
+func (s *PostgresStore) ListPredefinedRoleTemplates(ctx context.Context) ([]PermissionTemplate, error) {
+	// Convert the template map to a slice
+	templates := make([]PermissionTemplate, 0, len(permissionTemplates))
+	for _, tpl := range permissionTemplates {
+		templates = append(templates, tpl)
+	}
+	return templates, nil
+}
+
+// ApplyPredefinedRoleTemplate applies a predefined role template to create a role for a tenant
+func (s *PostgresStore) ApplyPredefinedRoleTemplate(ctx context.Context, templateID, tenantID string) (*Role, error) {
+	// Get the template
+	template, exists := permissionTemplates[templateID]
+	if !exists {
+		return nil, fmt.Errorf("template not found: %s", templateID)
+	}
+
+	// Create a new role based on the template
+	role := Role{
+		ID:        uuid.New().String(),
+		TenantID:  tenantID,
+		Name:      template.Name,
+		Desc:      template.Description,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	// Insert the role
+	roleQuery := `
+		INSERT INTO roles (id, tenant_id, name, desc, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id
+	`
+	_, err := s.DB.Exec(ctx, roleQuery, role.ID, role.TenantID, role.Name, role.Desc, role.CreatedAt, role.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create role: %w", err)
+	}
+
+	// Grant all permissions from the template to this role
+	for _, permID := range template.Permissions {
+		grantQuery := `
+			INSERT INTO role_permissions (role_id, permission_id, created_at)
+			VALUES ($1, $2, $3)
+		`
+		_, err := s.DB.Exec(ctx, grantQuery, role.ID, permID, time.Now())
+		if err != nil {
+			// Continue even if some permissions fail - we've already created the role
+			logger.LogError("Failed to grant permission",
+				logger.String("role_id", role.ID),
+				logger.String("permission_id", permID),
+				logger.ErrorField(err),
+			)
+		}
+	}
+
+	return &role, nil
 }

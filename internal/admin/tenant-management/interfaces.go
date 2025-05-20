@@ -3,7 +3,7 @@ package tenant_management
 import (
 	"context"
 
-	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+
 )
 
 // TenantService handles core tenant operations
@@ -20,7 +20,7 @@ type TenantService interface {
 }
 
 // All audit logging must use AuditLogger for decoupling and optionality.
-type TenantAuditLogger = security_management.AuditLogger
+
 
 // TenantSettingsService handles tenant settings operations
 type TenantSettingsService interface {

@@ -265,20 +265,20 @@ type TenantPaymentProviderConfig struct {
 
 type PaypalProvider struct {
 	Client      *paypal.Client
-	AuditLogger security_management.AuditLogger
+
 	Store       StoreInterface
 }
 
 type StripeProvider struct {
 	APIKey      string
-	AuditLogger security_management.AuditLogger
+
 	Store       StoreInterface
 	Notify      security_management.NotificationService
 }
 
 type BraintreeProvider struct {
 	Client      *braintree.Braintree
-	AuditLogger security_management.AuditLogger
+
 	Store       StoreInterface
 }
 

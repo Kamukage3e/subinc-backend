@@ -22,16 +22,15 @@ type Service struct {
 	mu          sync.RWMutex
 	refresh     time.Duration
 	stopCh      chan struct{}
-	AuditLogger security_management.AuditLogger
+
 }
 
-func NewService(store *Store, refresh time.Duration, auditLogger security_management.AuditLogger) *Service {
+func NewService(store *Store, refresh time.Duration) *Service {
 	s := &Service{
 		store:       store,
 		cache:       make(map[string]ServerConfig),
 		refresh:     refresh,
 		stopCh:      make(chan struct{}),
-		AuditLogger: auditLogger,
 	}
 	s.reload(context.Background())
 	go s.autoReload()

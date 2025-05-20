@@ -1,25 +1,39 @@
 package rbac_management
 
 import (
+	"fmt"
 	"sync"
+
+	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
 var (
-	globalRBACStore     *PostgresStore
-	globalRBACStoreOnce sync.Once
+	globalRBACStore RBACService
+	initOnce        sync.Once
 )
 
-// InitGlobalRBACStore must be called once at app startup with the canonical DB and AuditLogger.
-func InitGlobalRBACStore(store *PostgresStore) {
-	globalRBACStoreOnce.Do(func() {
+// InitGlobalRBACStore initializes the global RBAC store
+func InitGlobalRBACStore(store RBACService) {
+	initOnce.Do(func() {
 		globalRBACStore = store
 	})
+
+	// Initialize predefined role templates
+	if store != nil {
+		if err := store.InitPredefinedRoleTemplates(); err != nil {
+			logger.LogError("Failed to initialize predefined role templates", logger.ErrorField(err))
+		} else {
+			logger.LogInfo("Initialized predefined role templates for billing system")
+		}
+	}
 }
 
-// GlobalRBACStore returns the singleton RBAC store. Panics if not initialized.
-func GlobalRBACStore() *PostgresStore {
+// GetGlobalRBACStore returns the global RBAC store
+func GetGlobalRBACStore() (RBACService, error) {
 	if globalRBACStore == nil {
-		panic("GlobalRBACStore not initialized")
+		err := fmt.Errorf("GlobalRBACStore not initialized")
+		logger.LogError("GetGlobalRBACStore", logger.ErrorField(err))
+		return nil, err
 	}
-	return globalRBACStore
+	return globalRBACStore, nil
 }

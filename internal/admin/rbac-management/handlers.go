@@ -987,3 +987,53 @@ func (h *RBACHandler) RestorePolicy(c *fiber.Ctx) error {
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
+
+// ListRoleTemplates returns all predefined role templates
+func (h *RBACHandler) ListRoleTemplates(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "role-template", "read", nil); err != nil {
+		return err
+	}
+
+	// Get templates from the store
+	templates, err := h.Store.ListPredefinedRoleTemplates(c.Context())
+	if err != nil {
+		logger.LogError("ListRoleTemplates: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"templates": templates})
+}
+
+// ApplyRoleTemplate applies a predefined role template to a tenant
+func (h *RBACHandler) ApplyRoleTemplate(c *fiber.Ctx) error {
+	if err := h.checkAccess(c, "role-template", "apply", nil); err != nil {
+		return err
+	}
+
+	templateID := c.Params("id")
+	if templateID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "template ID required"})
+	}
+
+	var input struct {
+		TenantID string `json:"tenant_id"`
+	}
+
+	if err := c.BodyParser(&input); err != nil {
+		logger.LogError("ApplyRoleTemplate: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+	}
+
+	if input.TenantID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+	}
+
+	// Apply the template
+	role, err := h.Store.ApplyPredefinedRoleTemplate(c.Context(), templateID, input.TenantID)
+	if err != nil {
+		logger.LogError("ApplyRoleTemplate: failed", logger.ErrorField(err), logger.String("template_id", templateID), logger.String("tenant_id", input.TenantID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(role)
+}

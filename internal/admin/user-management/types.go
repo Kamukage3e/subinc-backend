@@ -4,13 +4,12 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 )
 
 type PostgresStore struct {
 	DB                  *pgxpool.Pool
-	AuditLogger         security_management.AuditLogger
 	ServerConfigService *server_config.Service
 }
 type User struct {
@@ -93,6 +92,5 @@ type ProjectInvite struct {
 }
 
 type UserHandler struct {
-	Store            *PostgresStore
-	RateLimitService security_management.RateLimitService // for distributed rate limiting
+	Store *PostgresStore
 }

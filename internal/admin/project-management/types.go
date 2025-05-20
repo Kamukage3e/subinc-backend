@@ -13,7 +13,7 @@ type ProjectHandler struct {
 	ProjectService         ProjectService
 	ProjectSettingsService ProjectSettingsService
 	ProjectAuditLogService ProjectAuditLogService
-	SecurityAuditLogger    security_management.AuditLogger      // optional, may be nil
+
 	RateLimitService       security_management.RateLimitService // for distributed rate limiting
 	UserService            user_management.UserService          // optional, may be nil
 	Store                  *PostgresStore
@@ -53,6 +53,6 @@ type DBError struct {
 
 type PostgresStore struct {
 	DB                  *pgxpool.Pool
-	AuditLogger         security_management.AuditLogger
+
 	ServerConfigService *server_config.Service
 }

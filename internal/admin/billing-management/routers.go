@@ -4,7 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
+
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
@@ -13,7 +13,7 @@ func billingScopeExtractor(c *fiber.Ctx) (string, string) {
 	return "billing", c.Get("X-Billing-ID")
 }
 
-func RegisterRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret string, auditLogger security_management.AuditLogger) {
+func RegisterRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret string) {
 	// Validate required parameters
 	if router == nil || handler == nil {
 		logger.LogError("RegisterRoutes: router or handler is nil")
@@ -24,7 +24,7 @@ func RegisterRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret
 		"/billing-management",
 		security_management.OIDCMiddleware(jwtSecret),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, billingScopeExtractor),
-		auditmiddleware.AuditLoggerMiddleware(auditLogger),
+
 	)
 
 	// Register account routes

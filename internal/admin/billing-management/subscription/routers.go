@@ -5,24 +5,24 @@ import (
 
 	// rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 
-	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
+
+
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
-func RegisterRoutes(router fiber.Router, handler *SubscriptionHandler, auditLogger security_management.AuditLogger) {
-	route := router.Group("/plans", auditmiddleware.AuditLoggerMiddleware(auditLogger))
+func RegisterRoutes(router fiber.Router, handler *SubscriptionHandler) {
+	route := router.Group("/plans")
 	route.Post("/", rbacmiddleware.RBACMiddleware("plan", "create", nil), handler.CreatePlan)
 	route.Get("/", rbacmiddleware.RBACMiddleware("plan", "read", nil), handler.ListPlans)
 	route.Get("/:id", rbacmiddleware.RBACMiddleware("plan", "read", nil), handler.GetPlan)
 	route.Put("/:id", rbacmiddleware.RBACMiddleware("plan", "update", nil), handler.UpdatePlan)
 	route.Delete("/:id", rbacmiddleware.RBACMiddleware("plan", "delete", nil), handler.DeletePlan)
 
-	route = router.Group("/usages", auditmiddleware.AuditLoggerMiddleware(auditLogger))
+	route = router.Group("/usages")
 	route.Post("/", rbacmiddleware.RBACMiddleware("usage", "create", nil), handler.CreateUsage)
 	route.Get("/", rbacmiddleware.RBACMiddleware("usage", "read", nil), handler.ListUsage)
 
-	route = router.Group("/subscriptions", auditmiddleware.AuditLoggerMiddleware(auditLogger))
+	route = router.Group("/subscriptions")
 	route.Post("/", rbacmiddleware.RBACMiddleware("subscription", "create", nil), handler.CreateSubscription)
 	route.Get("/", rbacmiddleware.RBACMiddleware("subscription", "read", nil), handler.ListSubscriptions)
 	route.Get("/:id", rbacmiddleware.RBACMiddleware("subscription", "read", nil), handler.GetSubscription)

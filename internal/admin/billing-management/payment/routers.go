@@ -4,7 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-	auditmiddleware "github.com/subinc/subinc-backend/internal/pkg/auditutil"
+
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
@@ -13,12 +13,11 @@ func paymentScopeExtractor(c *fiber.Ctx) (string, string) {
 }
 
 // RegisterPaymentRoutes registers payment related routes
-func RegisterRoutes(router fiber.Router, handler *PaymentHandler, jwtSecret string, auditLogger security_management.AuditLogger) {
+func RegisterRoutes(router fiber.Router, handler *PaymentHandler, jwtSecret string) {
 	route := router.Group(
 		"/payments",
 		security_management.OIDCMiddleware(jwtSecret),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, paymentScopeExtractor),
-		auditmiddleware.AuditLoggerMiddleware(auditLogger),
 	)
 
 	// Payment endpoints

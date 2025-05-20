@@ -13,7 +13,6 @@ func NewOrganizationHandler(store *PostgresStore) *OrganizationHandler {
 		Store:               store,
 		OrganizationService: store,
 		OrgSettingsService:  store,
-		OrgAuditLogger:      store.AuditLogger,
 		RateLimitService:    nil,
 	}
 }

@@ -20,7 +20,25 @@ func RBACMiddleware(resource, action string, abacContext map[string]interface{})
 			))
 		}
 
-		allowed, err := rbac_management.GlobalRBACStore().CheckAccess(c.Context(), userID, resource, action, abacContext)
+		// Get the RBAC store and handle potential error
+		rbacStore, err := rbac_management.GetGlobalRBACStore()
+		if err != nil {
+			logger.Default.Error("Failed to get RBAC store",
+				logger.String("user_id", userID),
+				logger.String("resource", resource),
+				logger.String("action", action),
+				logger.ErrorField(err),
+			)
+
+			return auth.ToFiberError(auth.NewAuthError(
+				auth.ErrorTypeInternal,
+				"RBAC system unavailable",
+				"RBAC_SYSTEM_001",
+				err,
+			))
+		}
+
+		allowed, err := rbacStore.CheckAccess(c.Context(), userID, resource, action, abacContext)
 		if err != nil {
 			logger.Default.Error("RBAC check failed",
 				logger.String("user_id", userID),

@@ -3,11 +3,11 @@ package discount
 import (
 	"github.com/gofiber/fiber/v2"
 
-	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
-func RegisterRoutes(router fiber.Router, handler *DiscountHandler, jwtSecret string, auditLogger security_management.AuditLogger) {
+func RegisterRoutes(router fiber.Router, handler *DiscountHandler, jwtSecret string) {
 	// audit := auditmiddleware.AuditLoggerMiddleware(auditLogger)
 
 	route := router.Group("/discounts", rbacmiddleware.RBACMiddleware("discount", "create", nil))

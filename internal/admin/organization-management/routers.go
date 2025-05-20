@@ -4,16 +4,15 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-	auditutil "github.com/subinc/subinc-backend/internal/pkg/auditutil"
+
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
-func RegisterRoutes(router fiber.Router, handler *OrganizationHandler, jwtSecretName string, auditLogger security_management.AuditLogger) {
+func RegisterRoutes(router fiber.Router, handler *OrganizationHandler, jwtSecretName string) {
 	route := router.Group(
 		"/organizations",
 		security_management.OIDCMiddleware(jwtSecretName),
 		security_management.NewRateLimitMiddleware(handler.RateLimitService, orgScopeExtractor),
-		auditutil.AuditLoggerMiddleware(auditLogger),
 	)
 
 	route.Post("/", rbacmiddleware.RBACMiddleware("organization", "create", nil), handler.CreateOrganization)
