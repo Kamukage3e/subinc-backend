@@ -129,7 +129,7 @@ func (h *SecurityHandler) GetUserSecurityEvent(c *fiber.Ctx) error {
 	events, err := h.SecurityEventService.ListUserSecurityEvents(c.Context(), userID)
 	if err != nil {
 		logger.LogError("GetUserSecurityEvent: failed to list events", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	// Find the specific event
@@ -164,7 +164,7 @@ func (h *SecurityHandler) ListUserLoginHistory(c *fiber.Ctx) error {
 	history, err := h.LoginHistoryService.ListUserLoginHistory(c.Context(), userID)
 	if err != nil {
 		logger.LogError("ListUserLoginHistory: failed", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.JSON(fiber.Map{
@@ -192,7 +192,7 @@ func (h *SecurityHandler) GetUserLoginHistoryItem(c *fiber.Ctx) error {
 	history, err := h.LoginHistoryService.ListUserLoginHistory(c.Context(), userID)
 	if err != nil {
 		logger.LogError("GetUserLoginHistoryItem: failed to list history", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	// Find the specific history item
@@ -236,7 +236,7 @@ func (h *SecurityHandler) EnableMFA(c *fiber.Ctx) error {
 
 	if err := h.MFAService.EnableMFA(c.Context(), userID); err != nil {
 		logger.LogError("EnableMFA: failed", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -270,7 +270,7 @@ func (h *SecurityHandler) DisableMFA(c *fiber.Ctx) error {
 
 	if err := h.MFAService.DisableMFA(c.Context(), userID); err != nil {
 		logger.LogError("DisableMFA: failed", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -302,7 +302,7 @@ func (h *SecurityHandler) MFAChallenge(c *fiber.Ctx) error {
 	challenge, err := h.MFAService.GenerateChallenge(c.Context(), userID)
 	if err != nil {
 		logger.LogError("MFAChallenge: failed", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(challenge)
 }
@@ -419,7 +419,7 @@ func (h *SecurityHandler) ListUserSessions(c *fiber.Ctx) error {
 	sessions, err := h.SessionService.ListUserSessions(c.Context(), userID)
 	if err != nil {
 		logger.LogError("ListUserSessions: failed", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.JSON(fiber.Map{
@@ -477,7 +477,7 @@ func (h *SecurityHandler) RevokeUserSession(c *fiber.Ctx) error {
 
 	if err := h.SessionService.RevokeUserSession(c.Context(), userID, sessionID); err != nil {
 		logger.LogError("RevokeUserSession: failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("session_id", sessionID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
@@ -493,7 +493,7 @@ func (h *SecurityHandler) ListUserAPIKeys(c *fiber.Ctx) error {
 	keys, err := h.APIKeyService.ListUserAPIKeys(c.Context(), userID)
 	if err != nil {
 		logger.LogError("ListUserAPIKeys: failed", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.JSON(fiber.Map{
@@ -524,7 +524,7 @@ func (h *SecurityHandler) CreateUserAPIKey(c *fiber.Ctx) error {
 	key, err := h.APIKeyService.CreateUserAPIKey(c.Context(), userID, input.Name)
 	if err != nil {
 		logger.LogError("CreateUserAPIKey: failed", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusCreated).JSON(key)
 }
@@ -545,7 +545,7 @@ func (h *SecurityHandler) RevokeUserAPIKey(c *fiber.Ctx) error {
 
 	if err := h.APIKeyService.RevokeUserAPIKey(c.Context(), userID, keyID); err != nil {
 		logger.LogError("RevokeUserAPIKey: failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("key_id", keyID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -560,7 +560,7 @@ func (h *SecurityHandler) ListUserDevices(c *fiber.Ctx) error {
 	devices, err := h.DeviceService.ListUserDevices(c.Context(), userID)
 	if err != nil {
 		logger.LogError("ListUserDevices: failed", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.JSON(fiber.Map{
@@ -588,7 +588,7 @@ func (h *SecurityHandler) RevokeUserDevice(c *fiber.Ctx) error {
 
 	if err := h.DeviceService.RevokeUserDevice(c.Context(), userID, deviceID); err != nil {
 		logger.LogError("RevokeUserDevice: failed", logger.ErrorField(err), logger.String("user_id", userID), logger.String("device_id", deviceID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
@@ -613,7 +613,7 @@ func (h *SecurityHandler) TrustDevice(c *fiber.Ctx) error {
 
 	if err := h.DeviceService.TrustDevice(c.Context(), userID, deviceID); err != nil {
 		logger.LogError("TrustDevice: failed", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -733,7 +733,7 @@ func (h *SecurityHandler) ListSecurityPolicies(c *fiber.Ctx) error {
 	policies, err := h.SecurityPolicyService.ListSecurityPolicies(c.Context())
 	if err != nil {
 		logger.LogError("ListSecurityPolicies: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(policies)
 }
@@ -838,8 +838,6 @@ func (h *SecurityHandler) DeleteSecurityPolicy(c *fiber.Ctx) error {
 		logger.LogError("DeleteSecurityPolicy: deletion failed", logger.ErrorField(err), logger.String("policy_id", policyID))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete security policy"})
 	}
-
-
 
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -1035,7 +1033,7 @@ func (h *SecurityHandler) GetNotificationConfig(c *fiber.Ctx) error {
 	cfg, err := h.NotificationService.GetNotificationConfig(c.Context(), tenantID)
 	if err != nil {
 		logger.LogError("GetNotificationConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(cfg)
 }
@@ -1058,7 +1056,7 @@ func (h *SecurityHandler) UpdateNotificationConfig(c *fiber.Ctx) error {
 
 	if err := h.NotificationService.UpdateNotificationConfig(c.Context(), tenantID, input); err != nil {
 		logger.LogError("UpdateNotificationConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -1095,7 +1093,7 @@ func (h *SecurityHandler) SendTestNotification(c *fiber.Ctx) error {
 	err := h.Store.SendNotification(c.Context(), tenantID, channel, input.Recipients, input.Event, input.Details, 3)
 	if err != nil {
 		logger.LogError("SendTestNotification: send failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -1112,7 +1110,7 @@ func (h *SecurityHandler) GetSecurityModuleConfig(c *fiber.Ctx) error {
 	cfg, err := h.SecurityModuleConfigService.GetSecurityModuleConfig(c.Context(), tenantID)
 	if err != nil {
 		logger.LogError("GetSecurityModuleConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(cfg)
 }
@@ -1134,7 +1132,7 @@ func (h *SecurityHandler) SetSecurityModuleConfig(c *fiber.Ctx) error {
 
 	if err := h.SecurityModuleConfigService.SetSecurityModuleConfig(c.Context(), tenantID, input.Enabled); err != nil {
 		logger.LogError("SetSecurityModuleConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"success": true, "tenant_id": tenantID, "enabled": input.Enabled})
 }
@@ -1172,7 +1170,7 @@ func (h *SecurityHandler) SetNotificationChannelEnabled(c *fiber.Ctx) error {
 			logger.String("tenant_id", tenantID),
 			logger.String("channel", channel),
 			logger.String("provider", provider))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"success": true, "enabled": input.Enabled})
 }
@@ -1195,7 +1193,7 @@ func (h *SecurityHandler) GetNotificationChannelEnabled(c *fiber.Ctx) error {
 			logger.String("tenant_id", tenantID),
 			logger.String("channel", channel),
 			logger.String("provider", provider))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"enabled": cfg.Enabled})
 }
@@ -1258,7 +1256,7 @@ func (h *SecurityHandler) SetProviderConfig(c *fiber.Ctx) error {
 		logger.LogError("SetProviderConfig: failed", logger.ErrorField(err),
 			logger.String("tenant_id", tenantID),
 			logger.String("provider", provider))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"success": true})
 }
@@ -1281,7 +1279,7 @@ func (h *SecurityHandler) GetProviderConfig(c *fiber.Ctx) error {
 			logger.String("tenant_id", tenantID),
 			logger.String("channel", channel),
 			logger.String("provider", provider))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(cfg)
 }
@@ -1301,7 +1299,7 @@ func (h *SecurityHandler) CreateWebhook(c *fiber.Ctx) error {
 	w, err := h.SecurityEventWebhookService.CreateWebhook(c.Context(), input)
 	if err != nil {
 		logger.LogError("CreateWebhook: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusCreated).JSON(w)
 }
@@ -1315,7 +1313,7 @@ func (h *SecurityHandler) ListWebhooks(c *fiber.Ctx) error {
 	list, err := h.SecurityEventWebhookService.ListWebhooks(c.Context(), tenantID)
 	if err != nil {
 		logger.LogError("ListWebhooks: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{
 		"webhooks": list,
@@ -1338,7 +1336,7 @@ func (h *SecurityHandler) DeleteWebhook(c *fiber.Ctx) error {
 	err := h.SecurityEventWebhookService.DeleteWebhook(c.Context(), webhookID, tenantID)
 	if err != nil {
 		logger.LogError("DeleteWebhook: failed", logger.ErrorField(err), logger.String("webhook_id", webhookID), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
@@ -1366,7 +1364,7 @@ func (h *SecurityHandler) TriggerWebhook(c *fiber.Ctx) error {
 	err := h.SecurityEventWebhookService.TriggerWebhook(c.Context(), webhookID, tenantID, input.EventType, input.Payload)
 	if err != nil {
 		logger.LogError("TriggerWebhook: failed", logger.ErrorField(err), logger.String("webhook_id", webhookID), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.SendStatus(fiber.StatusOK)
@@ -1386,7 +1384,7 @@ func (h *SecurityHandler) RequestPasswordResetToken(c *fiber.Ctx) error {
 	token, err := h.PasswordResetTokenService.CreateToken(c.Context(), input.UserID, input.ExpiresIn)
 	if err != nil {
 		logger.LogError("RequestPasswordResetToken: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	// --- Send password reset notification (non-blocking) ---
@@ -1437,7 +1435,7 @@ func (h *SecurityHandler) VerifyPasswordResetToken(c *fiber.Ctx) error {
 	valid, err := h.PasswordResetTokenService.VerifyToken(c.Context(), token)
 	if err != nil {
 		logger.LogError("VerifyPasswordResetToken: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.JSON(fiber.Map{"valid": valid})
@@ -1467,7 +1465,7 @@ func (h *SecurityHandler) UsePasswordResetToken(c *fiber.Ctx) error {
 
 	if err := h.PasswordResetTokenService.UseToken(c.Context(), token, input.Email, input.Password); err != nil {
 		logger.LogError("UsePasswordResetToken: failed", logger.ErrorField(err), logger.String("email", input.Email))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
@@ -1512,7 +1510,7 @@ func (h *SecurityHandler) SetRateLimit(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("SetRateLimit: failed", logger.ErrorField(err),
 			logger.String("scope", scope), logger.String("scope_id", scopeID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusOK).JSON(cfg)
 }
@@ -1547,7 +1545,7 @@ func (h *SecurityHandler) DeleteRateLimit(c *fiber.Ctx) error {
 
 	if err := h.RateLimitService.DeleteRateLimit(c.Context(), rateLimitID); err != nil {
 		logger.LogError("DeleteRateLimit: failed", logger.ErrorField(err), logger.String("rate_limit_id", rateLimitID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -1567,7 +1565,7 @@ func (h *SecurityHandler) GetRateLimitConfig(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("GetRateLimitConfig: failed", logger.ErrorField(err),
 			logger.String("scope", scope), logger.String("scope_id", scopeID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(cfg)
 }
@@ -1604,7 +1602,7 @@ func (h *SecurityHandler) SetRateLimitConfig(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("SetRateLimitConfig: failed", logger.ErrorField(err),
 			logger.String("scope", scope), logger.String("scope_id", scopeID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"success": true})
 }
@@ -1862,7 +1860,6 @@ func (h *SecurityHandler) Register(c *fiber.Ctx) error {
 
 	// Create security audit log
 
-
 	// Return user info with verification status
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"user_id":   user.ID,
@@ -1971,7 +1968,7 @@ func (h *SecurityHandler) VerifyEmail(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id and token required"})
 	}
 	if err := h.PasswordService.VerifyEmail(c.Context(), input.UserID, input.Token); err != nil {
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -2004,7 +2001,7 @@ func (h *SecurityHandler) ResendVerification(c *fiber.Ctx) error {
 	}
 	if err := h.PasswordService.ResendVerification(c.Context(), input.Email); err != nil {
 		logger.LogError("ResendVerification: failed", logger.ErrorField(err), logger.String("email", input.Email))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -2047,7 +2044,7 @@ func (h *SecurityHandler) ChangePassword(c *fiber.Ctx) error {
 	}
 	if err := h.PasswordService.ChangePassword(c.Context(), userID, input.OldPassword, input.NewPassword); err != nil {
 		logger.LogError("ChangePassword: failed", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -2194,7 +2191,7 @@ func (h *SecurityHandler) UpdateProfile(c *fiber.Ctx) error {
 	profile, err := h.PasswordService.UpdateProfile(c.Context(), userID, input)
 	if err != nil {
 		logger.LogError("UpdateProfile: failed", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.JSON(profile)
@@ -2230,7 +2227,7 @@ func (h *SecurityHandler) DeleteAccount(c *fiber.Ctx) error {
 	}
 	if err := h.PasswordService.DeleteAccount(c.Context(), userID); err != nil {
 		logger.LogError("DeleteAccount: failed", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -2272,7 +2269,7 @@ func (h *SecurityHandler) Consent(c *fiber.Ctx) error {
 	}
 	if err := h.PasswordService.Consent(c.Context(), userID, input.Consent); err != nil {
 		logger.LogError("Consent: failed", logger.ErrorField(err), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -2289,7 +2286,7 @@ func (h *SecurityHandler) SendInvite(c *fiber.Ctx) error {
 	}
 	if err := h.PasswordService.SendInvite(c.Context(), input.Email, input.Role); err != nil {
 		logger.LogError("SendInvite: failed", logger.ErrorField(err), logger.String("email", input.Email))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -2307,7 +2304,7 @@ func (h *SecurityHandler) AcceptInvite(c *fiber.Ctx) error {
 	user, err := h.PasswordService.AcceptInvite(c.Context(), input.Token, input.Email, input.Password)
 	if err != nil {
 		logger.LogError("AcceptInvite: failed", logger.ErrorField(err), logger.String("email", input.Email))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(user)
 }
@@ -2323,7 +2320,7 @@ func (h *SecurityHandler) AccountRecover(c *fiber.Ctx) error {
 	}
 	if err := h.PasswordService.AccountRecover(c.Context(), input.Email); err != nil {
 		logger.LogError("AccountRecover: failed", logger.ErrorField(err), logger.String("email", input.Email))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -2724,7 +2721,7 @@ func (h *SecurityHandler) SetMFAConfig(c *fiber.Ctx) error {
 	err := h.Store.SetMFAConfig(c.Context(), input.TenantID, input)
 	if err != nil {
 		logger.LogError("SetMFAConfig: failed", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"success": true})
 }
@@ -2740,7 +2737,7 @@ func (h *SecurityHandler) GetPasswordPolicyConfig(c *fiber.Ctx) error {
 	cfg, err := h.Store.GetPasswordPolicyConfig(c.Context(), tenantID)
 	if err != nil {
 		logger.LogError("GetPasswordPolicyConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(cfg)
 }
@@ -2764,7 +2761,7 @@ func (h *SecurityHandler) SetPasswordPolicyConfig(c *fiber.Ctx) error {
 	err := h.Store.SetPasswordPolicyConfig(c.Context(), tenantID, input)
 	if err != nil {
 		logger.LogError("SetPasswordPolicyConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{
 		"success": true,
@@ -2783,7 +2780,7 @@ func (h *SecurityHandler) GetSessionConfig(c *fiber.Ctx) error {
 	cfg, err := h.Store.GetSessionConfig(c.Context(), tenantID)
 	if err != nil {
 		logger.LogError("GetSessionConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(cfg)
 }
@@ -2807,15 +2804,13 @@ func (h *SecurityHandler) SetSessionConfig(c *fiber.Ctx) error {
 	err := h.Store.SetSessionConfig(c.Context(), tenantID, input)
 	if err != nil {
 		logger.LogError("SetSessionConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{
 		"success": true,
 		"config":  input,
 	})
 }
-
-
 
 // --- Owner Admin Bootstrap Endpoint ---
 func (h *SecurityHandler) BootstrapOwnerAdmin(c *fiber.Ctx) error {
@@ -2885,8 +2880,6 @@ func (h *SecurityHandler) BootstrapOwnerAdmin(c *fiber.Ctx) error {
 			logger.String("user_id", user.ID))
 		// Continue anyway since the user was created
 	}
-
-
 
 	// Grant full RBAC access to admin via RBAC tables
 	go func() {
@@ -3045,10 +3038,7 @@ func (h *SecurityHandler) ResetUserPassword(c *fiber.Ctx) error {
 	}
 	if err := h.PasswordService.ResetUserPassword(c.Context(), input.UserID, input.NewPassword); err != nil {
 		logger.LogError("ResetUserPassword: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
-
-
-

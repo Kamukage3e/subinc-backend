@@ -39,12 +39,12 @@ func (h *OrganizationHandler) CreateOrganization(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreateOrganization: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	org, err := h.OrganizationService.CreateOrganization(c.Context(), input)
 	if err != nil {
 		logger.LogError("CreateOrganization: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(org)
@@ -65,12 +65,12 @@ func (h *OrganizationHandler) UpdateOrganization(c *fiber.Ctx) error {
 	input.ID = id
 	if err := input.Validate(); err != nil {
 		logger.LogError("UpdateOrganization: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	org, err := h.OrganizationService.UpdateOrganization(c.Context(), input)
 	if err != nil {
 		logger.LogError("UpdateOrganization: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(org)
 }
@@ -84,7 +84,7 @@ func (h *OrganizationHandler) DeleteOrganization(c *fiber.Ctx) error {
 	}
 	if err := h.OrganizationService.DeleteOrganization(c.Context(), id); err != nil {
 		logger.LogError("DeleteOrganization: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -111,7 +111,7 @@ func (h *OrganizationHandler) ListOrganizations(c *fiber.Ctx) error {
 	orgs, err := h.OrganizationService.ListOrganizations(c.Context(), ownerID, page, pageSize)
 	if err != nil {
 		logger.LogError("ListOrganizations: failed", logger.ErrorField(err), logger.String("owner_id", ownerID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	if orgs == nil {
 		orgs = make([]Organization, 0)
@@ -128,7 +128,7 @@ func (h *OrganizationHandler) GetSettings(c *fiber.Ctx) error {
 	settings, err := h.OrgSettingsService.GetSettings(c.Context(), orgID)
 	if err != nil {
 		logger.LogError("GetSettings: failed", logger.ErrorField(err), logger.String("org_id", orgID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	if settings == nil {
 		settings = map[string]interface{}{}
@@ -155,13 +155,13 @@ func (h *OrganizationHandler) UpdateSettings(c *fiber.Ctx) error {
 	}
 	if err := h.OrgSettingsService.UpdateSettings(c.Context(), orgID, input.Settings); err != nil {
 		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.String("org_id", orgID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	// Fetch and return the updated settings object
 	settings, err := h.OrgSettingsService.GetSettings(c.Context(), orgID)
 	if err != nil {
 		logger.LogError("UpdateSettings: fetch after update failed", logger.ErrorField(err), logger.String("org_id", orgID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	if settings == nil {
 		settings = map[string]interface{}{}

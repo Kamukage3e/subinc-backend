@@ -50,11 +50,11 @@ func (h *TenantAdminHandler) CreateTenant(c *fiber.Ctx) error {
 	}
 	if err := tenant.Validate(); err != nil {
 		logger.LogError("CreateTenant: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	if err := h.TenantStore.CreateTenant(c.Context(), &tenant); err != nil {
 		logger.LogError("CreateTenant: failed", logger.ErrorField(err), logger.String("name", tenant.Name))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(tenant)
@@ -123,11 +123,11 @@ func (h *TenantAdminHandler) UpdateTenant(c *fiber.Ctx) error {
 	tenant.ID = id
 	if err := tenant.Validate(); err != nil {
 		logger.LogError("UpdateTenant: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	if err := h.TenantStore.UpdateTenant(c.Context(), &tenant); err != nil {
 		logger.LogError("UpdateTenant: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(tenant)
@@ -156,7 +156,7 @@ func (h *TenantAdminHandler) DeleteTenant(c *fiber.Ctx) error {
 	}
 	if err := h.TenantStore.DeleteTenant(c.Context(), id); err != nil {
 		logger.LogError("DeleteTenant: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
@@ -218,7 +218,7 @@ func (h *TenantAdminHandler) GetTenantSettings(c *fiber.Ctx) error {
 	settings, err := h.TenantSettingsStore.GetTenantSettings(c.Context(), id)
 	if err != nil {
 		logger.LogError("GetTenantSettings: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusOK).JSON(settings)
 }
@@ -254,12 +254,12 @@ func (h *TenantAdminHandler) UpdateTenantSettings(c *fiber.Ctx) error {
 	}
 	if err := validateTenantSettings(input.Settings); err != nil {
 		logger.LogError("UpdateTenantSettings: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	settings, err := h.TenantSettingsStore.UpdateTenantSettings(c.Context(), id, input.Settings)
 	if err != nil {
 		logger.LogError("UpdateTenantSettings: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusOK).JSON(settings)
 }
@@ -303,7 +303,7 @@ func (h *TenantAdminHandler) SetTenantStatus(c *fiber.Ctx) error {
 
 	if err := h.TenantStore.SetTenantStatus(c.Context(), id, input.Status); err != nil {
 		logger.LogError("SetTenantStatus: failed", logger.ErrorField(err), logger.String("tenant_id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
@@ -330,7 +330,7 @@ func (h *TenantAdminHandler) GetTenantStatus(c *fiber.Ctx) error {
 	status, err := h.TenantStore.GetTenantStatus(c.Context(), id)
 	if err != nil {
 		logger.LogError("GetTenantStatus: failed", logger.ErrorField(err), logger.String("tenant_id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.JSON(fiber.Map{"tenant_id": id, "status": status})

@@ -68,7 +68,7 @@ func (h *Handler) SetConfig(c *fiber.Ctx) error {
 			return c.JSON(fiber.Map{"key": input.Key, "value": input.Value, "version": 1, "updated_at": time.Now().UTC()})
 		}
 		h.log.Error("server_config set failed", logger.ErrorField(err), logger.String("key", input.Key))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	// Audit log
 
@@ -143,7 +143,7 @@ func (h *Handler) SetMigrationStatus(c *fiber.Ctx) error {
 			return c.JSON(input)
 		}
 		h.log.Error("migration status set failed", logger.ErrorField(err), logger.String("name", input.Name))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	// Audit log
 
@@ -174,7 +174,7 @@ func (h *Handler) SetOwnerDBConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetOwnerDBConfig(c.Context(), input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_owner_db_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	// Validate DB connection
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", input.User, input.Password, input.Host, input.Port, input.Name, input.SSLMode)
@@ -215,7 +215,7 @@ func (h *Handler) SetOwnerLoggingConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetOwnerLoggingConfig(c.Context(), input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_owner_logging_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(cfg)
 }
@@ -245,7 +245,7 @@ func (h *Handler) SetOwnerJWTSecretConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetOwnerJWTSecretConfig(c.Context(), security_management.JWTSecretConfig{SecretName: input.SecretName}, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_owner_jwt_secret_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	// Validate JWT secret using the helper function
@@ -291,7 +291,7 @@ func (h *Handler) SetOwnerOAuthConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetOwnerOAuthConfig(c.Context(), input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_owner_oauth_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	// Verify Google OAuth credentials using the helper function
@@ -340,7 +340,7 @@ func (h *Handler) SetOwnerSAMLConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetOwnerSAMLConfig(c.Context(), input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_owner_saml_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	// Verify SAML metadata URL using the helper function
@@ -386,7 +386,7 @@ func (h *Handler) SetOwnerRedisConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetOwnerRedisConfig(c.Context(), input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_owner_redis_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	// Validate Redis connection
 	addr := fmt.Sprintf("%s:%d", input.Host, input.Port)
@@ -432,7 +432,7 @@ func (h *Handler) SetOwnerAWSConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetOwnerAWSConfig(c.Context(), input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_owner_aws_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	// Test AWS connection (STS GetCallerIdentity)
 	awsResult := fiber.Map{"config": cfg, "aws_connection_ok": false}
@@ -480,7 +480,7 @@ func (h *Handler) SetOwnerPaymentProviderConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetOwnerPaymentProviderConfig(c.Context(), input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_owner_payment_provider_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	// Test payment provider connections (owner-level only, no tenant context here)
 	results := fiber.Map{"config": cfg}
@@ -533,7 +533,7 @@ func (h *Handler) SetOwnerOpenAIConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetOwnerOpenAIConfig(c.Context(), input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_owner_openai_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	// Verify OpenAI API key using the helper function
@@ -580,7 +580,7 @@ func (h *Handler) SetOwnerAdminUserConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetOwnerAdminUserConfig(c.Context(), input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_owner_admin_user_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(cfg)
 }
@@ -609,7 +609,7 @@ func (h *Handler) SetOwnerHashIDConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetOwnerHashIDConfig(c.Context(), input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_owner_hashid_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(cfg)
 }
@@ -638,7 +638,7 @@ func (h *Handler) SetOwnerCORSConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetOwnerCORSConfig(c.Context(), input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_owner_cors_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(cfg)
 }
@@ -667,7 +667,7 @@ func (h *Handler) SetOwnerBillingConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetOwnerBillingConfig(c.Context(), input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_owner_billing_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(cfg)
 }
@@ -696,7 +696,7 @@ func (h *Handler) SetOwnerWebhookConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetOwnerWebhookConfig(c.Context(), input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_owner_webhook_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	// Test webhook endpoint connectivity using the helper function
@@ -742,7 +742,7 @@ func (h *Handler) SetOwnerSessionConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetOwnerSessionConfig(c.Context(), input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_owner_session_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(cfg)
 }
@@ -779,7 +779,7 @@ func (h *Handler) SetClientDBConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetClientDBConfig(c.Context(), tenantID, input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_client_db_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	// Validate DB connection
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", input.User, input.Password, input.Host, input.Port, input.Name, input.SSLMode)
@@ -827,7 +827,7 @@ func (h *Handler) SetClientRedisConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetClientRedisConfig(c.Context(), tenantID, input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_client_redis_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	// Validate Redis connection
 	addr := fmt.Sprintf("%s:%d", input.Host, input.Port)
@@ -881,7 +881,7 @@ func (h *Handler) SetClientAWSConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetClientAWSConfig(c.Context(), tenantID, input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_client_aws_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	// Test AWS connection (STS GetCallerIdentity)
 	awsResult := fiber.Map{"config": cfg, "aws_connection_ok": false}
@@ -937,7 +937,7 @@ func (h *Handler) SetClientSMTPConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetClientSMTPConfig(c.Context(), tenantID, input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_client_smtp_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	// Validate SMTP connection
 	addr := fmt.Sprintf("%s:%d", input.Host, input.Port)
@@ -1004,7 +1004,7 @@ func (h *Handler) SetClientPaymentProviderConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetClientPaymentProviderConfig(c.Context(), tenantID, input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_client_payment_provider_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	// Validate payment provider connections
 	results := fiber.Map{"config": cfg}
@@ -1074,7 +1074,7 @@ func (h *Handler) SetClientJWTSecretConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetClientJWTSecretConfig(c.Context(), tenantID, input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_client_jwt_secret_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	// Validate JWT secret using the helper function
@@ -1128,7 +1128,7 @@ func (h *Handler) SetClientOAuthConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetClientOAuthConfig(c.Context(), tenantID, input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_client_oauth_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	// Verify Google OAuth credentials using the helper function
@@ -1185,7 +1185,7 @@ func (h *Handler) SetClientSAMLConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetClientSAMLConfig(c.Context(), tenantID, input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_client_saml_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	// Verify SAML metadata URL using the helper function
@@ -1239,7 +1239,7 @@ func (h *Handler) SetClientOpenAIConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetClientOpenAIConfig(c.Context(), tenantID, input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_client_openai_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	// Verify OpenAI API key using the helper function
@@ -1294,7 +1294,7 @@ func (h *Handler) SetClientWebhookConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetClientWebhookConfig(c.Context(), tenantID, input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_client_webhook_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	// Test webhook endpoint connectivity using the helper function
@@ -1340,7 +1340,7 @@ func (h *Handler) SetOwnerSMTPConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetOwnerSMTPConfig(c.Context(), input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("set_owner_smtp_config failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	// Validate SMTP connection
@@ -1407,7 +1407,7 @@ func (h *Handler) SetOwnerGraphQLConfig(c *fiber.Ctx) error {
 	cfg, err := h.Service.SetOwnerGraphQLConfig(c.Context(), input, updatedBy.(string))
 	if err != nil {
 		h.log.Error("server_config set GraphQL failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.JSON(cfg)

@@ -47,13 +47,13 @@ func (h *AccountHandler) CreateAccount(c *fiber.Ctx) error {
 	if v, ok := input.(interface{ Validate() *Error }); ok {
 		if err := v.Validate(); err != nil {
 			logger.LogError("CreateAccount: validation failed", logger.ErrorField(err))
-			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
+			return c.JSON(fiber.ErrBadRequest)
 		}
 	}
 	account, err := h.BillingAccountService.Create(ctx, BillingAccountType(accountType), input)
 	if err != nil {
 		logger.LogError("CreateAccount: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	if h.NotificationService != nil && account != nil {
 		go func(acct interface{}) {
@@ -124,13 +124,13 @@ func (h *AccountHandler) UpdateAccount(c *fiber.Ctx) error {
 	if v, ok := input.(interface{ Validate() *Error }); ok {
 		if err := v.Validate(); err != nil {
 			logger.LogError("UpdateAccount: validation failed", logger.ErrorField(err))
-			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
+			return c.JSON(fiber.ErrBadRequest)
 		}
 	}
 	account, err := h.BillingAccountService.Update(ctx, BillingAccountType(accountType), input)
 	if err != nil {
 		logger.LogError("UpdateAccount: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(account)
 }
@@ -170,7 +170,7 @@ func (h *AccountHandler) ListAccounts(c *fiber.Ctx) error {
 	accounts, err := h.BillingAccountService.List(ctx, BillingAccountType(accountType), ownerID, page, pageSize)
 	if err != nil {
 		logger.LogError("ListAccounts: failed", logger.ErrorField(err), logger.String("owner_id", ownerID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	if accounts == nil {
 		accounts = make([]interface{}, 0)
@@ -197,7 +197,7 @@ func (h *AccountHandler) PerformAccountAction(c *fiber.Ctx) error {
 	result, err := h.BillingAccountService.PerformAction(ctx, BillingAccountType(accountType), id, input.Action, input.Params)
 	if err != nil {
 		logger.LogError("PerformAccountAction: failed", logger.ErrorField(err), logger.String("account_id", id), logger.String("action", input.Action))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	if result == nil {
 		result = fiber.Map{"action": input.Action, "status": "no result"}
@@ -215,7 +215,7 @@ func (h *AccountHandler) DeleteAccount(c *fiber.Ctx) error {
 	ctx := c.Context()
 	if err := h.BillingAccountService.Delete(ctx, BillingAccountType(accountType), id); err != nil {
 		logger.LogError("DeleteAccount: failed", logger.ErrorField(err), logger.String("account_id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }

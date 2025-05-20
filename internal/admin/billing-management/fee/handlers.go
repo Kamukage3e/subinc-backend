@@ -80,7 +80,7 @@ func (h *FeeHandler) SetFeePluginConfig(c *fiber.Ctx) error {
 	cfg, err := h.Store.SetFeePluginConfig(c.Context(), input.TenantID, input.PluginName)
 	if err != nil {
 		logger.LogError("SetFeePluginConfig: store error", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(cfg)
 }

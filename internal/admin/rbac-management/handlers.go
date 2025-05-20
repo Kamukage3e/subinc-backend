@@ -91,12 +91,12 @@ func (h *RBACHandler) CreateRole(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreateRole: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	role, err := h.RoleService.CreateRole(c.Context(), input)
 	if err != nil {
 		logger.LogError("CreateRole: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusCreated).JSON(role)
 }
@@ -136,7 +136,7 @@ func (h *RBACHandler) UpdateRole(c *fiber.Ctx) error {
 	role, err := h.RoleService.UpdateRole(c.Context(), input)
 	if err != nil {
 		logger.LogError("UpdateRole: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(role)
 }
@@ -153,7 +153,7 @@ func (h *RBACHandler) DeleteRole(c *fiber.Ctx) error {
 	}
 	if err := h.RoleService.DeleteRole(c.Context(), id, tenantID); err != nil {
 		logger.LogError("DeleteRole: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -168,7 +168,7 @@ func (h *RBACHandler) ListRoles(c *fiber.Ctx) error {
 	roles, err := h.RoleService.ListRoles(c.Context(), tenantID, page, pageSize)
 	if err != nil {
 		logger.LogError("ListRoles: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"roles": roles, "page": page, "page_size": pageSize})
 }
@@ -184,12 +184,12 @@ func (h *RBACHandler) CreatePermission(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreatePermission: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	perm, err := h.PermissionService.CreatePermission(c.Context(), input)
 	if err != nil {
 		logger.LogError("CreatePermission: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusCreated).JSON(perm)
 }
@@ -227,7 +227,7 @@ func (h *RBACHandler) UpdatePermission(c *fiber.Ctx) error {
 	perm, err := h.PermissionService.UpdatePermission(c.Context(), input)
 	if err != nil {
 		logger.LogError("UpdatePermission: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(perm)
 }
@@ -242,7 +242,7 @@ func (h *RBACHandler) DeletePermission(c *fiber.Ctx) error {
 	}
 	if err := h.PermissionService.DeletePermission(c.Context(), id); err != nil {
 		logger.LogError("DeletePermission: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -258,7 +258,7 @@ func (h *RBACHandler) ListPermissions(c *fiber.Ctx) error {
 	perms, err := h.PermissionService.ListPermissions(c.Context(), resource, action, page, pageSize)
 	if err != nil {
 		logger.LogError("ListPermissions: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"permissions": perms, "page": page, "page_size": pageSize})
 }
@@ -274,12 +274,12 @@ func (h *RBACHandler) CreateRoleBinding(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreateRoleBinding: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	binding, err := h.RoleBindingService.CreateRoleBinding(c.Context(), input)
 	if err != nil {
 		logger.LogError("CreateRoleBinding: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusCreated).JSON(binding)
 }
@@ -294,7 +294,7 @@ func (h *RBACHandler) DeleteRoleBinding(c *fiber.Ctx) error {
 	}
 	if err := h.RoleBindingService.DeleteRoleBinding(c.Context(), id); err != nil {
 		logger.LogError("DeleteRoleBinding: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -310,7 +310,7 @@ func (h *RBACHandler) ListRoleBindings(c *fiber.Ctx) error {
 	bindings, err := h.RoleBindingService.ListRoleBindings(c.Context(), tenantID, userID, page, pageSize)
 	if err != nil {
 		logger.LogError("ListRoleBindings: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"role_bindings": bindings, "page": page, "page_size": pageSize})
 }
@@ -326,12 +326,12 @@ func (h *RBACHandler) CreatePolicy(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreatePolicy: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	policy, err := h.PolicyService.CreatePolicy(c.Context(), input)
 	if err != nil {
 		logger.LogError("CreatePolicy: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusCreated).JSON(policy)
 }
@@ -369,7 +369,7 @@ func (h *RBACHandler) UpdatePolicy(c *fiber.Ctx) error {
 	policy, err := h.PolicyService.UpdatePolicy(c.Context(), input)
 	if err != nil {
 		logger.LogError("UpdatePolicy: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(policy)
 }
@@ -384,7 +384,7 @@ func (h *RBACHandler) DeletePolicy(c *fiber.Ctx) error {
 	}
 	if err := h.PolicyService.DeletePolicy(c.Context(), id); err != nil {
 		logger.LogError("DeletePolicy: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -399,7 +399,7 @@ func (h *RBACHandler) ListPolicies(c *fiber.Ctx) error {
 	policies, err := h.PolicyService.ListPolicies(c.Context(), tenantID, page, pageSize)
 	if err != nil {
 		logger.LogError("ListPolicies: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"policies": policies, "page": page, "page_size": pageSize})
 }
@@ -416,7 +416,7 @@ func (h *RBACHandler) CreateAPIPermission(c *fiber.Ctx) error {
 	perm, err := h.APIPermissionService.CreateAPIPermission(c.Context(), input)
 	if err != nil {
 		logger.LogError("CreateAPIPermission: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusCreated).JSON(perm)
 }
@@ -432,7 +432,7 @@ func (h *RBACHandler) DeleteAPIPermission(c *fiber.Ctx) error {
 	}
 	if err := h.APIPermissionService.DeleteAPIPermission(c.Context(), id); err != nil {
 		logger.LogError("DeleteAPIPermission: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -449,7 +449,7 @@ func (h *RBACHandler) ListAPIPermissions(c *fiber.Ctx) error {
 	perms, err := h.APIPermissionService.ListAPIPermissions(c.Context(), tenantID, api, method, page, pageSize)
 	if err != nil {
 		logger.LogError("ListAPIPermissions: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"api_permissions": perms, "page": page, "page_size": pageSize})
 }
@@ -466,7 +466,7 @@ func (h *RBACHandler) CreateResource(c *fiber.Ctx) error {
 	res, err := h.ResourceService.CreateResource(c.Context(), input)
 	if err != nil {
 		logger.LogError("CreateResource: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusCreated).JSON(res)
 }
@@ -493,7 +493,7 @@ func (h *RBACHandler) UpdateResource(c *fiber.Ctx) error {
 	res, err := h.ResourceService.UpdateResource(c.Context(), input)
 	if err != nil {
 		logger.LogError("UpdateResource: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(res)
 }
@@ -509,7 +509,7 @@ func (h *RBACHandler) DeleteResource(c *fiber.Ctx) error {
 	}
 	if err := h.ResourceService.DeleteResource(c.Context(), id); err != nil {
 		logger.LogError("DeleteResource: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -542,7 +542,7 @@ func (h *RBACHandler) ListResources(c *fiber.Ctx) error {
 	resources, err := h.ResourceService.ListResources(c.Context(), tenantID, typeParam, page, pageSize)
 	if err != nil {
 		logger.LogError("ListResources: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"resources": resources, "page": page, "page_size": pageSize})
 }
@@ -561,7 +561,7 @@ func (h *RBACHandler) CreateABACPolicy(c *fiber.Ctx) error {
 	policy, err := h.Store.CreateABACPolicy(c.Context(), input)
 	if err != nil {
 		logger.LogError("CreateABACPolicy: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusCreated).JSON(policy)
 }
@@ -581,7 +581,7 @@ func (h *RBACHandler) UpdateABACPolicy(c *fiber.Ctx) error {
 	policy, err := h.Store.UpdateABACPolicy(c.Context(), input)
 	if err != nil {
 		logger.LogError("UpdateABACPolicy: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(policy)
 }
@@ -594,7 +594,7 @@ func (h *RBACHandler) DeleteABACPolicy(c *fiber.Ctx) error {
 	}
 	if err := h.Store.DeleteABACPolicy(c.Context(), id); err != nil {
 		logger.LogError("DeleteABACPolicy: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -620,7 +620,7 @@ func (h *RBACHandler) ListABACPolicies(c *fiber.Ctx) error {
 	policies, err := h.Store.ListABACPolicies(c.Context(), tenantID, page, pageSize)
 	if err != nil {
 		logger.LogError("ListABACPolicies: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"abac_policies": policies, "page": page, "page_size": pageSize})
 }
@@ -638,7 +638,7 @@ func (h *RBACHandler) SimulatePolicy(c *fiber.Ctx) error {
 	result, err := h.Store.SimulatePolicy(c.Context(), input)
 	if err != nil {
 		logger.LogError("SimulatePolicy: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(result)
 }
@@ -659,7 +659,7 @@ func (h *RBACHandler) SimulatePolicyWhatIf(c *fiber.Ctx) error {
 	result, err := h.Store.SimulatePolicy(c.Context(), input)
 	if err != nil {
 		logger.LogError("SimulatePolicyWhatIf: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(result)
 }
@@ -678,7 +678,7 @@ func (h *RBACHandler) EvaluateABAC(c *fiber.Ctx) error {
 	result, err := h.Store.EvaluateABAC(c.Context(), input)
 	if err != nil {
 		logger.LogError("EvaluateABAC: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(result)
 }
@@ -692,7 +692,7 @@ func (h *RBACHandler) ExplainPermission(c *fiber.Ctx) error {
 	result, err := h.Store.ExplainPermission(c.Context(), input)
 	if err != nil {
 		logger.LogError("ExplainPermission: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(result)
 }
@@ -710,7 +710,7 @@ func (h *RBACHandler) DelegateRole(c *fiber.Ctx) error {
 	}
 	if err := h.Store.DelegateRole(c.Context(), input); err != nil {
 		logger.LogError("DelegateRole: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -726,7 +726,7 @@ func (h *RBACHandler) RevokeDelegatedRole(c *fiber.Ctx) error {
 	}
 	if err := h.Store.RevokeDelegatedRole(c.Context(), input); err != nil {
 		logger.LogError("RevokeDelegatedRole: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -739,7 +739,7 @@ func (h *RBACHandler) ListDelegatedRoles(c *fiber.Ctx) error {
 	roles, err := h.Store.ListDelegatedRoles(c.Context(), tenantID, userID, page, pageSize)
 	if err != nil {
 		logger.LogError("ListDelegatedRoles: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID), logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"delegated_roles": roles, "page": page, "page_size": pageSize})
 }
@@ -761,7 +761,7 @@ func (h *RBACHandler) BulkAssignRoleBindings(c *fiber.Ctx) error {
 	bindings, err := h.RoleBindingService.BulkAssignRoleBindings(c.Context(), req.TenantID, req.RoleID, req.UserIDs)
 	if err != nil {
 		logger.LogError("BulkAssignRoleBindings: failed", logger.ErrorField(err), logger.Any("req", req))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"role_bindings": bindings})
 }
@@ -783,7 +783,7 @@ func (h *RBACHandler) BulkRemoveRoleBindings(c *fiber.Ctx) error {
 	err := h.RoleBindingService.BulkRemoveRoleBindings(c.Context(), req.TenantID, req.RoleID, req.UserIDs)
 	if err != nil {
 		logger.LogError("BulkRemoveRoleBindings: failed", logger.ErrorField(err), logger.Any("req", req))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -807,7 +807,7 @@ func (h *RBACHandler) DelegateRoleWithExpiry(c *fiber.Ctx) error {
 	}
 	if err := h.Store.DelegateRole(c.Context(), input); err != nil {
 		logger.LogError("DelegateRoleWithExpiry: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -829,7 +829,7 @@ func (h *RBACHandler) RevokeDelegatedRoleWithAudit(c *fiber.Ctx) error {
 	}
 	if err := h.Store.RevokeDelegatedRole(c.Context(), input); err != nil {
 		logger.LogError("RevokeDelegatedRoleWithAudit: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -852,14 +852,14 @@ func (h *RBACHandler) ImportPolicies(c *fiber.Ctx) error {
 		p.TenantID = input.TenantID
 		if _, err := h.Store.CreatePolicy(c.Context(), p); err != nil {
 			logger.LogError("ImportPolicies: failed to import policy", logger.ErrorField(err), logger.Any("policy", p))
-			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+			return c.JSON(fiber.ErrExpectationFailed)
 		}
 	}
 	for _, ap := range input.ABAC {
 		ap.TenantID = input.TenantID
 		if _, err := h.Store.CreateABACPolicy(c.Context(), ap); err != nil {
 			logger.LogError("ImportPolicies: failed to import abac policy", logger.ErrorField(err), logger.Any("abac_policy", ap))
-			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+			return c.JSON(fiber.ErrExpectationFailed)
 		}
 	}
 	return c.SendStatus(fiber.StatusNoContent)
@@ -874,12 +874,12 @@ func (h *RBACHandler) ExportPolicies(c *fiber.Ctx) error {
 	policies, err := h.Store.ListPolicies(c.Context(), tenantID, 1, 10000)
 	if err != nil {
 		logger.LogError("ExportPolicies: failed to list policies", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	abac, err := h.Store.ListABACPolicies(c.Context(), tenantID, 1, 10000)
 	if err != nil {
 		logger.LogError("ExportPolicies: failed to list abac policies", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	result := fiber.Map{"policies": policies, "abac_policies": abac}
 	return c.JSON(result)
@@ -950,12 +950,12 @@ func (h *RBACHandler) DiscoverPermissions(c *fiber.Ctx) error {
 	resources, err := h.Store.ListDistinctPermissionResources(c.Context())
 	if err != nil {
 		logger.LogError("DiscoverPermissions: failed to list resources", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	actions, err := h.Store.ListDistinctPermissionActions(c.Context())
 	if err != nil {
 		logger.LogError("DiscoverPermissions: failed to list actions", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	result := fiber.Map{"resources": resources, "actions": actions}
 	return c.JSON(result)
@@ -970,7 +970,7 @@ func (h *RBACHandler) RestoreRole(c *fiber.Ctx) error {
 	}
 	if err := h.Store.RestoreRole(c.Context(), id, tenantID); err != nil {
 		logger.LogError("RestoreRole: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -983,7 +983,7 @@ func (h *RBACHandler) RestorePolicy(c *fiber.Ctx) error {
 	}
 	if err := h.Store.RestorePolicy(c.Context(), id); err != nil {
 		logger.LogError("RestorePolicy: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }

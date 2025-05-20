@@ -12,7 +12,7 @@ func (h *SubscriptionHandler) CreatePlan(c *fiber.Ctx) error {
 	}
 	plan, err := h.PlanService.CreatePlan(input)
 	if err != nil {
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusCreated).JSON(plan)
 }
@@ -25,18 +25,13 @@ func (h *SubscriptionHandler) UpdatePlan(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("UpdatePlan: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	plan, err := h.PlanService.UpdatePlan(input)
 	if err != nil {
 		logger.LogError("UpdatePlan: failed", logger.ErrorField(err), logger.Any("input", input))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.JSON(plan)
@@ -49,7 +44,7 @@ func (h *SubscriptionHandler) GetPlan(c *fiber.Ctx) error {
 	}
 	plan, err := h.PlanService.GetPlan(id)
 	if err != nil {
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(plan)
 }
@@ -60,7 +55,7 @@ func (h *SubscriptionHandler) ListPlans(c *fiber.Ctx) error {
 	pageSize := c.QueryInt("page_size", 100)
 	plans, err := h.PlanService.ListPlans(activeOnly, page, pageSize)
 	if err != nil {
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"plans": plans, "page": page, "page_size": pageSize})
 }
@@ -75,13 +70,8 @@ func (h *SubscriptionHandler) DeletePlan(c *fiber.Ctx) error {
 	}
 	if err := h.PlanService.DeletePlan(input.PlanID); err != nil {
 		logger.LogError("DeletePlan: failed", logger.ErrorField(err))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
@@ -95,18 +85,13 @@ func (h *SubscriptionHandler) CreateUsage(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreateUsage: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	usage, err := h.UsageService.CreateUsage(input)
 	if err != nil {
 		logger.LogError("CreateUsage: failed", logger.ErrorField(err), logger.Any("input", input))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(usage)
@@ -133,13 +118,8 @@ func (h *SubscriptionHandler) ListUsage(c *fiber.Ctx) error {
 	usages, err := h.UsageService.ListUsage(input.AccountID, input.Metric, input.Period, input.Page, input.PageSize)
 	if err != nil {
 		logger.LogError("ListUsage: failed", logger.ErrorField(err), logger.String("account_id", input.AccountID), logger.String("metric", input.Metric), logger.String("period", input.Period))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.JSON(fiber.Map{"usages": usages, "page": input.Page, "page_size": input.PageSize})
@@ -153,7 +133,7 @@ func (h *SubscriptionHandler) CreateSubscription(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreateSubscription: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	sub, err := h.SubscriptionService.CreateSubscription(input)
 	if err != nil {
@@ -176,7 +156,7 @@ func (h *SubscriptionHandler) UpdateSubscription(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("UpdateSubscription: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	sub, err := h.SubscriptionService.UpdateSubscription(input)
 	if err != nil {
@@ -198,13 +178,8 @@ func (h *SubscriptionHandler) PatchSubscription(c *fiber.Ctx) error {
 	}
 	if err := h.SubscriptionService.PatchSubscription(input.ID, input.Action); err != nil {
 		logger.LogError("PatchSubscription: failed", logger.ErrorField(err), logger.String("id", input.ID))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)

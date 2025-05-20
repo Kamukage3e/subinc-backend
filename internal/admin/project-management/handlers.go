@@ -35,7 +35,7 @@ func (h *ProjectHandler) CreateProject(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreateProject: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	// Initialize tags if nil
@@ -51,7 +51,7 @@ func (h *ProjectHandler) CreateProject(c *fiber.Ctx) error {
 	proj, err := h.ProjectService.CreateProject(c.Context(), input)
 	if err != nil {
 		logger.LogError("CreateProject: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(proj)
@@ -72,12 +72,12 @@ func (h *ProjectHandler) UpdateProject(c *fiber.Ctx) error {
 	input.ID = id
 	if err := input.Validate(); err != nil {
 		logger.LogError("UpdateProject: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	proj, err := h.ProjectService.UpdateProject(c.Context(), input)
 	if err != nil {
 		logger.LogError("UpdateProject: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.JSON(proj)
@@ -92,7 +92,7 @@ func (h *ProjectHandler) DeleteProject(c *fiber.Ctx) error {
 	}
 	if err := h.ProjectService.DeleteProject(c.Context(), id); err != nil {
 		logger.LogError("DeleteProject: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
@@ -121,7 +121,7 @@ func (h *ProjectHandler) ListProjects(c *fiber.Ctx) error {
 	projs, err := h.ProjectService.ListProjects(c.Context(), orgID, page, pageSize)
 	if err != nil {
 		logger.LogError("ListProjects: failed", logger.ErrorField(err), logger.String("org_id", orgID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"projects": projs, "page": page, "page_size": pageSize})
 }
@@ -136,7 +136,7 @@ func (h *ProjectHandler) GetSettings(c *fiber.Ctx) error {
 	settings, err := h.ProjectSettingsService.GetSettings(c.Context(), id)
 	if err != nil {
 		logger.LogError("GetSettings: failed", logger.ErrorField(err), logger.String("project_id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	if settings == nil {
 		settings = map[string]interface{}{}
@@ -161,7 +161,7 @@ func (h *ProjectHandler) UpdateSettings(c *fiber.Ctx) error {
 	updated, err := h.ProjectSettingsService.UpdateSettings(c.Context(), id, input.Settings)
 	if err != nil {
 		logger.LogError("UpdateSettings: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"settings": updated})
 }

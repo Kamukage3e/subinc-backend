@@ -18,7 +18,7 @@ func (h *TaxHandler) SetTaxInfo(c *fiber.Ctx) error {
 	info, err := h.TaxInfoService.SetTaxInfo(c.Context(), input)
 	if err != nil {
 		logger.LogError("SetTaxInfo: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusCreated).JSON(info)
 }
@@ -32,7 +32,7 @@ func (h *TaxHandler) GetTaxInfo(c *fiber.Ctx) error {
 	info, err := h.TaxInfoService.GetTaxInfo(c.Context(), tenantID)
 	if err != nil {
 		logger.LogError("GetTaxInfo: failed to get tax info", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(info)
 }
@@ -165,7 +165,7 @@ func (h *TaxHandler) SetTaxPluginConfig(c *fiber.Ctx) error {
 			logger.ErrorField(err),
 			logger.String("tenant_id", input.TenantID),
 			logger.String("plugin_name", input.PluginName))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusCreated).JSON(config)
 }
@@ -179,7 +179,7 @@ func (h *TaxHandler) GetTaxPluginConfig(c *fiber.Ctx) error {
 	config, err := h.TaxInfoService.GetTaxPluginConfig(c.Context(), tenantID)
 	if err != nil {
 		logger.LogError("GetTaxPluginConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(config)
 }

@@ -63,13 +63,8 @@ func (h *DiscountHandler) ListDiscounts(c *fiber.Ctx) error {
 	discounts, err := h.DiscountService.ListDiscounts(activeOnly, page, pageSize)
 	if err != nil {
 		logger.LogError("ListDiscounts: failed", logger.ErrorField(err), logger.Bool("active_only", activeOnly))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.JSON(fiber.Map{"discounts": discounts, "page": page, "page_size": pageSize})
 }
@@ -88,18 +83,13 @@ func (h *DiscountHandler) CreateDiscount(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreateDiscount: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	discount, err := h.DiscountService.CreateDiscount(input)
 	if err != nil {
 		logger.LogError("CreateDiscount: failed", logger.ErrorField(err), logger.Any("input", input))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(discount)
@@ -126,18 +116,13 @@ func (h *DiscountHandler) UpdateDiscount(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("UpdateDiscount: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	discount, err := h.DiscountService.UpdateDiscount(input)
 	if err != nil {
 		logger.LogError("UpdateDiscount: failed", logger.ErrorField(err), logger.Any("input", input))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.JSON(discount)
 }
@@ -150,13 +135,8 @@ func (h *DiscountHandler) DeleteDiscount(c *fiber.Ctx) error {
 	}
 	if err := h.DiscountService.DeleteDiscount(id); err != nil {
 		logger.LogError("DeleteDiscount: failed", logger.ErrorField(err), logger.String("id", id))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -181,18 +161,13 @@ func (h *DiscountHandler) CreateCoupon(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreateCoupon: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	coupon, err := h.CouponService.CreateCoupon(input)
 	if err != nil {
 		logger.LogError("CreateCoupon: failed", logger.ErrorField(err), logger.Any("input", input))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(coupon)
@@ -216,18 +191,13 @@ func (h *DiscountHandler) UpdateCoupon(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("UpdateCoupon: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	coupon, err := h.CouponService.UpdateCoupon(input)
 	if err != nil {
 		logger.LogError("UpdateCoupon: failed", logger.ErrorField(err), logger.Any("input", input))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.JSON(coupon)
@@ -241,13 +211,8 @@ func (h *DiscountHandler) DeleteCoupon(c *fiber.Ctx) error {
 	}
 	if err := h.CouponService.DeleteCoupon(id); err != nil {
 		logger.LogError("DeleteCoupon: failed", logger.ErrorField(err), logger.String("id", id))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
@@ -289,13 +254,8 @@ func (h *DiscountHandler) ListCoupons(c *fiber.Ctx) error {
 	coupons, err := h.CouponService.ListCoupons(discountID, &isActive, page, pageSize)
 	if err != nil {
 		logger.LogError("ListCoupons: failed", logger.ErrorField(err), logger.String("discount_id", discountID))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.JSON(fiber.Map{"coupons": coupons, "page": page, "page_size": pageSize})
 }
@@ -320,7 +280,7 @@ func (h *DiscountHandler) CreateCredit(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreateCredit: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	res, err := h.AccountService.Get(c.Context(), account.AccountTypeProject, input.AccountID)
 	if err != nil {
@@ -351,13 +311,8 @@ func (h *DiscountHandler) CreateCredit(c *fiber.Ctx) error {
 	credit, err := h.CreditService.CreateCredit(input)
 	if err != nil {
 		logger.LogError("CreateCredit: failed", logger.ErrorField(err), logger.Any("input", input))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(credit)
@@ -377,18 +332,13 @@ func (h *DiscountHandler) UpdateCredit(c *fiber.Ctx) error {
 	input.ID = id
 	if err := input.Validate(); err != nil {
 		logger.LogError("UpdateCredit: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	credit, err := h.CreditService.UpdateCredit(input)
 	if err != nil {
 		logger.LogError("UpdateCredit: failed", logger.ErrorField(err), logger.Any("input", input))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.JSON(credit)
 }
@@ -409,13 +359,8 @@ func (h *DiscountHandler) PatchCredit(c *fiber.Ctx) error {
 	}
 	if err := h.CreditService.PatchCredit(id, input.Action, input.Amount); err != nil {
 		logger.LogError("PatchCredit: failed", logger.ErrorField(err), logger.String("id", id))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -428,13 +373,8 @@ func (h *DiscountHandler) DeleteCredit(c *fiber.Ctx) error {
 	}
 	if err := h.CreditService.DeleteCredit(id); err != nil {
 		logger.LogError("DeleteCredit: failed", logger.ErrorField(err), logger.String("id", id))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -462,13 +402,8 @@ func (h *DiscountHandler) ListCredits(c *fiber.Ctx) error {
 	credits, err := h.CreditService.ListCredits(accountID, invoiceID, status, page, pageSize)
 	if err != nil {
 		logger.LogError("ListCredits: failed", logger.ErrorField(err), logger.String("account_id", accountID), logger.String("invoice_id", invoiceID), logger.String("status", status))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.JSON(fiber.Map{"credits": credits, "page": page, "page_size": pageSize})
 }
@@ -489,13 +424,8 @@ func (h *DiscountHandler) RedeemCoupon(c *fiber.Ctx) error {
 	coupon, err := h.CouponService.RedeemCoupon(id, input.AccountID)
 	if err != nil {
 		logger.LogError("RedeemCoupon: failed", logger.ErrorField(err), logger.String("id", id))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.JSON(coupon)
 }
@@ -508,13 +438,8 @@ func (h *DiscountHandler) ApplyCreditsToInvoice(c *fiber.Ctx) error {
 	}
 	if err := h.CreditService.ApplyCreditsToInvoice(id); err != nil {
 		logger.LogError("ApplyCreditsToInvoice: failed", logger.ErrorField(err), logger.String("invoice_id", id))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }

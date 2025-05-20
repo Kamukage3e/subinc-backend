@@ -77,13 +77,8 @@ func (h *BillingAdminHandler) CreateWebhookEvent(c *fiber.Ctx) error {
 	}
 	event, err := h.WebhookEventService.CreateWebhookEvent(input)
 	if err != nil {
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.Status(fiber.StatusCreated).JSON(event)
 }
@@ -100,13 +95,8 @@ func (h *BillingAdminHandler) UpdateWebhookEvent(c *fiber.Ctx) error {
 	input.ID = id
 	event, err := h.WebhookEventService.UpdateWebhookEvent(input)
 	if err != nil {
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.JSON(event)
 }
@@ -117,13 +107,8 @@ func (h *BillingAdminHandler) DeleteWebhookEvent(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
 	if err := h.WebhookEventService.DeleteWebhookEvent(id); err != nil {
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -150,7 +135,7 @@ func (h *BillingAdminHandler) ListWebhookEvents(c *fiber.Ctx) error {
 	events, err := h.WebhookEventService.ListWebhookEvents(accountID, status, page, pageSize)
 	if err != nil {
 		logger.LogError("ListWebhookEvents: failed", logger.ErrorField(err), logger.String("account_id", accountID), logger.String("status", status))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"events": events, "page": page, "page_size": pageSize})
 }
@@ -163,24 +148,14 @@ func (h *BillingAdminHandler) CreateInvoiceAdjustment(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreateInvoiceAdjustment: validation failed", logger.ErrorField(err))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := any(err).(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	adj, err := h.InvoiceAdjustmentService.CreateInvoiceAdjustment(input)
 	if err != nil {
 		logger.LogError("CreateInvoiceAdjustment: failed", logger.ErrorField(err))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(adj)
@@ -201,13 +176,8 @@ func (h *BillingAdminHandler) UpdateInvoiceAdjustment(c *fiber.Ctx) error {
 	adj, err := h.InvoiceAdjustmentService.UpdateInvoiceAdjustment(input)
 	if err != nil {
 		logger.LogError("UpdateInvoiceAdjustment: failed", logger.ErrorField(err), logger.String("id", id))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.JSON(adj)
 }
@@ -220,13 +190,8 @@ func (h *BillingAdminHandler) DeleteInvoiceAdjustment(c *fiber.Ctx) error {
 	}
 	if err := h.InvoiceAdjustmentService.DeleteInvoiceAdjustment(id); err != nil {
 		logger.LogError("DeleteInvoiceAdjustment: failed", logger.ErrorField(err), logger.String("id", id))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -252,13 +217,8 @@ func (h *BillingAdminHandler) ListInvoiceAdjustments(c *fiber.Ctx) error {
 	adjs, err := h.InvoiceAdjustmentService.ListInvoiceAdjustments(invoiceID, page, pageSize)
 	if err != nil {
 		logger.LogError("ListInvoiceAdjustments: failed", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.JSON(fiber.Map{"invoice_adjustments": adjs, "page": page, "page_size": pageSize})
 }
@@ -275,24 +235,14 @@ func (h *BillingAdminHandler) CreateManualAdjustment(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreateManualAdjustment: validation failed", logger.ErrorField(err))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := any(err).(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	err := h.ManualAdjustmentService.CreateManualAdjustment(id, input.Reason, input.Amount, input.Currency)
 	if err != nil {
 		logger.LogError("CreateManualAdjustment: failed", logger.ErrorField(err))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.SendStatus(fiber.StatusCreated)
 }
@@ -313,7 +263,7 @@ func (h *BillingAdminHandler) GetInvoicePreview(c *fiber.Ctx) error {
 			errResp["code"] = apiErr.Code
 			errResp["field"] = apiErr.Field
 		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
@@ -326,13 +276,8 @@ func (h *BillingAdminHandler) ApplyCreditsToInvoice(c *fiber.Ctx) error {
 	}
 	if err := h.CreditService.ApplyCreditsToInvoice(id); err != nil {
 		logger.LogError("ApplyCreditsToInvoice: failed", logger.ErrorField(err), logger.String("invoice_id", id))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -343,13 +288,8 @@ func (h *BillingAdminHandler) GetBillingConfig(c *fiber.Ctx) error {
 	cfg, err := h.InvoiceService.GetBillingConfig()
 	if err != nil {
 		logger.LogError("GetBillingConfig: failed", logger.ErrorField(err))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.JSON(cfg)
@@ -363,13 +303,8 @@ func (h *BillingAdminHandler) SetBillingConfig(c *fiber.Ctx) error {
 	}
 	if err := h.InvoiceService.SetBillingConfig(input); err != nil {
 		logger.LogError("SetBillingConfig: failed", logger.ErrorField(err))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
@@ -387,13 +322,8 @@ func (h *BillingAdminHandler) CreateWebhookSubscription(c *fiber.Ctx) error {
 	}
 	err := h.WebhookSubscriptionService.CreateWebhookSubscription(input.URL, input.Secret, input.Description, input.Events)
 	if err != nil {
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.SendStatus(fiber.StatusCreated)
 }
@@ -404,13 +334,8 @@ func (h *BillingAdminHandler) ListWebhookSubscriptions(c *fiber.Ctx) error {
 	pageSize := c.QueryInt("page_size", 100)
 	out, err := h.WebhookSubscriptionService.ListWebhookSubscriptions(tenantID, page, pageSize)
 	if err != nil {
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.JSON(out)
 }
@@ -421,13 +346,8 @@ func (h *BillingAdminHandler) DeleteWebhookSubscription(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
 	}
 	if err := h.WebhookSubscriptionService.DeleteWebhookSubscription(id); err != nil {
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -441,17 +361,9 @@ func (h *BillingAdminHandler) GetWebhookSubscription(c *fiber.Ctx) error {
 
 	sub, err := h.WebhookSubscriptionService.GetWebhookSubscription(id)
 	if err != nil {
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		status := fiber.StatusUnprocessableEntity
-		if e, ok := err.(*Error); ok && e.Code == "not_found" {
-			status = fiber.StatusNotFound
-		}
-		return c.Status(status).JSON(errResp)
+
+		logger.LogError("", logger.ErrorField(err))
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	// Hide the secret in the response, replace with partial value
@@ -483,17 +395,9 @@ func (h *BillingAdminHandler) UpdateWebhookSubscription(c *fiber.Ctx) error {
 
 	err := h.WebhookSubscriptionService.UpdateWebhookSubscription(id, input.URL, input.Secret, input.Events, input.Status)
 	if err != nil {
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		status := fiber.StatusUnprocessableEntity
-		if e, ok := err.(*Error); ok && e.Code == "not_found" {
-			status = fiber.StatusNotFound
-		}
-		return c.Status(status).JSON(errResp)
+
+		logger.LogError("", logger.ErrorField(err))
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
@@ -517,17 +421,9 @@ func (h *BillingAdminHandler) TestWebhookSubscription(c *fiber.Ctx) error {
 
 	err := h.WebhookSubscriptionService.TestWebhookSubscription(id, input.EventType, input.Payload)
 	if err != nil {
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		status := fiber.StatusUnprocessableEntity
-		if e, ok := err.(*Error); ok && e.Code == "not_found" {
-			status = fiber.StatusNotFound
-		}
-		return c.Status(status).JSON(errResp)
+
+		logger.LogError("", logger.ErrorField(err))
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -548,17 +444,9 @@ func (h *BillingAdminHandler) GetWebhookDeliveryLogs(c *fiber.Ctx) error {
 
 	logs, err := h.WebhookSubscriptionService.GetWebhookDeliveryLogs(id, page, pageSize)
 	if err != nil {
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		status := fiber.StatusUnprocessableEntity
-		if e, ok := err.(*Error); ok && e.Code == "not_found" {
-			status = fiber.StatusNotFound
-		}
-		return c.Status(status).JSON(errResp)
+
+		logger.LogError("", logger.ErrorField(err))
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.JSON(fiber.Map{
@@ -579,17 +467,9 @@ func (h *BillingAdminHandler) RetryWebhookDelivery(c *fiber.Ctx) error {
 
 	err := h.WebhookSubscriptionService.RetryWebhookDelivery(id)
 	if err != nil {
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		status := fiber.StatusUnprocessableEntity
-		if e, ok := err.(*Error); ok && e.Code == "not_found" {
-			status = fiber.StatusNotFound
-		}
-		return c.Status(status).JSON(errResp)
+
+		logger.LogError("", logger.ErrorField(err))
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -603,13 +483,8 @@ func (h *BillingAdminHandler) GetRevenueReport(c *fiber.Ctx) error {
 	_ = c.BodyParser(&input)
 	out, err := h.Store.GetRevenueReport(c.Context())
 	if err != nil {
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.JSON(out)
@@ -620,13 +495,8 @@ func (h *BillingAdminHandler) GetARReport(c *fiber.Ctx) error {
 	_ = c.BodyParser(&input)
 	out, err := h.Store.GetARReport(c.Context())
 	if err != nil {
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.JSON(out)
@@ -637,13 +507,8 @@ func (h *BillingAdminHandler) GetChurnReport(c *fiber.Ctx) error {
 	_ = c.BodyParser(&input)
 	out, err := h.Store.GetChurnReport(c.Context())
 	if err != nil {
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 
 	return c.JSON(out)
@@ -736,13 +601,8 @@ func (h *BillingAdminHandler) CreateInvoiceWithFeesAndTax(c *fiber.Ctx) error {
 	invoice.Amount = subtotal + feeTotal + taxAmount
 	out, err := h.Store.CreateInvoiceWithFeesAndTax(c.Context(), invoice, input.FixedFee, input.PercentFee, taxRate)
 	if err != nil {
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.Status(fiber.StatusCreated).JSON(out)
 }
@@ -755,7 +615,7 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreateInvoice: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	res, err := h.AccountService.Get(c.Context(), account.AccountTypeProject, input.AccountID)
 	if err != nil {
@@ -852,13 +712,8 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 	invoice, err := h.InvoiceService.CreateInvoice(c.Context(), input)
 	if err != nil {
 		logger.LogError("CreateInvoice: failed", logger.ErrorField(err), logger.Any("input", input))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	if h.Notify != nil && accountObj.Email != "" {
 		go func(inv Invoice) {
@@ -946,18 +801,13 @@ func (h *BillingAdminHandler) UpdateInvoice(c *fiber.Ctx) error {
 	input.ID = id
 	if err := input.Validate(); err != nil {
 		logger.LogError("UpdateInvoice: validation failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Message, "code": err.Code, "field": err.Field})
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	invoice, err := h.InvoiceService.UpdateInvoice(input)
 	if err != nil {
 		logger.LogError("UpdateInvoice: failed", logger.ErrorField(err), logger.Any("input", input))
-		errResp := fiber.Map{"error": err.Error()}
-		if apiErr, ok := err.(*Error); ok {
-			errResp["error"] = apiErr.Message
-			errResp["code"] = apiErr.Code
-			errResp["field"] = apiErr.Field
-		}
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(errResp)
+
+		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.JSON(invoice)
 }
@@ -984,7 +834,7 @@ func (h *BillingAdminHandler) ListInvoices(c *fiber.Ctx) error {
 	invoices, err := h.InvoiceService.ListInvoices(accountID, status, page, pageSize)
 	if err != nil {
 		logger.LogError("ListInvoices: failed", logger.ErrorField(err), logger.String("account_id", accountID), logger.String("status", status))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"invoices": invoices, "page": page, "page_size": pageSize})
 }
@@ -1012,7 +862,7 @@ func (h *BillingAdminHandler) CreateExchangeRate(c *fiber.Ctx) error {
 	rate, err := h.Store.CreateExchangeRate(c.Context(), input)
 	if err != nil {
 		logger.LogError("CreateExchangeRate: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(rate)
@@ -1036,7 +886,7 @@ func (h *BillingAdminHandler) UpdateExchangeRate(c *fiber.Ctx) error {
 	rate, err := h.Store.UpdateExchangeRate(c.Context(), input)
 	if err != nil {
 		logger.LogError("UpdateExchangeRate: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.JSON(rate)
@@ -1062,7 +912,7 @@ func (h *BillingAdminHandler) DeleteExchangeRate(c *fiber.Ctx) error {
 	err := h.Store.DeleteExchangeRate(c.Context(), input.BaseCurrency, input.QuoteCurrency)
 	if err != nil {
 		logger.LogError("DeleteExchangeRate: failed", logger.ErrorField(err), logger.Any("input", input))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
@@ -1097,7 +947,7 @@ func (h *BillingAdminHandler) ListExchangeRates(c *fiber.Ctx) error {
 	rates, err := h.Store.ListExchangeRates(c.Context())
 	if err != nil {
 		logger.LogError("ListExchangeRates: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"exchange_rates": rates})
 }
@@ -1118,7 +968,7 @@ func (h *BillingAdminHandler) SetTenantCurrency(c *fiber.Ctx) error {
 	curr, err := h.Store.SetTenantCurrency(c.Context(), tenantID, currency)
 	if err != nil {
 		logger.LogError("SetTenantCurrency: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID), logger.String("currency", currency))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusCreated).JSON(curr)
 }
@@ -2302,7 +2152,7 @@ func (h *BillingAdminHandler) DeleteInvoice(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "invoice not found"})
 		}
 		logger.LogError("DeleteInvoice: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }

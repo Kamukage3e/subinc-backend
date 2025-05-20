@@ -1272,7 +1272,7 @@ func (h *PaymentHandler) CreateDispute(c *fiber.Ctx) error {
 	}
 	if err := h.DisputeService.CreateDispute(c.Context(), &input); err != nil {
 		logger.LogError("CreateDispute: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusCreated).JSON(input)
 }
@@ -1290,7 +1290,7 @@ func (h *PaymentHandler) ListDisputes(c *fiber.Ctx) error {
 	disputes, err := h.DisputeService.ListDisputes(c.Context(), tenantID, paymentID, status, page, pageSize)
 	if err != nil {
 		logger.LogError("ListDisputes: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"disputes": disputes, "page": page, "page_size": pageSize})
 }
@@ -1325,7 +1325,7 @@ func (h *PaymentHandler) UpdateDispute(c *fiber.Ctx) error {
 	}
 	if err := h.DisputeService.UpdateDisputeStatus(c.Context(), id, input.Status, input.EvidenceSubmitted); err != nil {
 		logger.LogError("UpdateDispute: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -1362,7 +1362,7 @@ func (h *PaymentHandler) CreateEvidence(c *fiber.Ctx) error {
 	input.DisputeID = disputeID
 	if err := h.EvidenceService.CreateDisputeEvidence(c.Context(), &input); err != nil {
 		logger.LogError("CreateEvidence: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.Status(fiber.StatusCreated).JSON(input)
 }
@@ -1379,7 +1379,7 @@ func (h *PaymentHandler) ListEvidence(c *fiber.Ctx) error {
 	evidence, err := h.EvidenceService.ListDisputeEvidence(c.Context(), disputeID, tenantID, page, pageSize)
 	if err != nil {
 		logger.LogError("ListEvidence: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.JSON(fiber.Map{"evidence": evidence, "page": page, "page_size": pageSize})
 }
@@ -1414,7 +1414,7 @@ func (h *PaymentHandler) UpdateEvidence(c *fiber.Ctx) error {
 	}
 	if err := h.EvidenceService.UpdateDisputeEvidenceStatus(c.Context(), evidenceID, input.ProviderStatus, input.ProviderResponse); err != nil {
 		logger.LogError("UpdateEvidence: failed", logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.ErrExpectationFailed)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
