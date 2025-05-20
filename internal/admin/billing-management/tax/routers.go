@@ -26,4 +26,5 @@ func RegisterRoutes(router fiber.Router, handler *TaxHandler, jwtSecret string) 
 	pluginRoutes.Get(":name", rbacmiddleware.RBACMiddleware("tax-plugin", "read", nil), handler.GetTaxPlugin)
 	pluginRoutes.Post(":name/configure", rbacmiddleware.RBACMiddleware("tax-plugin", "update", nil), handler.ConfigureTaxPlugin)
 	pluginRoutes.Post(":name/disable", rbacmiddleware.RBACMiddleware("tax-plugin", "update", nil), handler.DisableTaxPlugin)
+	
 }

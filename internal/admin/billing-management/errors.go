@@ -14,6 +14,9 @@ var ErrConflict = &Error{Code: "CONFLICT", Message: "resource conflict"}
 // ErrInternal is returned for internal server errors
 var ErrInternal = &Error{Code: "INTERNAL_ERROR", Message: "internal server error"}
 
+// ErrNotImplemented is returned for methods that haven't been implemented yet
+var ErrNotImplemented = &Error{Code: "NOT_IMPLEMENTED", Message: "method not implemented"}
+
 // Error is a custom error type for API errors
 // Implements error interface
 // Code is a stable string for programmatic use

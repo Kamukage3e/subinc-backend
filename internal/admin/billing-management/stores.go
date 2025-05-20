@@ -1,11 +1,18 @@
 package billing_management
 
 import (
+	"bytes"
 	"context"
-
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -14,6 +21,63 @@ import (
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
+)
+
+// SQL query constants
+const (
+	// Invoice queries
+	QueryCreateInvoice = `INSERT INTO invoices (id, account_id, amount, status, due_date, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, account_id, amount, status, due_date, created_at, updated_at`
+
+	QueryGetInvoice = `SELECT id, account_id, amount, status, due_date, created_at, updated_at FROM invoices WHERE id = $1`
+
+	QueryUpdateInvoice = `UPDATE invoices SET account_id = $2, amount = $3, status = $4, due_date = $5, updated_at = $6 
+		WHERE id = $1 RETURNING id, account_id, amount, status, due_date, created_at, updated_at`
+
+	QueryDeleteInvoice = `DELETE FROM invoices WHERE id = $1`
+
+	QueryGetInvoicePreview = `SELECT id, account_id, amount, status, due_date, created_at, updated_at 
+		FROM invoices WHERE account_id = $1 AND status = 'draft' ORDER BY created_at DESC LIMIT 1`
+
+	// Invoice adjustments
+	QueryApplyCreditsToInvoice = `UPDATE invoices SET amount = amount - (SELECT COALESCE(SUM(amount),0) 
+		FROM credits WHERE invoice_id = $1 AND status = 'active'), updated_at = NOW() WHERE id = $1`
+
+	// Billing config
+	QueryGetBillingConfig = `SELECT key, value FROM billing_config`
+
+	QuerySetBillingConfig = `INSERT INTO billing_config (key, value) VALUES ($1, $2) 
+		ON CONFLICT (key) DO UPDATE SET value = $2`
+
+	// Webhook subscriptions
+	QueryCreateWebhookSubscription = `INSERT INTO webhook_subscriptions 
+		(id, tenant_id, url, event_types, secret, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+		RETURNING id, tenant_id, url, event_types, secret, status, created_at, updated_at`
+
+	QueryListWebhookSubscriptions = `SELECT id, tenant_id, url, event_types, secret, status, created_at, updated_at 
+		FROM webhook_subscriptions WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+
+	QueryDeleteWebhookSubscription = `DELETE FROM webhook_subscriptions WHERE id = $1`
+
+	// Dunning queries
+	QueryListInvoicesForDunning = `SELECT id, account_id, amount, status, due_date, created_at, updated_at, 
+		dunning_attempts, dunning_next_attempt_at, dunning_status FROM invoices 
+		WHERE dunning_status = 'active' AND dunning_next_attempt_at <= $1 
+		AND dunning_attempts < $2 AND tenant_id = $3 LIMIT 100`
+
+	QueryCreateDunningEvent = `INSERT INTO dunning_events 
+		(id, invoice_id, event_type, status, details, created_at) 
+		VALUES ($1, $2, $3, $4, $5, $6)`
+
+	QueryListDunningEvents = `SELECT id, invoice_id, event_type, status, details, created_at 
+		FROM dunning_events WHERE invoice_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+
+	QueryGetDunningConfig = `SELECT max_attempts, retry_intervals FROM dunning_configs WHERE tenant_id = $1`
+
+	QuerySetDunningConfig = `INSERT INTO dunning_configs (tenant_id, max_attempts, retry_intervals) 
+		VALUES ($1, $2, $3) ON CONFLICT (tenant_id) DO UPDATE SET 
+		max_attempts = $2, retry_intervals = $3`
 )
 
 type DunningConfig = payment.DunningConfig
@@ -544,24 +608,28 @@ func (s *PostgresStore) UpdateSubscriptionStatus(ctx context.Context, subscripti
 	return nil
 }
 
-func (s *PostgresStore) ListInvoicesForDunning(ctx context.Context, now time.Time, maxAttempts int) ([]Invoice, error) {
-	const q = `SELECT id, account_id, amount, status, due_date, created_at, updated_at, dunning_attempts, dunning_next_attempt_at, dunning_status FROM invoices WHERE status = 'payment_failed' AND dunning_status = 'active' AND dunning_attempts < $1 AND dunning_next_attempt_at <= $2`
-	rows, err := s.DB.Query(ctx, q, maxAttempts, now)
+// --- ListInvoicesForDunning ---
+func (s *PostgresStore) ListInvoicesForDunning(ctx context.Context, now time.Time, maxAttempts int, tenantID string) ([]Invoice, error) {
+	rows, err := s.DB.Query(ctx, QueryListInvoicesForDunning, now, maxAttempts, tenantID)
 	if err != nil {
 		logger.LogError("ListInvoicesForDunning query failed", logger.ErrorField(err))
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Invoice
+
+	var invoices []Invoice
 	for rows.Next() {
 		var i Invoice
-		if err := rows.Scan(&i.ID, &i.AccountID, &i.Amount, &i.Status, &i.DueDate, &i.CreatedAt, &i.UpdatedAt, &i.DunningAttempts, &i.DunningNextAttemptAt, &i.DunningStatus); err != nil {
+		if err := rows.Scan(
+			&i.ID, &i.AccountID, &i.Amount, &i.Status, &i.DueDate,
+			&i.CreatedAt, &i.UpdatedAt, &i.DunningAttempts,
+			&i.DunningNextAttemptAt, &i.DunningStatus); err != nil {
 			logger.LogError("ListInvoicesForDunning scan failed", logger.ErrorField(err))
 			return nil, err
 		}
-		out = append(out, i)
+		invoices = append(invoices, i)
 	}
-	return out, nil
+	return invoices, nil
 }
 
 // --- InvoicePluginConfig CRUD ---
@@ -631,5 +699,645 @@ func (s *PostgresStore) DisableTaxPluginConfig(ctx context.Context, tenantID, pl
 	if result.RowsAffected() == 0 {
 		return NewNotFoundError("tax plugin config")
 	}
+	return nil
+}
+
+// EnsureWebhookTablesExist ensures that all required webhook-related tables exist in the database
+func (s *PostgresStore) EnsureWebhookTablesExist(ctx context.Context) error {
+	// Check if webhook_delivery_logs table exists
+	var exists bool
+	err := s.DB.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.tables 
+			WHERE table_schema = 'public' 
+			AND table_name = 'webhook_delivery_logs'
+		)
+	`).Scan(&exists)
+
+	if err != nil {
+		logger.LogError("EnsureWebhookTablesExist: check table existence failed", logger.ErrorField(err))
+		return err
+	}
+
+	// Create webhook_delivery_logs table if it doesn't exist
+	if !exists {
+		logger.LogInfo("Creating webhook_delivery_logs table")
+		_, err = s.DB.Exec(ctx, `
+			CREATE TABLE webhook_delivery_logs (
+				id UUID PRIMARY KEY,
+				webhook_id UUID NOT NULL REFERENCES webhook_subscriptions(id) ON DELETE CASCADE,
+				event_type VARCHAR(255) NOT NULL,
+				url TEXT NOT NULL,
+				request_headers TEXT NOT NULL,
+				request_body TEXT NOT NULL,
+				response_status INT,
+				response_headers TEXT,
+				response_body TEXT,
+				delivery_attempts INT NOT NULL DEFAULT 1,
+				success BOOLEAN NOT NULL DEFAULT false,
+				error_message TEXT,
+				created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+				delivered_at TIMESTAMP WITH TIME ZONE,
+				next_retry_at TIMESTAMP WITH TIME ZONE,
+				last_retry_failed_at TIMESTAMP WITH TIME ZONE,
+				CONSTRAINT fk_webhook_subscription
+					FOREIGN KEY (webhook_id)
+					REFERENCES webhook_subscriptions(id)
+					ON DELETE CASCADE
+			)
+		`)
+		if err != nil {
+			logger.LogError("EnsureWebhookTablesExist: create table failed", logger.ErrorField(err))
+			return err
+		}
+
+		// Create indexes for efficient querying
+		_, err = s.DB.Exec(ctx, `
+			CREATE INDEX idx_webhook_delivery_logs_webhook_id ON webhook_delivery_logs(webhook_id);
+			CREATE INDEX idx_webhook_delivery_logs_success ON webhook_delivery_logs(success);
+			CREATE INDEX idx_webhook_delivery_logs_next_retry_at ON webhook_delivery_logs(next_retry_at) WHERE next_retry_at IS NOT NULL;
+			CREATE INDEX idx_webhook_delivery_logs_created_at ON webhook_delivery_logs(created_at);
+		`)
+		if err != nil {
+			logger.LogError("EnsureWebhookTablesExist: create indexes failed", logger.ErrorField(err))
+			return err
+		}
+	}
+
+	// Check if webhook_subscriptions table exists
+	err = s.DB.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.tables 
+			WHERE table_schema = 'public' 
+			AND table_name = 'webhook_subscriptions'
+		)
+	`).Scan(&exists)
+
+	if err != nil {
+		logger.LogError("EnsureWebhookTablesExist: check webhook_subscriptions existence failed", logger.ErrorField(err))
+		return err
+	}
+
+	// Create webhook_subscriptions table if it doesn't exist
+	if !exists {
+		logger.LogInfo("Creating webhook_subscriptions table")
+		_, err = s.DB.Exec(ctx, `
+			CREATE TABLE webhook_subscriptions (
+				id UUID PRIMARY KEY,
+				tenant_id VARCHAR(255) NOT NULL,
+				url TEXT NOT NULL,
+				event_types TEXT NOT NULL,
+				secret TEXT NOT NULL,
+				status VARCHAR(50) NOT NULL DEFAULT 'active',
+				created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+				updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+			)
+		`)
+		if err != nil {
+			logger.LogError("EnsureWebhookTablesExist: create webhook_subscriptions table failed", logger.ErrorField(err))
+			return err
+		}
+
+		// Create indexes for efficient querying
+		_, err = s.DB.Exec(ctx, `
+			CREATE INDEX idx_webhook_subscriptions_tenant_id ON webhook_subscriptions(tenant_id);
+			CREATE INDEX idx_webhook_subscriptions_status ON webhook_subscriptions(status);
+		`)
+		if err != nil {
+			logger.LogError("EnsureWebhookTablesExist: create webhook_subscriptions indexes failed", logger.ErrorField(err))
+			return err
+		}
+	}
+
+	return nil
+}
+
+// CreateHMAC generates an HMAC signature for the given payload and secret
+func CreateHMAC(payload []byte, secret string) string {
+	h := hmac.New(sha256.New, []byte(secret))
+	h.Write(payload)
+	return fmt.Sprintf("sha256=%s", hex.EncodeToString(h.Sum(nil)))
+}
+
+// RunWebhookDeliveryWorker processes webhook delivery retries
+func (s *PostgresStore) RunWebhookDeliveryWorker(ctx context.Context) {
+	logger.LogInfo("WebhookDeliveryWorker: starting webhook delivery processing")
+
+	// Query for webhook deliveries that need to be retried
+	query := `SELECT id, webhook_id, event_type, url, request_headers, request_body, 
+		delivery_attempts, created_at, next_retry_at 
+		FROM webhook_delivery_logs 
+		WHERE success = false AND next_retry_at <= NOW() 
+		LIMIT 100`
+
+	rows, err := s.DB.Query(ctx, query)
+	if err != nil {
+		logger.LogError("WebhookDeliveryWorker: query failed", logger.ErrorField(err))
+		return
+	}
+	defer rows.Close()
+
+	deliveriesToRetry := []WebhookDeliveryLog{}
+	for rows.Next() {
+		var log WebhookDeliveryLog
+		if err := rows.Scan(
+			&log.ID, &log.WebhookID, &log.EventType, &log.URL,
+			&log.RequestHeaders, &log.RequestBody, &log.DeliveryAttempts,
+			&log.CreatedAt, &log.NextRetryAt); err != nil {
+			logger.LogError("WebhookDeliveryWorker: scan failed", logger.ErrorField(err))
+			continue
+		}
+		deliveriesToRetry = append(deliveriesToRetry, log)
+	}
+
+	if len(deliveriesToRetry) == 0 {
+		logger.LogInfo("WebhookDeliveryWorker: no webhook deliveries to retry")
+		return
+	}
+
+	logger.LogInfo("WebhookDeliveryWorker: processing webhook deliveries",
+		logger.Int("count", len(deliveriesToRetry)))
+
+	// Process each delivery in parallel
+	var wg sync.WaitGroup
+	for _, delivery := range deliveriesToRetry {
+		wg.Add(1)
+		go func(log WebhookDeliveryLog) {
+			defer wg.Done()
+
+			// Get webhook subscription to check if it's still active
+			var webhookStatus string
+			err := s.DB.QueryRow(ctx,
+				"SELECT status FROM webhook_subscriptions WHERE id = $1",
+				log.WebhookID).Scan(&webhookStatus)
+
+			if err != nil {
+				logger.LogError("WebhookDeliveryWorker: failed to get webhook status",
+					logger.ErrorField(err), logger.String("webhook_id", log.WebhookID))
+				return
+			}
+
+			if webhookStatus != "active" {
+				logger.LogInfo("WebhookDeliveryWorker: skipping inactive webhook",
+					logger.String("webhook_id", log.WebhookID),
+					logger.String("status", webhookStatus))
+				return
+			}
+
+			// Retry webhook delivery
+			err = s.RetryWebhookDelivery(ctx, log.ID)
+			if err != nil {
+				logger.LogError("WebhookDeliveryWorker: retry failed",
+					logger.ErrorField(err), logger.String("delivery_id", log.ID))
+			}
+		}(delivery)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+	logger.LogInfo("WebhookDeliveryWorker: completed webhook delivery processing")
+}
+
+// RetryWebhookDelivery attempts to retry a previously failed webhook delivery
+func (s *PostgresStore) RetryWebhookDelivery(ctx context.Context, deliveryID string) error {
+	// Find the delivery log first
+	query := `SELECT id, webhook_id, event_type, url, request_headers, request_body, 
+		delivery_attempts, success, created_at FROM webhook_delivery_logs 
+		WHERE id = $1`
+
+	var log WebhookDeliveryLog
+	err := s.DB.QueryRow(ctx, query, deliveryID).Scan(
+		&log.ID, &log.WebhookID, &log.EventType, &log.URL,
+		&log.RequestHeaders, &log.RequestBody, &log.DeliveryAttempts,
+		&log.Success, &log.CreatedAt)
+
+	if err != nil {
+		return err
+	}
+
+	// If already successful, no need to retry
+	if log.Success {
+		return nil
+	}
+
+	// Get the webhook subscription to retrieve the secret
+	var secret string
+	err = s.DB.QueryRow(ctx, "SELECT secret FROM webhook_subscriptions WHERE id = $1",
+		log.WebhookID).Scan(&secret)
+
+	if err != nil {
+		return err
+	}
+
+	// Build headers for HTTP request
+	headers := make(http.Header)
+	headers.Add("Content-Type", "application/json")
+	headers.Add("User-Agent", "SubInc-Webhook-Service/1.0")
+	headers.Add("X-Webhook-ID", log.WebhookID)
+	headers.Add("X-Webhook-Event", log.EventType)
+	headers.Add("X-Webhook-Delivery", log.ID)
+	headers.Add("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+
+	// Generate HMAC signature for security
+	signature := CreateHMAC([]byte(log.RequestBody), secret)
+	headers.Add("X-Webhook-Signature", signature)
+
+	// Create the HTTP request
+	req, err := http.NewRequestWithContext(ctx, "POST", log.URL, bytes.NewBuffer([]byte(log.RequestBody)))
+	if err != nil {
+		failedAt := time.Now()
+		return updateFailedDelivery(ctx, s, deliveryID, log.DeliveryAttempts+1, err.Error(), &failedAt)
+	}
+
+	// Set headers
+	req.Header = headers
+
+	// Send the request
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	resp, err := client.Do(req)
+
+	// Handle HTTP error (connection issues, timeouts, etc.)
+	if err != nil {
+		failedAt := time.Now()
+		return updateFailedDelivery(ctx, s, deliveryID, log.DeliveryAttempts+1, err.Error(), &failedAt)
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		// Couldn't read body, but we did get a response
+		respBody = []byte(fmt.Sprintf("Failed to read response body: %s", err.Error()))
+	}
+
+	// Process response
+	respHeaders, _ := json.Marshal(resp.Header)
+
+	// Check if it was successful (2xx status code)
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		// Update as successful
+		now := time.Now()
+		_, err = s.DB.Exec(ctx, `
+			UPDATE webhook_delivery_logs SET 
+			success = true, 
+			response_status = $1, 
+			response_headers = $2, 
+			response_body = $3, 
+			delivered_at = $4,
+			next_retry_at = NULL
+			WHERE id = $5
+		`, resp.StatusCode, string(respHeaders), string(respBody), now, deliveryID)
+
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// If we get here, the delivery failed with a non-2xx status code
+	failedAt := time.Now()
+	errorMsg := fmt.Sprintf("HTTP status %d: %s", resp.StatusCode, string(respBody))
+
+	// Store the response information even for failed deliveries
+	_, err = s.DB.Exec(ctx, `
+		UPDATE webhook_delivery_logs SET 
+		response_status = $1, 
+		response_headers = $2, 
+		response_body = $3
+		WHERE id = $4
+	`, resp.StatusCode, string(respHeaders), string(respBody), deliveryID)
+
+	if err != nil {
+		logger.LogError("RetryWebhookDelivery: Failed to update response info", logger.ErrorField(err))
+	}
+
+	// Update the failure status and schedule next retry
+	return updateFailedDelivery(ctx, s, deliveryID, log.DeliveryAttempts+1, errorMsg, &failedAt)
+}
+
+// updateFailedDelivery updates a webhook delivery log with failure information and schedules the next retry
+func updateFailedDelivery(ctx context.Context, s *PostgresStore, deliveryID string, attempts int, errorMsg string, failedAt *time.Time) error {
+	// Calculate next retry time using exponential backoff
+	var nextRetry *time.Time
+
+	if attempts < 10 { // Maximum 10 attempts
+		// Exponential backoff with jitter: 2^n minutes + random 0-30 seconds
+		delay := time.Duration(1<<uint(attempts-1)) * time.Minute
+		jitter := time.Duration(30) * time.Second // Fixed jitter instead of random
+		next := failedAt.Add(delay + jitter)
+		nextRetry = &next
+	}
+
+	// Update delivery log with failure information
+	_, err := s.DB.Exec(ctx, `
+		UPDATE webhook_delivery_logs SET 
+		delivery_attempts = $1, 
+		error_message = $2, 
+		last_retry_failed_at = $3,
+		next_retry_at = $4
+		WHERE id = $5
+	`, attempts, errorMsg, failedAt, nextRetry, deliveryID)
+
+	return err
+}
+
+// ListTenantsWithDunningConfig returns a list of tenant IDs that have dunning configuration set up
+func (s *PostgresStore) ListTenantsWithDunningConfig(ctx context.Context) ([]string, error) {
+	const q = `SELECT tenant_id FROM tenant_dunning_config WHERE max_attempts > 0`
+	rows, err := s.DB.Query(ctx, q)
+	if err != nil {
+		logger.LogError("ListTenantsWithDunningConfig query failed", logger.ErrorField(err))
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tenantIDs []string
+	for rows.Next() {
+		var tenantID string
+		if err := rows.Scan(&tenantID); err != nil {
+			logger.LogError("ListTenantsWithDunningConfig scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+		tenantIDs = append(tenantIDs, tenantID)
+	}
+
+	return tenantIDs, nil
+}
+
+// CreateDunningEvent creates a new dunning event
+func (s *PostgresStore) CreateDunningEvent(ctx context.Context, event *DunningEvent) error {
+	// Convert the details map to JSON string
+	detailsJSON, err := json.Marshal(event.Details)
+	if err != nil {
+		logger.LogError("CreateDunningEvent marshal failed", logger.ErrorField(err))
+		return err
+	}
+
+	status := "pending" // Default status if not set
+	if event.Status != "" {
+		status = event.Status
+	}
+
+	q := QueryCreateDunningEvent
+	_, err = s.DB.Exec(ctx, q,
+		event.ID, event.InvoiceID, event.EventType,
+		status, detailsJSON, event.CreatedAt)
+
+	if err != nil {
+		logger.LogError("CreateDunningEvent failed",
+			logger.ErrorField(err),
+			logger.String("event_id", event.ID))
+		return err
+	}
+
+	return nil
+}
+
+// ListDunningEvents returns dunning events for an invoice
+func (s *PostgresStore) ListDunningEvents(ctx context.Context, invoiceID string, page, pageSize int) ([]DunningEvent, error) {
+	offset := (page - 1) * pageSize
+	if offset < 0 {
+		offset = 0
+	}
+
+	q := QueryListDunningEvents
+	rows, err := s.DB.Query(ctx, q, invoiceID, pageSize, offset)
+	if err != nil {
+		logger.LogError("ListDunningEvents query failed",
+			logger.ErrorField(err),
+			logger.String("invoice_id", invoiceID))
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []DunningEvent
+	for rows.Next() {
+		var e DunningEvent
+		var detailsJSON []byte
+
+		if err := rows.Scan(
+			&e.ID, &e.InvoiceID, &e.EventType,
+			&e.Status, &detailsJSON, &e.CreatedAt); err != nil {
+			logger.LogError("ListDunningEvents scan failed", logger.ErrorField(err))
+			return nil, err
+		}
+
+		// Parse the details JSON
+		if len(detailsJSON) > 0 {
+			if err := json.Unmarshal(detailsJSON, &e.Details); err != nil {
+				logger.LogError("ListDunningEvents unmarshal details failed",
+					logger.ErrorField(err),
+					logger.String("event_id", e.ID))
+				// Continue with empty details rather than failing completely
+				e.Details = make(map[string]interface{})
+			}
+		} else {
+			e.Details = make(map[string]interface{})
+		}
+
+		events = append(events, e)
+	}
+
+	return events, nil
+}
+
+// GetDunningDashboard returns metrics and statistics about dunning
+func (s *PostgresStore) GetDunningDashboard(ctx context.Context, tenantID string) (*DunningDashboard, error) {
+	dashboard := &DunningDashboard{
+		TenantID:     tenantID,
+		GeneratedAt:  time.Now().UTC(),
+		RecentEvents: make([]DunningEvent, 0),
+	}
+
+	// Get counts of invoices in dunning by status
+	statusCountQuery := `
+		SELECT dunning_status, COUNT(*) 
+		FROM invoices 
+		WHERE tenant_id = $1 AND dunning_status != '' 
+		GROUP BY dunning_status
+	`
+
+	rows, err := s.DB.Query(ctx, statusCountQuery, tenantID)
+	if err != nil {
+		logger.LogError("GetDunningDashboard status count query failed",
+			logger.ErrorField(err),
+			logger.String("tenant_id", tenantID))
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var status string
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			logger.LogError("GetDunningDashboard status count scan failed", logger.ErrorField(err))
+			continue
+		}
+
+		switch status {
+		case "active":
+			dashboard.ActiveCount = count
+		case "completed":
+			dashboard.CompletedCount = count
+		case "failed":
+			dashboard.FailedCount = count
+		case "paused":
+			dashboard.PausedCount = count
+		}
+	}
+
+	// Get total amount in dunning
+	amountQuery := `
+		SELECT COALESCE(SUM(amount), 0) 
+		FROM invoices 
+		WHERE tenant_id = $1 AND dunning_status = 'active'
+	`
+
+	err = s.DB.QueryRow(ctx, amountQuery, tenantID).Scan(&dashboard.TotalAmountInDunning)
+	if err != nil {
+		logger.LogError("GetDunningDashboard amount query failed",
+			logger.ErrorField(err),
+			logger.String("tenant_id", tenantID))
+		dashboard.TotalAmountInDunning = 0
+	}
+
+	// Get success rate
+	successRateQuery := `
+		SELECT 
+			CASE 
+				WHEN COUNT(*) = 0 THEN 0 
+				ELSE ROUND((COUNT(*) FILTER (WHERE event_type = 'payment_success') * 100.0 / COUNT(*)), 2) 
+			END
+		FROM dunning_events 
+		WHERE invoice_id IN (SELECT id FROM invoices WHERE tenant_id = $1)
+	`
+
+	err = s.DB.QueryRow(ctx, successRateQuery, tenantID).Scan(&dashboard.SuccessRate)
+	if err != nil {
+		logger.LogError("GetDunningDashboard success rate query failed",
+			logger.ErrorField(err),
+			logger.String("tenant_id", tenantID))
+		dashboard.SuccessRate = 0
+	}
+
+	// Get recent events
+	recentEventsQuery := `
+		SELECT e.id, e.invoice_id, e.event_type, e.status, e.details, e.created_at
+		FROM dunning_events e
+		JOIN invoices i ON e.invoice_id = i.id
+		WHERE i.tenant_id = $1
+		ORDER BY e.created_at DESC
+		LIMIT 10
+	`
+
+	rows, err = s.DB.Query(ctx, recentEventsQuery, tenantID)
+	if err != nil {
+		logger.LogError("GetDunningDashboard recent events query failed",
+			logger.ErrorField(err),
+			logger.String("tenant_id", tenantID))
+		// Continue without recent events
+	} else {
+		defer rows.Close()
+		for rows.Next() {
+			var e DunningEvent
+			var detailsJSON []byte
+
+			if err := rows.Scan(
+				&e.ID, &e.InvoiceID, &e.EventType,
+				&e.Status, &detailsJSON, &e.CreatedAt); err != nil {
+				logger.LogError("GetDunningDashboard events scan failed", logger.ErrorField(err))
+				continue
+			}
+
+			// Parse the details JSON
+			if len(detailsJSON) > 0 {
+				if err := json.Unmarshal(detailsJSON, &e.Details); err != nil {
+					e.Details = make(map[string]interface{})
+				}
+			} else {
+				e.Details = make(map[string]interface{})
+			}
+
+			dashboard.RecentEvents = append(dashboard.RecentEvents, e)
+		}
+	}
+
+	return dashboard, nil
+}
+
+// UpdateInvoiceDunning updates the dunning-related fields of an invoice
+func (s *PostgresStore) UpdateInvoiceDunning(ctx context.Context, invoiceID, status string, attempts int, nextAttemptAt time.Time) error {
+	if invoiceID == "" {
+		return errors.New("invoice ID is required")
+	}
+
+	const q = `UPDATE invoices SET 
+		dunning_status = $1, 
+		dunning_attempts = $2, 
+		dunning_next_attempt_at = $3,
+		updated_at = NOW()
+		WHERE id = $4`
+
+	result, err := s.DB.Exec(ctx, q, status, attempts, nextAttemptAt, invoiceID)
+	if err != nil {
+		logger.LogError("UpdateInvoiceDunning failed",
+			logger.ErrorField(err),
+			logger.String("invoice_id", invoiceID),
+			logger.String("status", status),
+			logger.Int("attempts", attempts))
+		return err
+	}
+
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("invoice not found: %s", invoiceID)
+	}
+
+	return nil
+}
+
+// SetDunningConfig sets the dunning configuration for a tenant
+func (s *PostgresStore) SetDunningConfig(ctx context.Context, tenantID string, config *DunningConfig) error {
+	if tenantID == "" {
+		return errors.New("tenant ID is required")
+	}
+
+	if config == nil {
+		return errors.New("dunning config is required")
+	}
+
+	// Validate config
+	if config.MaxAttempts <= 0 {
+		return errors.New("max_attempts must be greater than 0")
+	}
+
+	if len(config.RetryIntervals) == 0 {
+		return errors.New("retry_intervals must not be empty")
+	}
+
+	// Convert retry intervals to JSON string
+	intervals := make([]string, len(config.RetryIntervals))
+	for i, d := range config.RetryIntervals {
+		intervals[i] = d.String()
+	}
+
+	intervalsJSON, err := json.Marshal(intervals)
+	if err != nil {
+		return fmt.Errorf("failed to marshal retry intervals: %w", err)
+	}
+
+	// Insert or update dunning config
+	q := QuerySetDunningConfig
+	_, err = s.DB.Exec(ctx, q,
+		tenantID, config.MaxAttempts, string(intervalsJSON))
+
+	if err != nil {
+		logger.LogError("SetDunningConfig failed",
+			logger.ErrorField(err),
+			logger.String("tenant_id", tenantID))
+		return err
+	}
+
 	return nil
 }

@@ -68,27 +68,28 @@ type Invoice struct {
 	DunningStatus        string    `json:"dunning_status"`
 }
 
-// DunningEvent represents a single event in the dunning process
+// DunningEvent represents an event in the dunning process
 type DunningEvent struct {
 	ID        string                 `json:"id"`
 	AccountID string                 `json:"account_id"`
 	InvoiceID string                 `json:"invoice_id"`
 	EventType string                 `json:"event_type"` // payment_failed, retry, success, canceled, etc.
+	Status    string                 `json:"status"`     // pending, processed, failed
 	Details   map[string]interface{} `json:"details"`    // Additional context specific to the event
 	CreatedAt time.Time              `json:"created_at"`
 }
 
-// DunningDashboard represents an overview of dunning statistics
+// DunningDashboard contains dunning metrics and statistics
 type DunningDashboard struct {
-	TenantID                string    `json:"tenant_id"`
-	ActiveDunningCount      int       `json:"active_dunning_count"`      // Invoices in active dunning
-	PendingDunningCount     int       `json:"pending_dunning_count"`     // Invoices marked for dunning but not yet active
-	ResolvedDunningCount    int       `json:"resolved_dunning_count"`    // Invoices that were resolved through dunning
-	FailedDunningCount      int       `json:"failed_dunning_count"`      // Invoices that failed all dunning attempts
-	TotalDunningAmount      float64   `json:"total_dunning_amount"`      // Total amount in active dunning
-	SuccessfulRecoveryRate  float64   `json:"successful_recovery_rate"`  // Percentage of successful dunning recoveries
-	AverageRecoveryAttempts float64   `json:"average_recovery_attempts"` // Average attempts for successful recovery
-	LastUpdated             time.Time `json:"last_updated"`
+	TenantID             string         `json:"tenant_id"`
+	ActiveCount          int            `json:"active_count"`
+	CompletedCount       int            `json:"completed_count"`
+	FailedCount          int            `json:"failed_count"`
+	PausedCount          int            `json:"paused_count"`
+	TotalAmountInDunning float64        `json:"total_amount_in_dunning"`
+	SuccessRate          float64        `json:"success_rate"`
+	RecentEvents         []DunningEvent `json:"recent_events"`
+	GeneratedAt          time.Time      `json:"generated_at"`
 }
 
 func (i *Invoice) Validate() *Error {
