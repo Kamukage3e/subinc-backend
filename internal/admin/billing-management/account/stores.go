@@ -47,65 +47,61 @@ func (s *PostgresStore) CreateBillingAccount(ctx context.Context, accountType Bi
 	var q string
 	var args []interface{}
 
-	// Extract account data based on type using pointer type assertion
 	switch accountType {
 	case AccountTypeProject:
 		acct, ok := a.(*ProjectBillingAccount)
 		if !ok {
-			logger.LogError("CreateBillingAccount: invalid type assertion", logger.String("expected", "*ProjectBillingAccount"), logger.Any("received", a))
-			return nil, errors.New("invalid account data format")
+			err := errors.New("invalid account data format")
+			logger.LogError("CreateBillingAccount: invalid type assertion", logger.String("expected", "*ProjectBillingAccount"), logger.Any("received", a), logger.ErrorField(err))
+			return nil, err
 		}
 		q = insertProjectBillingAccountQuery
 		args = []interface{}{acct.ID, acct.ProjectID, acct.TenantID, acct.Email, acct.Status, acct.Currency, acct.CreatedAt, acct.UpdatedAt}
-
-		// Pre-validate required data
 		if acct.ProjectID == "" || acct.TenantID == "" {
-			logger.LogError("CreateBillingAccount: missing required field", logger.Any("account", acct))
-			return nil, errors.New("project_id and tenant_id are required")
+			err := errors.New("project_id and tenant_id are required")
+			logger.LogError("CreateBillingAccount: missing required field", logger.Any("account", acct), logger.ErrorField(err))
+			return nil, err
 		}
-
 	case AccountTypeUser:
 		acct, ok := a.(*UserBillingAccount)
 		if !ok {
-			logger.LogError("CreateBillingAccount: invalid type assertion", logger.String("expected", "*UserBillingAccount"), logger.Any("received", a))
-			return nil, errors.New("invalid account data format")
+			err := errors.New("invalid account data format")
+			logger.LogError("CreateBillingAccount: invalid type assertion", logger.String("expected", "*UserBillingAccount"), logger.Any("received", a), logger.ErrorField(err))
+			return nil, err
 		}
 		q = insertUserBillingAccountQuery
 		args = []interface{}{acct.ID, acct.UserID, acct.TenantID, acct.Email, acct.Status, acct.Currency, acct.CreatedAt, acct.UpdatedAt}
-
-		// Pre-validate required data
 		if acct.UserID == "" || acct.TenantID == "" {
-			logger.LogError("CreateBillingAccount: missing required field", logger.Any("account", acct))
-			return nil, errors.New("user_id and tenant_id are required")
+			err := errors.New("user_id and tenant_id are required")
+			logger.LogError("CreateBillingAccount: missing required field", logger.Any("account", acct), logger.ErrorField(err))
+			return nil, err
 		}
-
 	case AccountTypeOrganization:
 		acct, ok := a.(*OrganizationBillingAccount)
 		if !ok {
-			logger.LogError("CreateBillingAccount: invalid type assertion", logger.String("expected", "*OrganizationBillingAccount"), logger.Any("received", a))
-			return nil, errors.New("invalid account data format")
+			err := errors.New("invalid account data format")
+			logger.LogError("CreateBillingAccount: invalid type assertion", logger.String("expected", "*OrganizationBillingAccount"), logger.Any("received", a), logger.ErrorField(err))
+			return nil, err
 		}
 		q = insertOrgBillingAccountQuery
 		args = []interface{}{acct.ID, acct.OrgID, acct.TenantID, acct.Email, acct.Status, acct.Currency, acct.CreatedAt, acct.UpdatedAt}
-
-		// Pre-validate required data
 		if acct.OrgID == "" || acct.TenantID == "" {
-			logger.LogError("CreateBillingAccount: missing required field", logger.Any("account", acct))
-			return nil, errors.New("org_id and tenant_id are required")
+			err := errors.New("org_id and tenant_id are required")
+			logger.LogError("CreateBillingAccount: missing required field", logger.Any("account", acct), logger.ErrorField(err))
+			return nil, err
 		}
-
 	default:
-		return nil, errors.New("unsupported account type")
+		err := errors.New("unsupported account type")
+		logger.LogError("CreateBillingAccount: unsupported account type", logger.String("type", string(accountType)), logger.ErrorField(err))
+		return nil, err
 	}
 
-	// Insert record and return fully populated object
 	switch accountType {
 	case AccountTypeProject:
 		var out ProjectBillingAccount
 		scanArgs := []interface{}{&out.ID, &out.ProjectID, &out.TenantID, &out.Email, &out.Status, &out.Currency, &out.CreatedAt, &out.UpdatedAt}
 		row := s.DB.QueryRow(ctx, q, args...)
 		if err := row.Scan(scanArgs...); err != nil {
-			// Check if the error is related to the organization_billing_accounts table not existing
 			if accountType == AccountTypeProject && err.Error() == "ERROR: relation \"project_billing_accounts\" does not exist (SQLSTATE 42P01)" {
 				logger.LogError("CreateBillingAccount: table does not exist", logger.ErrorField(err))
 				return nil, errors.New("project billing accounts table does not exist, please run migrations")
@@ -114,13 +110,11 @@ func (s *PostgresStore) CreateBillingAccount(ctx context.Context, accountType Bi
 			return nil, err
 		}
 		return &out, nil
-
 	case AccountTypeUser:
 		var out UserBillingAccount
 		scanArgs := []interface{}{&out.ID, &out.UserID, &out.TenantID, &out.Email, &out.Status, &out.Currency, &out.CreatedAt, &out.UpdatedAt}
 		row := s.DB.QueryRow(ctx, q, args...)
 		if err := row.Scan(scanArgs...); err != nil {
-			// Check if the error is related to the user_billing_accounts table not existing
 			if accountType == AccountTypeUser && err.Error() == "ERROR: relation \"user_billing_accounts\" does not exist (SQLSTATE 42P01)" {
 				logger.LogError("CreateBillingAccount: table does not exist", logger.ErrorField(err))
 				return nil, errors.New("user billing accounts table does not exist, please run migrations")
@@ -129,13 +123,11 @@ func (s *PostgresStore) CreateBillingAccount(ctx context.Context, accountType Bi
 			return nil, err
 		}
 		return &out, nil
-
 	case AccountTypeOrganization:
 		var out OrganizationBillingAccount
 		scanArgs := []interface{}{&out.ID, &out.OrgID, &out.TenantID, &out.Email, &out.Status, &out.Currency, &out.CreatedAt, &out.UpdatedAt}
 		row := s.DB.QueryRow(ctx, q, args...)
 		if err := row.Scan(scanArgs...); err != nil {
-			// Check if the error is related to the organization_billing_accounts table not existing
 			if accountType == AccountTypeOrganization && err.Error() == "ERROR: relation \"organization_billing_accounts\" does not exist (SQLSTATE 42P01)" {
 				logger.LogError("CreateBillingAccount: table does not exist", logger.ErrorField(err))
 				return nil, errors.New("organization billing accounts table does not exist, please run migrations")
@@ -146,14 +138,17 @@ func (s *PostgresStore) CreateBillingAccount(ctx context.Context, accountType Bi
 		return &out, nil
 	}
 
-	return nil, errors.New("unexpected error")
+	err := errors.New("unexpected error")
+	logger.LogError("CreateBillingAccount: unexpected error", logger.ErrorField(err))
+	return nil, err
 }
 
 // --- Get ---
 func (s *PostgresStore) GetBillingAccount(ctx context.Context, accountType BillingAccountType, id string) (interface{}, error) {
 	if id == "" {
-		logger.LogError("GetBillingAccount: id required", logger.String("id", id))
-		return nil, errors.New("account id is required")
+		err := errors.New("account id is required")
+		logger.LogError("GetBillingAccount: id required", logger.String("id", id), logger.ErrorField(err))
+		return nil, err
 	}
 
 	var q string
@@ -165,8 +160,9 @@ func (s *PostgresStore) GetBillingAccount(ctx context.Context, accountType Billi
 	case AccountTypeOrganization:
 		q = selectOrgBillingAccountQuery
 	default:
-		logger.LogError("GetBillingAccount: invalid account type", logger.String("type", string(accountType)))
-		return nil, errors.New("unsupported account type")
+		err := errors.New("unsupported account type")
+		logger.LogError("GetBillingAccount: invalid account type", logger.String("type", string(accountType)), logger.ErrorField(err))
+		return nil, err
 	}
 
 	switch accountType {
@@ -179,7 +175,6 @@ func (s *PostgresStore) GetBillingAccount(ctx context.Context, accountType Billi
 			return nil, err
 		}
 		return &out, nil
-
 	case AccountTypeUser:
 		var out UserBillingAccount
 		scanArgs := []interface{}{&out.ID, &out.UserID, &out.TenantID, &out.Email, &out.Status, &out.Currency, &out.CreatedAt, &out.UpdatedAt}
@@ -189,7 +184,6 @@ func (s *PostgresStore) GetBillingAccount(ctx context.Context, accountType Billi
 			return nil, err
 		}
 		return &out, nil
-
 	case AccountTypeOrganization:
 		var out OrganizationBillingAccount
 		scanArgs := []interface{}{&out.ID, &out.OrgID, &out.TenantID, &out.Email, &out.Status, &out.Currency, &out.CreatedAt, &out.UpdatedAt}
@@ -201,7 +195,9 @@ func (s *PostgresStore) GetBillingAccount(ctx context.Context, accountType Billi
 		return &out, nil
 	}
 
-	return nil, errors.New("unexpected error")
+	err := errors.New("unexpected error")
+	logger.LogError("GetBillingAccount: unexpected error", logger.ErrorField(err))
+	return nil, err
 }
 
 // --- Update ---
@@ -209,55 +205,55 @@ func (s *PostgresStore) UpdateBillingAccount(ctx context.Context, accountType Bi
 	var q string
 	var args []interface{}
 
-	// Extract account data based on type using pointer type assertion
 	switch accountType {
 	case AccountTypeProject:
 		acct, ok := a.(*ProjectBillingAccount)
 		if !ok {
-			logger.LogError("UpdateBillingAccount: invalid type assertion", logger.String("expected", "*ProjectBillingAccount"), logger.Any("received", a))
-			return nil, errors.New("invalid account data format")
+			err := errors.New("invalid account data format")
+			logger.LogError("UpdateBillingAccount: invalid type assertion", logger.String("expected", "*ProjectBillingAccount"), logger.Any("received", a), logger.ErrorField(err))
+			return nil, err
 		}
 		q = updateProjectBillingAccountQuery
 		args = []interface{}{acct.ID, acct.ProjectID, acct.Email, acct.Status, acct.Currency}
-
 		if acct.ID == "" || acct.ProjectID == "" {
-			logger.LogError("UpdateBillingAccount: missing required field", logger.Any("account", acct))
-			return nil, errors.New("id and project_id are required")
+			err := errors.New("id and project_id are required")
+			logger.LogError("UpdateBillingAccount: missing required field", logger.Any("account", acct), logger.ErrorField(err))
+			return nil, err
 		}
-
 	case AccountTypeUser:
 		acct, ok := a.(*UserBillingAccount)
 		if !ok {
-			logger.LogError("UpdateBillingAccount: invalid type assertion", logger.String("expected", "*UserBillingAccount"), logger.Any("received", a))
-			return nil, errors.New("invalid account data format")
+			err := errors.New("invalid account data format")
+			logger.LogError("UpdateBillingAccount: invalid type assertion", logger.String("expected", "*UserBillingAccount"), logger.Any("received", a), logger.ErrorField(err))
+			return nil, err
 		}
 		q = updateUserBillingAccountQuery
 		args = []interface{}{acct.ID, acct.UserID, acct.Email, acct.Status, acct.Currency}
-
 		if acct.ID == "" || acct.UserID == "" {
-			logger.LogError("UpdateBillingAccount: missing required field", logger.Any("account", acct))
-			return nil, errors.New("id and user_id are required")
+			err := errors.New("id and user_id are required")
+			logger.LogError("UpdateBillingAccount: missing required field", logger.Any("account", acct), logger.ErrorField(err))
+			return nil, err
 		}
-
 	case AccountTypeOrganization:
 		acct, ok := a.(*OrganizationBillingAccount)
 		if !ok {
-			logger.LogError("UpdateBillingAccount: invalid type assertion", logger.String("expected", "*OrganizationBillingAccount"), logger.Any("received", a))
-			return nil, errors.New("invalid account data format")
+			err := errors.New("invalid account data format")
+			logger.LogError("UpdateBillingAccount: invalid type assertion", logger.String("expected", "*OrganizationBillingAccount"), logger.Any("received", a), logger.ErrorField(err))
+			return nil, err
 		}
 		q = updateOrgBillingAccountQuery
 		args = []interface{}{acct.ID, acct.OrgID, acct.Email, acct.Status, acct.Currency}
-
 		if acct.ID == "" || acct.OrgID == "" {
-			logger.LogError("UpdateBillingAccount: missing required field", logger.Any("account", acct))
-			return nil, errors.New("id and org_id are required")
+			err := errors.New("id and org_id are required")
+			logger.LogError("UpdateBillingAccount: missing required field", logger.Any("account", acct), logger.ErrorField(err))
+			return nil, err
 		}
-
 	default:
-		return nil, errors.New("unsupported account type")
+		err := errors.New("unsupported account type")
+		logger.LogError("UpdateBillingAccount: unsupported account type", logger.String("type", string(accountType)), logger.ErrorField(err))
+		return nil, err
 	}
 
-	// Update record and return fully populated object
 	switch accountType {
 	case AccountTypeProject:
 		var out ProjectBillingAccount
@@ -272,7 +268,6 @@ func (s *PostgresStore) UpdateBillingAccount(ctx context.Context, accountType Bi
 			return nil, err
 		}
 		return &out, nil
-
 	case AccountTypeUser:
 		var out UserBillingAccount
 		scanArgs := []interface{}{&out.ID, &out.UserID, &out.TenantID, &out.Email, &out.Status, &out.Currency, &out.CreatedAt, &out.UpdatedAt}
@@ -286,7 +281,6 @@ func (s *PostgresStore) UpdateBillingAccount(ctx context.Context, accountType Bi
 			return nil, err
 		}
 		return &out, nil
-
 	case AccountTypeOrganization:
 		var out OrganizationBillingAccount
 		scanArgs := []interface{}{&out.ID, &out.OrgID, &out.TenantID, &out.Email, &out.Status, &out.Currency, &out.CreatedAt, &out.UpdatedAt}
@@ -302,7 +296,9 @@ func (s *PostgresStore) UpdateBillingAccount(ctx context.Context, accountType Bi
 		return &out, nil
 	}
 
-	return nil, errors.New("unexpected error")
+	err := errors.New("unexpected error")
+	logger.LogError("UpdateBillingAccount: unexpected error", logger.ErrorField(err))
+	return nil, err
 }
 
 // --- List ---
@@ -326,8 +322,9 @@ func (s *PostgresStore) ListBillingAccounts(ctx context.Context, accountType Bil
 		q = listOrgBillingAccountsQuery
 		args = []interface{}{ownerID, pageSize, (page - 1) * pageSize}
 	default:
-		logger.LogError("ListBillingAccounts: invalid account type", logger.String("type", string(accountType)))
-		return nil, errors.New("unsupported account type")
+		err := errors.New("unsupported account type")
+		logger.LogError("ListBillingAccounts: invalid account type", logger.String("type", string(accountType)), logger.ErrorField(err))
+		return nil, err
 	}
 	rows, err := s.DB.Query(ctx, q, args...)
 	if err != nil {
@@ -370,14 +367,17 @@ func (s *PostgresStore) ListBillingAccounts(ctx context.Context, accountType Bil
 		}
 		return out, nil
 	}
-	return nil, errors.New("unexpected error")
+	err = errors.New("unexpected error")
+	logger.LogError("ListBillingAccounts: unexpected error", logger.ErrorField(err))
+	return nil, err
 }
 
 // --- Perform Action ---
 func (s *PostgresStore) PerformBillingAccountAction(ctx context.Context, accountType BillingAccountType, accountID, action string, params map[string]interface{}) (map[string]interface{}, error) {
 	if accountID == "" || action == "" {
-		logger.LogError("PerformBillingAccountAction: invalid input", logger.String("account_id", accountID), logger.String("action", action))
-		return nil, errors.New("account_id/action must not be empty")
+		err := errors.New("account_id/action must not be empty")
+		logger.LogError("PerformBillingAccountAction: invalid input", logger.String("account_id", accountID), logger.String("action", action), logger.ErrorField(err))
+		return nil, err
 	}
 	var q string
 	var status string
@@ -389,8 +389,9 @@ func (s *PostgresStore) PerformBillingAccountAction(ctx context.Context, account
 	case "close":
 		status = "closed"
 	default:
-		logger.LogError("PerformBillingAccountAction: invalid action", logger.String("action", action))
-		return nil, errors.New("unsupported account action")
+		err := errors.New("unsupported account action")
+		logger.LogError("PerformBillingAccountAction: invalid action", logger.String("action", action), logger.ErrorField(err))
+		return nil, err
 	}
 	switch accountType {
 	case AccountTypeProject:
@@ -436,8 +437,9 @@ func (s *PostgresStore) PerformBillingAccountAction(ctx context.Context, account
 			"status":  status,
 		}, nil
 	default:
-		logger.LogError("PerformBillingAccountAction: invalid account type", logger.String("type", string(accountType)))
-		return nil, errors.New("unsupported account type")
+		err := errors.New("unsupported account type")
+		logger.LogError("PerformBillingAccountAction: invalid account type", logger.String("type", string(accountType)), logger.ErrorField(err))
+		return nil, err
 	}
 }
 
@@ -452,8 +454,9 @@ func (s *PostgresStore) DeleteBillingAccount(ctx context.Context, accountType Bi
 	case AccountTypeOrganization:
 		q = deleteOrgBillingAccountQuery
 	default:
-		logger.LogError("DeleteBillingAccount: invalid account type", logger.String("type", string(accountType)))
-		return errors.New("unsupported account type")
+		err := errors.New("unsupported account type")
+		logger.LogError("DeleteBillingAccount: invalid account type", logger.String("type", string(accountType)), logger.ErrorField(err))
+		return err
 	}
 	_, err := s.DB.Exec(ctx, q, id)
 	if err != nil {

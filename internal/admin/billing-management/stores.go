@@ -19,7 +19,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	payment "github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
 
- 
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
@@ -151,8 +150,30 @@ func (s *PostgresStore) CreateInvoice(ctx context.Context, i Invoice) (Invoice, 
 	row := s.DB.QueryRow(ctx, q, i.ID, i.AccountID, i.Amount, i.Status, i.DueDate, i.CreatedAt, i.UpdatedAt)
 	var out Invoice
 	if err := row.Scan(&out.ID, &out.AccountID, &out.Amount, &out.Status, &out.DueDate, &out.CreatedAt, &out.UpdatedAt); err != nil {
-		logger.LogError("CreateInvoice failed", logger.ErrorField(err), logger.Any("invoice", i))
-		return Invoice{}, err
+		// Improve error logging with more context
+		logger.LogError("CreateInvoice failed",
+			logger.ErrorField(err),
+			logger.String("invoice_id", i.ID),
+			logger.String("account_id", i.AccountID),
+			logger.String("status", i.Status),
+			logger.Float64("amount", i.Amount),
+			logger.String("query", q))
+
+		if strings.Contains(err.Error(), "duplicate key") {
+			logger.LogError("CreateInvoice duplicate key violation",
+				logger.ErrorField(err),
+				logger.String("invoice_id", i.ID))
+			return Invoice{}, fmt.Errorf("invoice with id %s already exists", i.ID)
+		}
+
+		if strings.Contains(err.Error(), "foreign key") {
+			logger.LogError("CreateInvoice foreign key violation",
+				logger.ErrorField(err),
+				logger.String("account_id", i.AccountID))
+			return Invoice{}, fmt.Errorf("account with id %s not found", i.AccountID)
+		}
+
+		return Invoice{}, fmt.Errorf("failed to create invoice: %w", err)
 	}
 	return out, nil
 }

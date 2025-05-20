@@ -536,6 +536,7 @@ func (s *PostgresStore) GetDisputeEvidence(ctx context.Context, evidenceID strin
 // ListDisputeEvidence returns evidence for a dispute/tenant
 func (s *PostgresStore) GetTransactionReport(ctx context.Context, tenantID string, startDate, endDate time.Time, includeDailyTotals bool) (*TransactionReport, error) {
 	if tenantID == "" {
+		logger.LogError("GetTransactionReport: tenant ID is required", logger.ErrorField(errors.New("tenant ID is required")))
 		return nil, errors.New("tenant ID is required")
 	}
 
@@ -696,6 +697,7 @@ func (s *PostgresStore) GetTransactionReport(ctx context.Context, tenantID strin
 
 func (s *PostgresStore) GetPaymentMethodReport(ctx context.Context, tenantID string, startDate, endDate time.Time) (map[string]int, error) {
 	if tenantID == "" {
+		logger.LogError("GetPaymentMethodReport: tenant ID is required", logger.ErrorField(errors.New("tenant ID is required")))
 		return nil, errors.New("tenant ID is required")
 	}
 
@@ -733,6 +735,7 @@ func (s *PostgresStore) GetPaymentMethodReport(ctx context.Context, tenantID str
 
 func (s *PostgresStore) GetTransactionVolume(ctx context.Context, tenantID string, startDate, endDate time.Time) (float64, int, error) {
 	if tenantID == "" {
+		logger.LogError("GetTransactionVolume: tenant ID is required", logger.ErrorField(errors.New("tenant ID is required")))
 		return 0, 0, errors.New("tenant ID is required")
 	}
 
@@ -830,6 +833,7 @@ func (s *PostgresStore) GetPaymentByIdempotencyKey(ctx context.Context, idempote
 func (s *PostgresStore) GetPaymentResult(ctx context.Context, id string) (*PaymentResult, error) {
 	p, err := s.GetPayment(ctx, id) // existing method
 	if err != nil {
+		logger.LogError("GetPaymentResult: get payment failed", logger.ErrorField(err))
 		return nil, err
 	}
 	return &PaymentResult{
@@ -858,6 +862,7 @@ func (s *PostgresStore) MarkPaymentsPaidForInvoice(ctx context.Context, invoiceI
 
 func (s *PostgresStore) UpdateInvoiceStatus(ctx context.Context, invoiceID, status string) error {
 	if invoiceID == "" || status == "" {
+		logger.LogError("UpdateInvoiceStatus: invoiceID and status required", logger.ErrorField(errors.New("invoiceID and status required")))
 		return errors.New("invoiceID and status required")
 	}
 	_, err := s.DB.Exec(ctx, qUpdateInvoiceStatus, invoiceID, status)
@@ -870,6 +875,7 @@ func (s *PostgresStore) UpdateInvoiceStatus(ctx context.Context, invoiceID, stat
 
 func (s *PostgresStore) UpdatePaymentStatus(ctx context.Context, paymentID, status string) error {
 	if paymentID == "" || status == "" {
+		logger.LogError("UpdatePaymentStatus: paymentID and status required", logger.ErrorField(errors.New("paymentID and status required")))
 		return errors.New("paymentID and status required")
 	}
 	_, err := s.DB.Exec(ctx, qUpdatePaymentStatus, paymentID, status)
@@ -911,9 +917,11 @@ func (s *PostgresStore) DeleteDisputeEvidence(ctx context.Context, evidenceID st
 // --- PaymentPluginConfig CRUD ---
 func (s *PostgresStore) SetPaymentPluginConfig(ctx context.Context, tenantID, pluginName string) (PaymentPluginConfig, error) {
 	if tenantID == "" {
+		logger.LogError("SetPaymentPluginConfig: tenant_id must not be empty", logger.ErrorField(errors.New("tenant_id must not be empty")))
 		return PaymentPluginConfig{}, NewValidationError("tenant_id", "must not be empty")
 	}
 	if pluginName == "" {
+		logger.LogError("SetPaymentPluginConfig: plugin_name must not be empty", logger.ErrorField(errors.New("plugin_name must not be empty")))
 		return PaymentPluginConfig{}, NewValidationError("plugin_name", "must not be empty")
 	}
 	updatedAt := time.Now().UTC()
@@ -928,6 +936,7 @@ func (s *PostgresStore) SetPaymentPluginConfig(ctx context.Context, tenantID, pl
 
 func (s *PostgresStore) GetPaymentPluginConfig(ctx context.Context, tenantID, pluginName string) (*PaymentPluginConfig, error) {
 	if tenantID == "" || pluginName == "" {
+		logger.LogError("GetPaymentPluginConfig: tenant_id and plugin_name are required", logger.ErrorField(errors.New("tenant_id and plugin_name are required")))
 		return nil, errors.New("tenant_id and plugin_name are required")
 	}
 
@@ -939,14 +948,17 @@ func (s *PostgresStore) GetPaymentPluginConfig(ctx context.Context, tenantID, pl
 
 	if err != nil {
 		if err == sql.ErrNoRows {
+			logger.LogError("GetPaymentPluginConfig: payment plugin config not found", logger.ErrorField(err))
 			return nil, errors.New("payment plugin config not found")
 		}
+		logger.LogError("GetPaymentPluginConfig: failed to get payment plugin config", logger.ErrorField(err))
 		return nil, fmt.Errorf("failed to get payment plugin config: %w", err)
 	}
 
 	// Unmarshal the JSON configuration
 	if len(configJSON) > 0 {
 		if err := json.Unmarshal(configJSON, &config.Config); err != nil {
+			logger.LogError("GetPaymentPluginConfig: failed to unmarshal config", logger.ErrorField(err))
 			return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 		}
 	} else {
@@ -959,10 +971,12 @@ func (s *PostgresStore) GetPaymentPluginConfig(ctx context.Context, tenantID, pl
 // SavePaymentPluginConfig saves a payment plugin configuration
 func (s *PostgresStore) SavePaymentPluginConfig(ctx context.Context, config *PaymentPluginConfig) error {
 	if config == nil {
+		logger.LogError("SavePaymentPluginConfig: config is nil", logger.ErrorField(errors.New("config is nil")))
 		return errors.New("config is nil")
 	}
 
 	if config.TenantID == "" || config.PluginName == "" {
+		logger.LogError("SavePaymentPluginConfig: tenant_id and plugin_name are required", logger.ErrorField(errors.New("tenant_id and plugin_name are required")))
 		return errors.New("tenant_id and plugin_name are required")
 	}
 
@@ -981,6 +995,7 @@ func (s *PostgresStore) SavePaymentPluginConfig(ctx context.Context, config *Pay
 	// Convert config map to JSON
 	configJSON, err := json.Marshal(config.Config)
 	if err != nil {
+		logger.LogError("SavePaymentPluginConfig: failed to marshal config", logger.ErrorField(err))
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
@@ -988,6 +1003,7 @@ func (s *PostgresStore) SavePaymentPluginConfig(ctx context.Context, config *Pay
 	if config.Default {
 		_, err := s.DB.Exec(ctx, qUnsetDefaultPaymentPlugin, now, config.TenantID)
 		if err != nil {
+			logger.LogError("SavePaymentPluginConfig: failed to unset existing default plugin", logger.ErrorField(err))
 			return fmt.Errorf("failed to unset existing default plugin: %w", err)
 		}
 	}
@@ -997,6 +1013,7 @@ func (s *PostgresStore) SavePaymentPluginConfig(ctx context.Context, config *Pay
 		config.ID, config.TenantID, config.PluginName, configJSON, config.Enabled, config.Default, config.CreatedAt, config.UpdatedAt)
 
 	if err != nil {
+		logger.LogError("SavePaymentPluginConfig: failed to save payment plugin config", logger.ErrorField(err))
 		return fmt.Errorf("failed to save payment plugin config: %w", err)
 	}
 
@@ -1006,10 +1023,12 @@ func (s *PostgresStore) SavePaymentPluginConfig(ctx context.Context, config *Pay
 // ListPaymentPluginConfigs lists all payment plugin configurations for a tenant
 func (s *PostgresStore) ListPaymentPluginConfigs(ctx context.Context, tenantID string) ([]*PaymentPluginConfig, error) {
 	if tenantID == "" {
+		logger.LogError("ListPaymentPluginConfigs: tenant_id is required", logger.ErrorField(errors.New("tenant_id is required")))
 		return nil, errors.New("tenant_id is required")
 	}
 	rows, err := s.DB.Query(ctx, qListPaymentPluginConfigs, tenantID)
 	if err != nil {
+		logger.LogError("ListPaymentPluginConfigs: failed to list payment plugin configs", logger.ErrorField(err))
 		return nil, fmt.Errorf("failed to list payment plugin configs: %w", err)
 	}
 	defer rows.Close()
@@ -1020,10 +1039,12 @@ func (s *PostgresStore) ListPaymentPluginConfigs(ctx context.Context, tenantID s
 		err := rows.Scan(
 			&config.ID, &config.TenantID, &config.PluginName, &configJSON, &config.Enabled, &config.Default, &config.CreatedAt, &config.UpdatedAt)
 		if err != nil {
+			logger.LogError("ListPaymentPluginConfigs: failed to scan payment plugin config", logger.ErrorField(err))
 			return nil, fmt.Errorf("failed to scan payment plugin config: %w", err)
 		}
 		if len(configJSON) > 0 {
 			if err := json.Unmarshal(configJSON, &config.Config); err != nil {
+				logger.LogError("ListPaymentPluginConfigs: failed to unmarshal config", logger.ErrorField(err))
 				return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 			}
 		} else {
@@ -1032,6 +1053,7 @@ func (s *PostgresStore) ListPaymentPluginConfigs(ctx context.Context, tenantID s
 		configs = append(configs, &config)
 	}
 	if err := rows.Err(); err != nil {
+		logger.LogError("ListPaymentPluginConfigs: error iterating payment plugin configs", logger.ErrorField(err))
 		return nil, fmt.Errorf("error iterating payment plugin configs: %w", err)
 	}
 	return configs, nil
@@ -1040,13 +1062,16 @@ func (s *PostgresStore) ListPaymentPluginConfigs(ctx context.Context, tenantID s
 // DisablePaymentPlugin disables a payment plugin for a tenant
 func (s *PostgresStore) DisablePaymentPlugin(ctx context.Context, tenantID, pluginName string) error {
 	if tenantID == "" || pluginName == "" {
+		logger.LogError("DisablePaymentPlugin: tenant_id and plugin_name are required", logger.ErrorField(errors.New("tenant_id and plugin_name are required")))
 		return errors.New("tenant_id and plugin_name are required")
 	}
 	result, err := s.DB.Exec(ctx, qDisablePaymentPlugin, time.Now(), tenantID, pluginName)
 	if err != nil {
+		logger.LogError("DisablePaymentPlugin: failed to disable payment plugin", logger.ErrorField(err))
 		return fmt.Errorf("failed to disable payment plugin: %w", err)
 	}
 	if result.RowsAffected() == 0 {
+		logger.LogError("DisablePaymentPlugin: payment plugin config not found", logger.ErrorField(errors.New("payment plugin config not found")))
 		return errors.New("payment plugin config not found")
 	}
 	return nil
@@ -1055,6 +1080,7 @@ func (s *PostgresStore) DisablePaymentPlugin(ctx context.Context, tenantID, plug
 // GetDefaultPaymentPlugin retrieves the default payment plugin for a tenant
 func (s *PostgresStore) GetDefaultPaymentPlugin(ctx context.Context, tenantID string) (*PaymentPluginConfig, error) {
 	if tenantID == "" {
+		logger.LogError("GetDefaultPaymentPlugin: tenant_id is required", logger.ErrorField(errors.New("tenant_id is required")))
 		return nil, errors.New("tenant_id is required")
 	}
 	var config PaymentPluginConfig
@@ -1063,12 +1089,15 @@ func (s *PostgresStore) GetDefaultPaymentPlugin(ctx context.Context, tenantID st
 		&config.ID, &config.TenantID, &config.PluginName, &configJSON, &config.Enabled, &config.Default, &config.CreatedAt, &config.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			logger.LogError("GetDefaultPaymentPlugin: default payment plugin not found", logger.ErrorField(err))
 			return nil, errors.New("default payment plugin not found")
 		}
+		logger.LogError("GetDefaultPaymentPlugin: failed to get default payment plugin", logger.ErrorField(err))
 		return nil, fmt.Errorf("failed to get default payment plugin: %w", err)
 	}
 	if len(configJSON) > 0 {
 		if err := json.Unmarshal(configJSON, &config.Config); err != nil {
+			logger.LogError("GetDefaultPaymentPlugin: failed to unmarshal config", logger.ErrorField(err))
 			return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 		}
 	} else {
@@ -1126,6 +1155,7 @@ func (s *PostgresStore) UpdatePaymentMethod(ctx context.Context, input PaymentMe
 
 func (s *PostgresStore) PatchPaymentMethod(ctx context.Context, id string, setDefault *bool, status string) error {
 	if id == "" {
+		logger.LogError("PatchPaymentMethod: id is required", logger.ErrorField(errors.New("id is required")))
 		return errors.New("id is required")
 	}
 	updates := []string{}
@@ -1142,6 +1172,7 @@ func (s *PostgresStore) PatchPaymentMethod(ctx context.Context, id string, setDe
 		argIdx++
 	}
 	if len(updates) == 0 {
+		logger.LogError("PatchPaymentMethod: no fields to patch", logger.ErrorField(errors.New("no fields to patch")))
 		return errors.New("no fields to patch")
 	}
 	updates = append(updates, "updated_at = $"+strconv.Itoa(argIdx))
@@ -1155,6 +1186,7 @@ func (s *PostgresStore) PatchPaymentMethod(ctx context.Context, id string, setDe
 		return err
 	}
 	if res.RowsAffected() == 0 {
+		logger.LogError("PatchPaymentMethod: no rows affected", logger.ErrorField(sql.ErrNoRows))
 		return sql.ErrNoRows
 	}
 	return nil
@@ -1162,6 +1194,7 @@ func (s *PostgresStore) PatchPaymentMethod(ctx context.Context, id string, setDe
 
 func (s *PostgresStore) DeletePaymentMethod(ctx context.Context, id string) error {
 	if id == "" {
+		logger.LogError("DeletePaymentMethod: id is required", logger.ErrorField(errors.New("id is required")))
 		return errors.New("id is required")
 	}
 	const q = `UPDATE payment_methods SET status='deleted', updated_at=NOW() WHERE id=$1`
@@ -1171,6 +1204,7 @@ func (s *PostgresStore) DeletePaymentMethod(ctx context.Context, id string) erro
 		return err
 	}
 	if res.RowsAffected() == 0 {
+		logger.LogError("DeletePaymentMethod: no rows affected", logger.ErrorField(sql.ErrNoRows))
 		return sql.ErrNoRows
 	}
 	return nil
@@ -1178,6 +1212,7 @@ func (s *PostgresStore) DeletePaymentMethod(ctx context.Context, id string) erro
 
 func (s *PostgresStore) GetPaymentMethod(ctx context.Context, id string) (PaymentMethod, error) {
 	if id == "" {
+		logger.LogError("GetPaymentMethod: id is required", logger.ErrorField(errors.New("id is required")))
 		return PaymentMethod{}, errors.New("id is required")
 	}
 	const q = `SELECT id, account_id, type, provider, last4, exp_month, exp_year, is_default, status, token, token_provider, created_at, updated_at, metadata FROM payment_methods WHERE id=$1 AND status != 'deleted'`
@@ -1185,6 +1220,7 @@ func (s *PostgresStore) GetPaymentMethod(ctx context.Context, id string) (Paymen
 	var out PaymentMethod
 	if err := row.Scan(&out.ID, &out.AccountID, &out.Type, &out.Provider, &out.Last4, &out.ExpMonth, &out.ExpYear, &out.IsDefault, &out.Status, &out.Token, &out.TokenProvider, &out.CreatedAt, &out.UpdatedAt, &out.Metadata); err != nil {
 		if err == sql.ErrNoRows {
+			logger.LogError("GetPaymentMethod: no rows found", logger.ErrorField(err))
 			return PaymentMethod{}, sql.ErrNoRows
 		}
 		logger.LogError("GetPaymentMethod: query failed", logger.ErrorField(err))
@@ -1195,6 +1231,7 @@ func (s *PostgresStore) GetPaymentMethod(ctx context.Context, id string) (Paymen
 
 func (s *PostgresStore) ListPaymentMethods(ctx context.Context, accountID, status string, page, pageSize int) ([]PaymentMethod, error) {
 	if accountID == "" {
+		logger.LogError("ListPaymentMethods: account_id is required", logger.ErrorField(errors.New("account_id is required")))
 		return nil, errors.New("account_id is required")
 	}
 	if page < 1 {
@@ -1231,6 +1268,7 @@ func (s *PostgresStore) ListPaymentMethods(ctx context.Context, accountID, statu
 
 func (s *PostgresStore) RefundPayment(ctx context.Context, req *RefundPaymentRequest) (*PaymentResult, error) {
 	if req == nil {
+		logger.LogError("RefundPayment: refund request is nil", logger.ErrorField(errors.New("refund request is nil")))
 		return nil, errors.New("refund request is nil")
 	}
 	p, err := s.GetPayment(ctx, req.PaymentID)
@@ -1239,6 +1277,7 @@ func (s *PostgresStore) RefundPayment(ctx context.Context, req *RefundPaymentReq
 		return nil, err
 	}
 	if p.Status == "refunded" {
+		logger.LogError("RefundPayment: payment already refunded", logger.ErrorField(errors.New("payment already refunded")))
 		return nil, errors.New("payment already refunded")
 	}
 	refund := Refund{
@@ -1276,6 +1315,7 @@ func (s *PostgresStore) RefundPayment(ctx context.Context, req *RefundPaymentReq
 
 func (s *PostgresStore) GetPaymentStatus(ctx context.Context, paymentID string) (*PaymentStatus, error) {
 	if paymentID == "" {
+		logger.LogError("GetPaymentStatus: paymentID is required", logger.ErrorField(errors.New("paymentID is required")))
 		return nil, errors.New("paymentID is required")
 	}
 	p, err := s.GetPayment(ctx, paymentID)
@@ -1297,6 +1337,7 @@ func (s *PostgresStore) GetPaymentStatus(ctx context.Context, paymentID string) 
 
 func (s *PostgresStore) CreateEvidence(ctx context.Context, input *DisputeEvidence) error {
 	if input == nil {
+		logger.LogError("CreateEvidence: evidence input is nil", logger.ErrorField(errors.New("evidence input is nil")))
 		return errors.New("evidence input is nil")
 	}
 	raw, err := json.Marshal(input.Raw)
@@ -1316,6 +1357,7 @@ func (s *PostgresStore) CreateEvidence(ctx context.Context, input *DisputeEviden
 
 func (s *PostgresStore) UpdateEvidence(ctx context.Context, input *DisputeEvidence) error {
 	if input == nil {
+		logger.LogError("UpdateEvidence: evidence input is nil", logger.ErrorField(errors.New("evidence input is nil")))
 		return errors.New("evidence input is nil")
 	}
 	raw, err := json.Marshal(input.Raw)
@@ -1334,6 +1376,7 @@ func (s *PostgresStore) UpdateEvidence(ctx context.Context, input *DisputeEviden
 
 func (s *PostgresStore) DeleteEvidence(ctx context.Context, id string) error {
 	if id == "" {
+		logger.LogError("DeleteEvidence: evidence id is required", logger.ErrorField(errors.New("evidence id is required")))
 		return errors.New("evidence id is required")
 	}
 	const q = `UPDATE dispute_evidence SET provider_status='deleted', updated_at=NOW() WHERE id=$1`
@@ -1343,6 +1386,7 @@ func (s *PostgresStore) DeleteEvidence(ctx context.Context, id string) error {
 		return err
 	}
 	if res.RowsAffected() == 0 {
+		logger.LogError("DeleteEvidence: no rows affected", logger.ErrorField(sql.ErrNoRows))
 		return sql.ErrNoRows
 	}
 	return nil
@@ -1350,6 +1394,7 @@ func (s *PostgresStore) DeleteEvidence(ctx context.Context, id string) error {
 
 func (s *PostgresStore) GetEvidence(ctx context.Context, id string) (*DisputeEvidence, error) {
 	if id == "" {
+		logger.LogError("GetEvidence: evidence id is required", logger.ErrorField(errors.New("evidence id is required")))
 		return nil, errors.New("evidence id is required")
 	}
 	const q = `SELECT id, dispute_id, tenant_id, file_url, file_name, file_type, uploaded_by, uploaded_at, provider_status, provider_response, created_at, updated_at, raw_json FROM dispute_evidence WHERE id=$1 AND provider_status != 'deleted'`
@@ -1358,7 +1403,7 @@ func (s *PostgresStore) GetEvidence(ctx context.Context, id string) (*DisputeEvi
 	var raw string
 	if err := row.Scan(&e.ID, &e.DisputeID, &e.TenantID, &e.FileURL, &e.FileName, &e.FileType, &e.UploadedBy, &e.UploadedAt, &e.ProviderStatus, &e.ProviderResponse, &e.CreatedAt, &e.UpdatedAt, &raw); err != nil {
 		if err == sql.ErrNoRows {
-			logger.LogError("GetEvidence: no rows found", logger.String("id", id))
+			logger.LogError("GetEvidence: no rows found", logger.ErrorField(err), logger.String("id", id))
 			return nil, sql.ErrNoRows
 		}
 		logger.LogError("GetEvidence: query failed", logger.ErrorField(err))
@@ -1370,6 +1415,7 @@ func (s *PostgresStore) GetEvidence(ctx context.Context, id string) (*DisputeEvi
 
 func (s *PostgresStore) ListEvidence(ctx context.Context, disputeID, tenantID string, page, pageSize int) ([]*DisputeEvidence, error) {
 	if disputeID == "" || tenantID == "" {
+		logger.LogError("ListEvidence: dispute_id and tenant_id are required", logger.ErrorField(errors.New("dispute_id and tenant_id are required")))
 		return nil, errors.New("dispute_id and tenant_id are required")
 	}
 	if page < 1 {
@@ -1401,6 +1447,7 @@ func (s *PostgresStore) ListEvidence(ctx context.Context, disputeID, tenantID st
 
 func (s *PostgresStore) UpdateDispute(ctx context.Context, input Dispute) (Dispute, error) {
 	if input.ID == "" {
+		logger.LogError("UpdateDispute: dispute id is required", logger.ErrorField(errors.New("dispute id is required")))
 		return Dispute{}, errors.New("dispute id is required")
 	}
 	const q = `UPDATE disputes SET status=$2, reason=$3, amount=$4, currency=$5, updated_at=$6 WHERE id=$1

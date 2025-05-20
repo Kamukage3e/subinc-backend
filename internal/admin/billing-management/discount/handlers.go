@@ -118,7 +118,7 @@ func (h *DiscountHandler) UpdateDiscount(c *fiber.Ctx) error {
 	}
 	input.ID = id
 	if input.Code == "" {
-		// Defensive: require code for update
+		logger.LogError("UpdateDiscount: code required for update")
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "code required for update", "code": "VALIDATION_ERROR", "field": "code"})
 	}
 	if input.Metadata == "" {
@@ -332,6 +332,7 @@ func (h *DiscountHandler) CreateCredit(c *fiber.Ctx) error {
 	if currency == "" {
 		currency = strings.ToUpper(strings.TrimSpace(account.Currency))
 		if currency == "" {
+			logger.LogError("CreateCredit: no currency set for credit or account")
 			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "no currency set for credit or account"})
 		}
 		input.Currency = currency
@@ -339,6 +340,7 @@ func (h *DiscountHandler) CreateCredit(c *fiber.Ctx) error {
 	if input.Currency != account.Currency && account.Currency != "" {
 		rate, rerr := h.CreditService.GetExchangeRate(c.Context(), input.Currency, account.Currency)
 		if rerr != nil || rate.Rate <= 0 {
+			logger.LogError("CreateCredit: no valid exchange rate", logger.ErrorField(rerr), logger.String("from", input.Currency), logger.String("to", account.Currency))
 			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "no valid exchange rate from " + input.Currency + " to " + account.Currency})
 		}
 		input.OriginalAmount = input.Amount
@@ -501,6 +503,7 @@ func (h *DiscountHandler) RedeemCoupon(c *fiber.Ctx) error {
 func (h *DiscountHandler) ApplyCreditsToInvoice(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
+		logger.LogError("ApplyCreditsToInvoice: invoice_id required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})
 	}
 	if err := h.CreditService.ApplyCreditsToInvoice(id); err != nil {
@@ -531,6 +534,7 @@ func (h *DiscountHandler) ListDiscountPlugins(c *fiber.Ctx) error {
 func (h *DiscountHandler) GetDiscountPlugin(c *fiber.Ctx) error {
 	pluginName := c.Params("name")
 	if pluginName == "" {
+		logger.LogError("GetDiscountPlugin: Plugin name is required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Plugin name is required",
 		})
@@ -538,6 +542,7 @@ func (h *DiscountHandler) GetDiscountPlugin(c *fiber.Ctx) error {
 
 	plugin, exists := DiscountPlugins.Lookup(pluginName)
 	if !exists {
+		logger.LogError("GetDiscountPlugin: plugin not found", logger.String("plugin_name", pluginName))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": fmt.Sprintf("Discount plugin '%s' not found", pluginName),
 		})
@@ -554,6 +559,7 @@ func (h *DiscountHandler) GetDiscountPlugin(c *fiber.Ctx) error {
 func (h *DiscountHandler) ConfigureDiscountPlugin(c *fiber.Ctx) error {
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
+		logger.LogError("ConfigureDiscountPlugin: Tenant ID is required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Tenant ID is required",
 		})
@@ -561,6 +567,7 @@ func (h *DiscountHandler) ConfigureDiscountPlugin(c *fiber.Ctx) error {
 
 	pluginName := c.Params("name")
 	if pluginName == "" {
+		logger.LogError("ConfigureDiscountPlugin: Plugin name is required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Plugin name is required",
 		})
@@ -569,6 +576,7 @@ func (h *DiscountHandler) ConfigureDiscountPlugin(c *fiber.Ctx) error {
 	// Check if the plugin exists
 	plugin, exists := DiscountPlugins.Lookup(pluginName)
 	if !exists {
+		logger.LogError("ConfigureDiscountPlugin: plugin not found", logger.String("plugin_name", pluginName))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": fmt.Sprintf("Discount plugin '%s' not found", pluginName),
 		})
@@ -577,6 +585,7 @@ func (h *DiscountHandler) ConfigureDiscountPlugin(c *fiber.Ctx) error {
 	// Parse the configuration
 	var config map[string]interface{}
 	if err := c.BodyParser(&config); err != nil {
+		logger.LogError("ConfigureDiscountPlugin: Invalid configuration format", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid configuration format",
 		})
@@ -584,6 +593,7 @@ func (h *DiscountHandler) ConfigureDiscountPlugin(c *fiber.Ctx) error {
 
 	// Initialize the plugin with the configuration
 	if err := plugin.Initialize(config); err != nil {
+		logger.LogError("ConfigureDiscountPlugin: Failed to initialize plugin", logger.ErrorField(err), logger.String("plugin_name", pluginName))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": fmt.Sprintf("Failed to initialize plugin: %v", err),
 		})
@@ -602,8 +612,10 @@ func (h *DiscountHandler) ConfigureDiscountPlugin(c *fiber.Ctx) error {
 func (h *DiscountHandler) DisableDiscountPlugin(c *fiber.Ctx) error {
 	pluginName := c.Params("name")
 	if pluginName == "" {
+		logger.LogError("DisableDiscountPlugin: Plugin name is required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Plugin name is required"})
 	}
 	// If runtime disable is not supported, return 501
+	logger.LogError("DisableDiscountPlugin: not implemented for this plugin type", logger.String("plugin_name", pluginName))
 	return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"error": "DisableDiscountPlugin not implemented for this plugin type"})
 }

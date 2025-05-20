@@ -28,7 +28,6 @@ func (h *AccountHandler) CreateAccount(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
 
-	// Generate UUID and set timestamps
 	now := time.Now().UTC()
 	switch v := input.(type) {
 	case *UserBillingAccount:
@@ -45,7 +44,6 @@ func (h *AccountHandler) CreateAccount(c *fiber.Ctx) error {
 		v.UpdatedAt = now
 	}
 
-	// Validate
 	if v, ok := input.(interface{ Validate() *Error }); ok {
 		if err := v.Validate(); err != nil {
 			logger.LogError("CreateAccount: validation failed", logger.ErrorField(err))
@@ -115,7 +113,6 @@ func (h *AccountHandler) UpdateAccount(c *fiber.Ctx) error {
 		logger.LogError("UpdateAccount: invalid input", logger.ErrorField(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
-	// Set ID
 	switch v := input.(type) {
 	case *UserBillingAccount:
 		v.ID = id

@@ -130,6 +130,7 @@ func (s *PostgresStore) ListCredits(ctx context.Context, accountID, invoiceID, s
 // --- RedeemCoupon ---
 func (s *PostgresStore) RedeemCoupon(ctx context.Context, code, accountID string) (Coupon, error) {
 	if code == "" || accountID == "" {
+		logger.LogError("RedeemCoupon: code/account_id empty", logger.String("code", code), logger.String("account_id", accountID))
 		return Coupon{}, NewValidationError("code/account_id", "must not be empty")
 	}
 	// Check coupon validity
@@ -143,9 +144,11 @@ func (s *PostgresStore) RedeemCoupon(ctx context.Context, code, accountID string
 		return Coupon{}, err
 	}
 	if !isActive {
+		logger.LogError("RedeemCoupon: inactive coupon", logger.String("code", code))
 		return Coupon{}, NewValidationError("coupon", "inactive coupon")
 	}
 	if maxRedemptions > 0 && redeemed >= maxRedemptions {
+		logger.LogError("RedeemCoupon: max redemptions reached", logger.String("code", code))
 		return Coupon{}, NewValidationError("coupon", "max redemptions reached")
 	}
 	// Mark coupon as redeemed for account
@@ -347,6 +350,7 @@ func (s *PostgresStore) ListCoupons(ctx context.Context, discountID string, isAc
 // PatchCredit applies an action (e.g. consume, expire) to a credit. Only supports 'consume' and 'expire'.
 func (s *PostgresStore) PatchCredit(ctx context.Context, id, action string, amount float64) error {
 	if id == "" || action == "" {
+		logger.LogError("PatchCredit: id/action empty", logger.String("id", id), logger.String("action", action))
 		return NewValidationError("id/action", "must not be empty")
 	}
 	switch action {
@@ -357,6 +361,7 @@ func (s *PostgresStore) PatchCredit(ctx context.Context, id, action string, amou
 			return err
 		}
 		if res.RowsAffected() == 0 {
+			logger.LogError("PatchCredit: not enough balance or not active", logger.String("id", id))
 			return NewValidationError("credit", "not enough balance or not active")
 		}
 		return nil
@@ -367,10 +372,12 @@ func (s *PostgresStore) PatchCredit(ctx context.Context, id, action string, amou
 			return err
 		}
 		if res.RowsAffected() == 0 {
+			logger.LogError("PatchCredit: not active or not found", logger.String("id", id))
 			return NewValidationError("credit", "not active or not found")
 		}
 		return nil
 	default:
+		logger.LogError("PatchCredit: unsupported action", logger.String("action", action))
 		return NewValidationError("action", "unsupported action")
 	}
 }
@@ -386,6 +393,7 @@ func (s *PostgresStore) DeleteCredit(ctx context.Context, id string) error {
 // ApplyCreditsToInvoice applies all available credits to an invoice. Consumes credits in FIFO order until invoice is paid or credits exhausted.
 func (s *PostgresStore) ApplyCreditsToInvoice(ctx context.Context, invoiceID string) error {
 	if invoiceID == "" {
+		logger.LogError("ApplyCreditsToInvoice: invoice_id empty", logger.String("invoice_id", invoiceID))
 		return NewValidationError("invoice_id", "must not be empty")
 	}
 	// Get all active credits for this invoice
@@ -412,6 +420,7 @@ func (s *PostgresStore) ApplyCreditsToInvoice(ctx context.Context, invoiceID str
 		}{id, amount})
 	}
 	if len(credits) == 0 {
+		logger.LogError("ApplyCreditsToInvoice: no active credits for invoice", logger.String("invoice_id", invoiceID))
 		return NewValidationError("credits", "no active credits for invoice")
 	}
 	// Mark all as consumed

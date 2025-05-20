@@ -109,6 +109,10 @@ func (h *FeeHandler) ListFees(c *fiber.Ctx) error {
 // ListFeePlugins returns all registered fee plugins
 func (h *FeeHandler) ListFeePlugins(c *fiber.Ctx) error {
 	pluginNames := FeePlugins.List()
+	if pluginNames == nil {
+		logger.LogError("ListFeePlugins: no plugins found")
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "No fee plugins found"})
+	}
 	return c.JSON(fiber.Map{"plugins": pluginNames})
 }
 
@@ -116,10 +120,12 @@ func (h *FeeHandler) ListFeePlugins(c *fiber.Ctx) error {
 func (h *FeeHandler) GetFeePlugin(c *fiber.Ctx) error {
 	pluginName := c.Params("name")
 	if pluginName == "" {
+		logger.LogError("GetFeePlugin: plugin name required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Plugin name is required"})
 	}
 	plugin, exists := FeePlugins.Lookup(pluginName)
 	if !exists {
+		logger.LogError("GetFeePlugin: plugin not found", logger.String("plugin_name", pluginName))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Fee plugin '" + pluginName + "' not found"})
 	}
 	return c.JSON(fiber.Map{
@@ -131,6 +137,7 @@ func (h *FeeHandler) GetFeePlugin(c *fiber.Ctx) error {
 
 // ConfigureFeePlugin is a stub for plugin configuration
 func (h *FeeHandler) ConfigureFeePlugin(c *fiber.Ctx) error {
+	logger.LogError("ConfigureFeePlugin: not implemented")
 	return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"error": "ConfigureFeePlugin not implemented for this plugin type"})
 }
 
@@ -138,7 +145,9 @@ func (h *FeeHandler) ConfigureFeePlugin(c *fiber.Ctx) error {
 func (h *FeeHandler) DisableFeePlugin(c *fiber.Ctx) error {
 	pluginName := c.Params("name")
 	if pluginName == "" {
+		logger.LogError("DisableFeePlugin: plugin name required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Plugin name is required"})
 	}
+	logger.LogError("DisableFeePlugin: not implemented", logger.String("plugin_name", pluginName))
 	return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"error": "DisableFeePlugin not implemented for this plugin type"})
 }
