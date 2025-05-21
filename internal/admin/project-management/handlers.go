@@ -12,7 +12,6 @@ func NewProjectHandler(store *PostgresStore) *ProjectHandler {
 		Store:                  store,
 		ProjectService:         store,
 		ProjectSettingsService: store,
-
 	}
 }
 
@@ -62,7 +61,7 @@ func (h *ProjectHandler) UpdateProject(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("UpdateProject: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input Project
 	if err := c.BodyParser(&input); err != nil {
@@ -88,7 +87,7 @@ func (h *ProjectHandler) DeleteProject(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("DeleteProject: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.ProjectService.DeleteProject(c.Context(), id); err != nil {
 		logger.LogError("DeleteProject: failed", logger.ErrorField(err), logger.String("id", id))
@@ -103,7 +102,7 @@ func (h *ProjectHandler) GetProject(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetProject: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	proj, err := h.ProjectService.GetProject(c.Context(), id)
 	if err != nil {
@@ -131,7 +130,7 @@ func (h *ProjectHandler) GetSettings(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetSettings: project_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	settings, err := h.ProjectSettingsService.GetSettings(c.Context(), id)
 	if err != nil {
@@ -149,7 +148,7 @@ func (h *ProjectHandler) UpdateSettings(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("UpdateSettings: project_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input struct {
 		Settings map[string]interface{} `json:"settings"`
@@ -165,4 +164,3 @@ func (h *ProjectHandler) UpdateSettings(c *fiber.Ctx) error {
 	}
 	return c.JSON(fiber.Map{"settings": updated})
 }
-

@@ -34,11 +34,11 @@ type PaymentHandler struct {
 	EvidenceService      DisputeDataStoreInterface // For dispute evidence management
 	Store                StoreInterface
 
-	ConfigService        *server_config.Service
-	Logger               logger.Logger
-	Notify               security_management.NotificationService
-	PluginService        PluginService
-	ReportService        TransactionReportService
+	ConfigService *server_config.Service
+	Logger        logger.Logger
+	Notify        security_management.NotificationService
+	PluginService PluginService
+	ReportService TransactionReportService
 }
 
 // NewPaymentHandler creates a new payment handler
@@ -61,12 +61,12 @@ func NewPaymentHandler(
 		PaymentMethodService: paymentMethodService,
 		ManualRefundService:  manualRefundService,
 
-		ConfigService:        configService,
-		Logger:               logger,
-		Notify:               notify,
-		Store:                storeRegistry,
-		PluginService:        pluginService,
-		ReportService:        reportService,
+		ConfigService: configService,
+		Logger:        logger,
+		Notify:        notify,
+		Store:         storeRegistry,
+		PluginService: pluginService,
+		ReportService: reportService,
 	}
 }
 
@@ -1341,7 +1341,7 @@ func (h *PaymentHandler) UpdateDispute(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("UpdateDispute: id required", logger.String("path", c.Path()))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input struct {
 		Status            DisputeStatus `json:"status"`
@@ -1362,7 +1362,7 @@ func (h *PaymentHandler) DeleteDispute(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("DeleteDispute: id required", logger.String("path", c.Path()))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	err := h.DisputeService.DeleteDispute(c.Context(), id)
 	if err != nil {
@@ -1380,7 +1380,7 @@ func (h *PaymentHandler) CreateEvidence(c *fiber.Ctx) error {
 	disputeID := c.Params("id")
 	if disputeID == "" {
 		logger.LogError("CreateEvidence: dispute_id required", logger.String("path", c.Path()))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "dispute_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input DisputeEvidence
 	if err := c.BodyParser(&input); err != nil {
@@ -1402,7 +1402,7 @@ func (h *PaymentHandler) ListEvidence(c *fiber.Ctx) error {
 	pageSize := c.QueryInt("page_size", 100)
 	if disputeID == "" || tenantID == "" {
 		logger.LogError("ListEvidence: dispute_id and tenant_id required", logger.String("path", c.Path()))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "dispute_id and tenant_id required"})
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "error occured"})
 	}
 	evidence, err := h.EvidenceService.ListDisputeEvidence(c.Context(), disputeID, tenantID, page, pageSize)
 	if err != nil {
@@ -1416,7 +1416,7 @@ func (h *PaymentHandler) GetEvidence(c *fiber.Ctx) error {
 	evidenceID := c.Params("evidence_id")
 	if evidenceID == "" {
 		logger.LogError("GetEvidence: evidence_id required", logger.String("path", c.Path()))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "evidence_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	evidence, err := h.EvidenceService.GetDisputeEvidence(c.Context(), evidenceID)
 	if err != nil {
@@ -1430,7 +1430,7 @@ func (h *PaymentHandler) UpdateEvidence(c *fiber.Ctx) error {
 	evidenceID := c.Params("evidence_id")
 	if evidenceID == "" {
 		logger.LogError("UpdateEvidence: evidence_id required", logger.String("path", c.Path()))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "evidence_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input struct {
 		ProviderStatus   string `json:"provider_status"`
@@ -1451,7 +1451,7 @@ func (h *PaymentHandler) DeleteEvidence(c *fiber.Ctx) error {
 	evidenceID := c.Params("evidence_id")
 	if evidenceID == "" {
 		logger.LogError("DeleteEvidence: evidence_id required", logger.String("path", c.Path()))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "evidence_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	err := h.EvidenceService.DeleteDisputeEvidence(c.Context(), evidenceID)
 	if err != nil {

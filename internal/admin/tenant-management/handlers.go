@@ -84,7 +84,7 @@ func (h *TenantAdminHandler) GetTenant(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetTenant: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	tenant, err := h.TenantStore.GetTenant(c.Context(), id)
@@ -118,7 +118,7 @@ func (h *TenantAdminHandler) UpdateTenant(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("UpdateTenant: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var tenant Tenant
 	if err := c.BodyParser(&tenant); err != nil {
@@ -157,7 +157,7 @@ func (h *TenantAdminHandler) DeleteTenant(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("DeleteTenant: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.TenantStore.DeleteTenant(c.Context(), id); err != nil {
 		logger.LogError("DeleteTenant: failed", logger.ErrorField(err), logger.String("id", id))
@@ -218,7 +218,7 @@ func (h *TenantAdminHandler) GetTenantSettings(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetTenantSettings: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	settings, err := h.TenantSettingsStore.GetTenantSettings(c.Context(), id)
 	if err != nil {
@@ -248,7 +248,7 @@ func (h *TenantAdminHandler) UpdateTenantSettings(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("UpdateTenantSettings: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input struct {
 		Settings map[string]interface{} `json:"settings"`
@@ -295,7 +295,7 @@ func validateTenantSettings(settings map[string]interface{}) error {
 func (h *TenantAdminHandler) SetTenantStatus(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	var input struct {
@@ -329,7 +329,7 @@ func (h *TenantAdminHandler) SetTenantStatus(c *fiber.Ctx) error {
 func (h *TenantAdminHandler) GetTenantStatus(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	status, err := h.TenantStore.GetTenantStatus(c.Context(), id)
@@ -447,7 +447,7 @@ func (h *TenantAdminHandler) VerifyTenantIsolation(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("VerifyTenantIsolation: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	// Get the tenant to verify it exists
@@ -518,7 +518,7 @@ func (h *TenantAdminHandler) MigrateTenant(c *fiber.Ctx) error {
 	sourceID := c.Params("id")
 	if sourceID == "" {
 		logger.LogError("MigrateTenant: source id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "source tenant id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	// Get target tenant ID from request body
@@ -534,7 +534,7 @@ func (h *TenantAdminHandler) MigrateTenant(c *fiber.Ctx) error {
 
 	if input.TargetTenantID == "" {
 		logger.LogError("MigrateTenant: target_tenant_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "target_tenant_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	// If this is a validation-only request, just validate and return the result
@@ -604,7 +604,7 @@ func (h *TenantAdminHandler) ExportTenantData(c *fiber.Ctx) error {
 	tenantID := c.Params("id")
 	if tenantID == "" {
 		logger.LogError("ExportTenantData: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	// Check if the store implements TenantMigrationService
@@ -661,7 +661,7 @@ func (h *TenantAdminHandler) ImportTenantData(c *fiber.Ctx) error {
 	tenantID := c.Params("id")
 	if tenantID == "" {
 		logger.LogError("ImportTenantData: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	// Check if the store implements TenantMigrationService

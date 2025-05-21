@@ -502,4 +502,15 @@ type InvoicePluginConfig struct {
 // Address represents a billing address for tax calculation
 // All fields are required for tax compliance
 type Address struct {
-	ID         string `
+	ID         string `json:"id"`
+	TenantID   string `json:"tenant_id"`
+	Address1   string `json:"address1"`
+	Address2   string `json:"address2,omitempty"`
+	City       string `json:"city"`
+	State      string `json:"state"`
+	PostalCode string `json:"postal_code"`
+	Country    string `json:"country"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+

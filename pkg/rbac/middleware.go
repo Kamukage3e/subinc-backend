@@ -77,7 +77,7 @@ func Middleware(cfg Config) fiber.Handler {
 
 		sessionID := c.Cookies("session_id")
 		if sessionID == "" {
-			return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: session_id cookie required"})
+			return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "error occured"})
 		}
 
 		sess, err := cfg.SessionManager.GetSession(c.Context(), sessionID)

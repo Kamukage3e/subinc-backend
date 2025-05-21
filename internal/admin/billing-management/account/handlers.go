@@ -96,7 +96,7 @@ func (h *AccountHandler) UpdateAccount(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("UpdateAccount: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	accountType := c.Query("type", "project")
 	ctx := c.Context()
@@ -139,7 +139,7 @@ func (h *AccountHandler) GetAccount(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetAccount: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	accountType := c.Query("type", "project")
 	ctx := c.Context()
@@ -182,7 +182,7 @@ func (h *AccountHandler) PerformAccountAction(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("PerformAccountAction: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	accountType := c.Query("type", "project")
 	var input struct {
@@ -209,7 +209,7 @@ func (h *AccountHandler) DeleteAccount(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("DeleteAccount: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	accountType := c.Query("type", "project")
 	ctx := c.Context()

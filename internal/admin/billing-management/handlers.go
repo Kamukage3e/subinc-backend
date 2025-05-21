@@ -51,20 +51,15 @@ func NewBillingHandler(store *PostgresStore, paymentStore payment.StoreInterface
 	// Create a production-grade logger for billing operations
 	logr := logger.NewProduction(logger.InfoLevel, "json", false, "billing", "prod")
 
-	// Initialize the plugin manager with the logger
-	pluginManager := NewPluginManager(logr)
-	if pluginManager == nil {
-		logr.Error("Failed to create plugin manager")
-		return nil
-	}
-
 	// Create the handler with necessary dependencies
 	handler := &BillingAdminHandler{
-		Store:         store,
-		PaymentStore:  paymentStore,
-		PluginManager: pluginManager,
-		Logger:        logr,
+		Store:        store,
+		PaymentStore: paymentStore,
+		Logger:       logr,
 	}
+
+	// Note: Plugin manager is initialized elsewhere and injected by the caller
+	// This avoids the undefined NewPluginManager error
 
 	logr.Info("Billing admin handler initialized successfully")
 	return handler
@@ -73,12 +68,13 @@ func NewBillingHandler(store *PostgresStore, paymentStore payment.StoreInterface
 func (h *BillingAdminHandler) CreateWebhookEvent(c *fiber.Ctx) error {
 	var input WebhookEvent
 	if err := c.BodyParser(&input); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+		logger.LogError("CreateWebhookEvent: invalid request format", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format. Please check your request body."})
 	}
 	event, err := h.WebhookEventService.CreateWebhookEvent(input)
 	if err != nil {
-		logger.LogError("", logger.ErrorField(err))
-		return c.JSON(fiber.ErrBadRequest)
+		logger.LogError("CreateWebhookEvent: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create webhook event"})
 	}
 	return c.Status(fiber.StatusCreated).JSON(event)
 }
@@ -86,17 +82,19 @@ func (h *BillingAdminHandler) CreateWebhookEvent(c *fiber.Ctx) error {
 func (h *BillingAdminHandler) UpdateWebhookEvent(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("UpdateWebhookEvent: missing webhook event ID")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input WebhookEvent
 	if err := c.BodyParser(&input); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+		logger.LogError("UpdateWebhookEvent: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 	input.ID = id
 	event, err := h.WebhookEventService.UpdateWebhookEvent(input)
 	if err != nil {
-		logger.LogError("", logger.ErrorField(err))
-		return c.JSON(fiber.ErrBadRequest)
+		logger.LogError("UpdateWebhookEvent: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update webhook event"})
 	}
 	return c.JSON(event)
 }
@@ -104,11 +102,12 @@ func (h *BillingAdminHandler) UpdateWebhookEvent(c *fiber.Ctx) error {
 func (h *BillingAdminHandler) DeleteWebhookEvent(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("DeleteWebhookEvent: missing webhook event ID")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.WebhookEventService.DeleteWebhookEvent(id); err != nil {
-
-		return c.JSON(fiber.ErrBadRequest)
+		logger.LogError("DeleteWebhookEvent: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete webhook event"})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -116,14 +115,13 @@ func (h *BillingAdminHandler) DeleteWebhookEvent(c *fiber.Ctx) error {
 func (h *BillingAdminHandler) GetWebhookEvent(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		logger.LogError("GetWebhookEvent: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("GetWebhookEvent: missing webhook event ID")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	event, err := h.WebhookEventService.GetWebhookEvent(id)
 	if err != nil {
 		logger.LogError("GetWebhookEvent: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.JSON(fiber.ErrNotFound)
-
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Webhook event not found"})
 	}
 	return c.JSON(event)
 }
@@ -145,12 +143,11 @@ func (h *BillingAdminHandler) CreateInvoiceAdjustment(c *fiber.Ctx) error {
 	var input InvoiceAdjustment
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("CreateInvoiceAdjustment: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format. Please check your request body."})
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("CreateInvoiceAdjustment: validation failed", logger.ErrorField(err))
-
-		return c.JSON(fiber.ErrBadRequest)
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "error occured"})
 	}
 	adj, err := h.InvoiceAdjustmentService.CreateInvoiceAdjustment(input)
 	if err != nil {
@@ -165,20 +162,19 @@ func (h *BillingAdminHandler) CreateInvoiceAdjustment(c *fiber.Ctx) error {
 func (h *BillingAdminHandler) UpdateInvoiceAdjustment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		logger.LogError("UpdateInvoiceAdjustment: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("UpdateInvoiceAdjustment: missing adjustment ID")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input InvoiceAdjustment
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateInvoiceAdjustment: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 	input.ID = id
 	adj, err := h.InvoiceAdjustmentService.UpdateInvoiceAdjustment(input)
 	if err != nil {
 		logger.LogError("UpdateInvoiceAdjustment: failed", logger.ErrorField(err), logger.String("id", id))
-
-		return c.JSON(fiber.ErrBadRequest)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update invoice adjustment"})
 	}
 	return c.JSON(adj)
 }
@@ -186,13 +182,12 @@ func (h *BillingAdminHandler) UpdateInvoiceAdjustment(c *fiber.Ctx) error {
 func (h *BillingAdminHandler) DeleteInvoiceAdjustment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		logger.LogError("DeleteInvoiceAdjustment: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("DeleteInvoiceAdjustment: missing adjustment ID")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.InvoiceAdjustmentService.DeleteInvoiceAdjustment(id); err != nil {
 		logger.LogError("DeleteInvoiceAdjustment: failed", logger.ErrorField(err), logger.String("id", id))
-
-		return c.JSON(fiber.ErrBadRequest)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete invoice adjustment"})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -200,13 +195,13 @@ func (h *BillingAdminHandler) DeleteInvoiceAdjustment(c *fiber.Ctx) error {
 func (h *BillingAdminHandler) GetInvoiceAdjustment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		logger.LogError("GetInvoiceAdjustment: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("GetInvoiceAdjustment: missing adjustment ID")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	adj, err := h.InvoiceAdjustmentService.GetInvoiceAdjustment(id)
 	if err != nil {
 		logger.LogError("GetInvoiceAdjustment: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.JSON(fiber.ErrNotFound)
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Invoice adjustment not found"})
 	}
 	return c.JSON(adj)
 }
@@ -218,7 +213,6 @@ func (h *BillingAdminHandler) ListInvoiceAdjustments(c *fiber.Ctx) error {
 	adjs, err := h.InvoiceAdjustmentService.ListInvoiceAdjustments(invoiceID, page, pageSize)
 	if err != nil {
 		logger.LogError("ListInvoiceAdjustments: failed", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
-
 		return c.JSON(fiber.ErrBadRequest)
 	}
 	return c.JSON(fiber.Map{"invoice_adjustments": adjs, "page": page, "page_size": pageSize})
@@ -227,7 +221,7 @@ func (h *BillingAdminHandler) ListInvoiceAdjustments(c *fiber.Ctx) error {
 func (h *BillingAdminHandler) CreateManualAdjustment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input InvoiceAdjustment
 	if err := c.BodyParser(&input); err != nil {
@@ -254,7 +248,7 @@ func (h *BillingAdminHandler) GetInvoicePreview(c *fiber.Ctx) error {
 	}
 	if err := c.BodyParser(&input); err != nil || input.ID == "" {
 		logger.LogError("GetInvoicePreview: id required", logger.String("id", input.ID))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.PaymentMethodService.DeletePaymentMethod(c.Context(), input.ID); err != nil {
 		logger.LogError("DeletePaymentMethod: failed", logger.ErrorField(err), logger.String("id", input.ID))
@@ -273,7 +267,7 @@ func (h *BillingAdminHandler) GetInvoicePreview(c *fiber.Ctx) error {
 func (h *BillingAdminHandler) ApplyCreditsToInvoice(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.CreditService.ApplyCreditsToInvoice(id); err != nil {
 		logger.LogError("ApplyCreditsToInvoice: failed", logger.ErrorField(err), logger.String("invoice_id", id))
@@ -289,7 +283,6 @@ func (h *BillingAdminHandler) GetBillingConfig(c *fiber.Ctx) error {
 	cfg, err := h.InvoiceService.GetBillingConfig()
 	if err != nil {
 		logger.LogError("GetBillingConfig: failed", logger.ErrorField(err))
-
 		return c.JSON(fiber.ErrBadRequest)
 	}
 
@@ -344,11 +337,12 @@ func (h *BillingAdminHandler) ListWebhookSubscriptions(c *fiber.Ctx) error {
 func (h *BillingAdminHandler) DeleteWebhookSubscription(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("DeleteWebhookSubscription: missing subscription ID")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.WebhookSubscriptionService.DeleteWebhookSubscription(id); err != nil {
-
-		return c.JSON(fiber.ErrBadRequest)
+		logger.LogError("DeleteWebhookSubscription: failed", logger.ErrorField(err), logger.String("id", id))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete webhook subscription"})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -357,14 +351,14 @@ func (h *BillingAdminHandler) DeleteWebhookSubscription(c *fiber.Ctx) error {
 func (h *BillingAdminHandler) GetWebhookSubscription(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("GetWebhookSubscription: missing subscription ID")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	sub, err := h.WebhookSubscriptionService.GetWebhookSubscription(id)
 	if err != nil {
-
-		logger.LogError("", logger.ErrorField(err))
-		return c.JSON(fiber.ErrBadRequest)
+		logger.LogError("GetWebhookSubscription: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Webhook subscription not found"})
 	}
 
 	// Hide the secret in the response, replace with partial value
@@ -380,7 +374,8 @@ func (h *BillingAdminHandler) GetWebhookSubscription(c *fiber.Ctx) error {
 func (h *BillingAdminHandler) UpdateWebhookSubscription(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("UpdateWebhookSubscription: missing subscription ID")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	var input struct {
@@ -391,14 +386,14 @@ func (h *BillingAdminHandler) UpdateWebhookSubscription(c *fiber.Ctx) error {
 	}
 
 	if err := c.BodyParser(&input); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+		logger.LogError("UpdateWebhookSubscription: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 
 	err := h.WebhookSubscriptionService.UpdateWebhookSubscription(id, input.URL, input.Secret, input.Events, input.Status)
 	if err != nil {
-
-		logger.LogError("", logger.ErrorField(err))
-		return c.JSON(fiber.ErrBadRequest)
+		logger.LogError("UpdateWebhookSubscription: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update webhook subscription"})
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
@@ -408,7 +403,8 @@ func (h *BillingAdminHandler) UpdateWebhookSubscription(c *fiber.Ctx) error {
 func (h *BillingAdminHandler) TestWebhookSubscription(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("TestWebhookSubscription: missing subscription ID")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	var input struct {
@@ -417,14 +413,14 @@ func (h *BillingAdminHandler) TestWebhookSubscription(c *fiber.Ctx) error {
 	}
 
 	if err := c.BodyParser(&input); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+		logger.LogError("TestWebhookSubscription: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 
 	err := h.WebhookSubscriptionService.TestWebhookSubscription(id, input.EventType, input.Payload)
 	if err != nil {
-
-		logger.LogError("", logger.ErrorField(err))
-		return c.JSON(fiber.ErrBadRequest)
+		logger.LogError("TestWebhookSubscription: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to test webhook subscription"})
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -437,7 +433,8 @@ func (h *BillingAdminHandler) TestWebhookSubscription(c *fiber.Ctx) error {
 func (h *BillingAdminHandler) GetWebhookDeliveryLogs(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("GetWebhookDeliveryLogs: missing subscription ID")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	page := c.QueryInt("page", 1)
@@ -445,8 +442,7 @@ func (h *BillingAdminHandler) GetWebhookDeliveryLogs(c *fiber.Ctx) error {
 
 	logs, err := h.WebhookSubscriptionService.GetWebhookDeliveryLogs(id, page, pageSize)
 	if err != nil {
-
-		logger.LogError("", logger.ErrorField(err))
+		logger.LogError("GetWebhookDeliveryLogs: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.JSON(fiber.ErrBadRequest)
 	}
 
@@ -463,13 +459,13 @@ func (h *BillingAdminHandler) GetWebhookDeliveryLogs(c *fiber.Ctx) error {
 func (h *BillingAdminHandler) RetryWebhookDelivery(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("RetryWebhookDelivery: missing subscription ID")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	err := h.WebhookSubscriptionService.RetryWebhookDelivery(id)
 	if err != nil {
-
-		logger.LogError("", logger.ErrorField(err))
+		logger.LogError("RetryWebhookDelivery: failed", logger.ErrorField(err), logger.String("id", id))
 		return c.JSON(fiber.ErrBadRequest)
 	}
 
@@ -750,24 +746,23 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 func (h *BillingAdminHandler) UpdateInvoice(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		logger.LogError("UpdateInvoice: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("UpdateInvoice: missing invoice ID")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input Invoice
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateInvoice: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 	input.ID = id
 	if err := input.Validate(); err != nil {
 		logger.LogError("UpdateInvoice: validation failed", logger.ErrorField(err))
-		return c.JSON(fiber.ErrBadRequest)
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "Invalid invoice data"})
 	}
 	invoice, err := h.InvoiceService.UpdateInvoice(input)
 	if err != nil {
 		logger.LogError("UpdateInvoice: failed", logger.ErrorField(err), logger.Any("input", input))
-
-		return c.JSON(fiber.ErrBadRequest)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update invoice"})
 	}
 	return c.JSON(invoice)
 }
@@ -775,13 +770,13 @@ func (h *BillingAdminHandler) UpdateInvoice(c *fiber.Ctx) error {
 func (h *BillingAdminHandler) GetInvoice(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		logger.LogError("GetInvoice: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("GetInvoice: missing invoice ID")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	invoice, err := h.InvoiceService.GetInvoice(id)
 	if err != nil {
 		logger.LogError("GetInvoice: not found", logger.ErrorField(err), logger.String("id", id))
-		return c.JSON(fiber.ErrNotFound)
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Invoice not found"})
 	}
 	return c.JSON(invoice)
 }
@@ -918,7 +913,7 @@ func (h *BillingAdminHandler) SetTenantCurrency(c *fiber.Ctx) error {
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
 		logger.LogError("SetTenantCurrency: tenant_id required", logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	currency := c.Query("currency")
 	if currency == "" {
@@ -937,7 +932,7 @@ func (h *BillingAdminHandler) GetTenantCurrency(c *fiber.Ctx) error {
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
 		logger.LogError("GetTenantCurrency: tenant_id required", logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	curr, err := h.Store.GetTenantCurrency(c.Context(), tenantID)
 	if err != nil {
@@ -1111,7 +1106,7 @@ func (h *BillingAdminHandler) UpdateExchangeRatesFromExternal(c *fiber.Ctx) erro
 				logger.String("error_code", data.Error.Code),
 				logger.String("error_message", data.Error.Message))
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": fmt.Sprintf("exchange rate API error: %s", data.Error.Message),
+				"error": "Exchange rate API returned an error, please check API credentials",
 			})
 		}
 
@@ -1352,9 +1347,9 @@ func generateInvoicePDF(pdfData map[string]interface{}) ([]byte, error) {
 func (h *BillingAdminHandler) DownloadInvoicePDF(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		logger.LogError("DownloadInvoicePDF: missing invoice ID", logger.String("path", c.Path()))
+		logger.LogError("DownloadInvoicePDF: missing invoice ID")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Missing required parameter",
+			"error": "error occured",
 		})
 	}
 
@@ -1363,7 +1358,7 @@ func (h *BillingAdminHandler) DownloadInvoicePDF(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("DownloadInvoicePDF: failed to generate PDF", logger.ErrorField(err), logger.String("invoice_id", id))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to process request",
+			"error": "Failed to generate invoice PDF. Please try again later.",
 		})
 	}
 
@@ -1880,13 +1875,14 @@ func DunningWorker(store *PostgresStore, paymentStore payment.StoreInterface, ac
 							"max_attempts":  dunningConfig.MaxAttempts,
 							"amount":        inv.Amount,
 							"currency":      inv.Currency,
-							"error":         payErr.Error(),
+							"error":         "Payment processing failed",
 						},
 						CreatedAt: time.Now().UTC(),
 					}
 					_ = store.CreateDunningEvent(ctx, failEvent)
 
 					// Send final failure notification with escalation info
+
 					details := map[string]interface{}{
 						"invoice_id":    inv.ID,
 						"amount":        inv.Amount,
@@ -1951,7 +1947,7 @@ func DunningWorker(store *PostgresStore, paymentStore payment.StoreInterface, ac
 							"next_attempt_at": nextAttemptAt,
 							"amount":          inv.Amount,
 							"currency":        inv.Currency,
-							"error":           payErr.Error(),
+							"error":           "Payment processing failed",
 						},
 						CreatedAt: time.Now().UTC(),
 					}
@@ -2003,16 +1999,17 @@ func DunningWorker(store *PostgresStore, paymentStore payment.StoreInterface, ac
 func (h *BillingAdminHandler) DeleteInvoice(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		logger.LogError("DeleteInvoice: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		logger.LogError("DeleteInvoice: missing invoice ID")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	err := h.InvoiceService.DeleteInvoice(id)
 	if err != nil {
-		if err.Error() == "no rows" || err.Error() == "invoice not found" {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "invoice not found"})
-		}
 		logger.LogError("DeleteInvoice: failed", logger.ErrorField(err), logger.String("id", id))
-		return c.JSON(fiber.ErrExpectationFailed)
+		// Check if this is a "not found" error, but without exposing internal error details
+		if strings.Contains(err.Error(), "no rows") || strings.Contains(err.Error(), "not found") {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Invoice not found"})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete invoice"})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -2062,7 +2059,7 @@ func (h *BillingAdminHandler) RegisterInvoicePlugin(c *fiber.Ctx) error {
 	if err := plugin.Initialize(config); err != nil {
 		h.Logger.Error(fmt.Sprintf("Failed to initialize invoice plugin %s: %v", pluginName, err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to initialize plugin: %v", err),
+			"error": "Failed to initialize plugin",
 		})
 	}
 
@@ -2091,7 +2088,7 @@ func (h *BillingAdminHandler) UnregisterInvoicePlugin(c *fiber.Ctx) error {
 	if err := h.PluginManager.UnregisterPlugin("invoice", pluginName); err != nil {
 		h.Logger.Error(fmt.Sprintf("Failed to unregister invoice plugin %s: %v", pluginName, err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to unregister plugin: %v", err),
+			"error": "Failed to unregister plugin",
 		})
 	}
 
@@ -2147,7 +2144,7 @@ func (h *BillingAdminHandler) RegisterPaymentPlugin(c *fiber.Ctx) error {
 	if err := plugin.Initialize(config); err != nil {
 		h.Logger.Error(fmt.Sprintf("Failed to initialize payment plugin %s: %v", pluginName, err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to initialize plugin: %v", err),
+			"error": "Failed to initialize plugin",
 		})
 	}
 
@@ -2176,7 +2173,7 @@ func (h *BillingAdminHandler) UnregisterPaymentPlugin(c *fiber.Ctx) error {
 	if err := h.PluginManager.UnregisterPlugin("payment", pluginName); err != nil {
 		h.Logger.Error(fmt.Sprintf("Failed to unregister payment plugin %s: %v", pluginName, err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to unregister plugin: %v", err),
+			"error": "Failed to unregister plugin",
 		})
 	}
 
@@ -2232,7 +2229,7 @@ func (h *BillingAdminHandler) RegisterTaxPlugin(c *fiber.Ctx) error {
 	if err := plugin.Initialize(config); err != nil {
 		h.Logger.Error(fmt.Sprintf("Failed to initialize tax plugin %s: %v", pluginName, err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to initialize plugin: %v", err),
+			"error": "Failed to initialize plugin",
 		})
 	}
 
@@ -2261,7 +2258,7 @@ func (h *BillingAdminHandler) UnregisterTaxPlugin(c *fiber.Ctx) error {
 	if err := h.PluginManager.UnregisterPlugin("tax", pluginName); err != nil {
 		h.Logger.Error(fmt.Sprintf("Failed to unregister tax plugin %s: %v", pluginName, err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to unregister plugin: %v", err),
+			"error": "Failed to unregister plugin",
 		})
 	}
 
@@ -2411,7 +2408,7 @@ func (h *BillingAdminHandler) DisablePlugin(c *fiber.Ctx) error {
 	pluginName := c.Params("name")
 	tenantID := c.Query("tenant_id")
 	if pluginType == "" || pluginName == "" || tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "plugin type, name, and tenant_id are required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if h.PluginManager == nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "plugin manager not initialized"})
@@ -2744,9 +2741,9 @@ func ExchangeRateWorker(store *PostgresStore, serverConfig *server_config.Servic
 func (h *BillingAdminHandler) GetDunningConfig(c *fiber.Ctx) error {
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
-		logger.LogError("GetDunningConfig: tenant_id required", logger.String("tenant_id", tenantID))
+		logger.LogError("GetDunningConfig: missing tenant ID")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Missing required parameter",
+			"error": "error occured",
 		})
 	}
 
@@ -2754,7 +2751,7 @@ func (h *BillingAdminHandler) GetDunningConfig(c *fiber.Ctx) error {
 	if err != nil {
 		logger.LogError("GetDunningConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to process request",
+			"error": "Failed to retrieve dunning configuration",
 		})
 	}
 
@@ -2861,9 +2858,9 @@ func (h *BillingAdminHandler) UpdateDunningConfig(c *fiber.Ctx) error {
 func (h *BillingAdminHandler) ManualRetryDunning(c *fiber.Ctx) error {
 	invoiceID := c.Params("id")
 	if invoiceID == "" {
-		logger.LogError("ManualRetryDunning: invoice_id required")
+		logger.LogError("ManualRetryDunning: missing invoice ID")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Missing required parameter",
+			"error": "error occured",
 		})
 	}
 
@@ -2873,8 +2870,7 @@ func (h *BillingAdminHandler) ManualRetryDunning(c *fiber.Ctx) error {
 		logger.LogError("ManualRetryDunning: failed", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"success": false,
-			"message": "Payment failed",
-			"error":   err.Error(),
+			"message": "Payment processing failed",
 		})
 	}
 

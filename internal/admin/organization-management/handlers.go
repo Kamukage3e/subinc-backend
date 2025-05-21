@@ -13,7 +13,6 @@ func NewOrganizationHandler(store *PostgresStore) *OrganizationHandler {
 		Store:               store,
 		OrganizationService: store,
 		OrgSettingsService:  store,
-
 	}
 }
 
@@ -55,7 +54,7 @@ func (h *OrganizationHandler) UpdateOrganization(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("UpdateOrganization: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input Organization
 	if err := c.BodyParser(&input); err != nil {
@@ -80,7 +79,7 @@ func (h *OrganizationHandler) DeleteOrganization(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("DeleteOrganization: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.OrganizationService.DeleteOrganization(c.Context(), id); err != nil {
 		logger.LogError("DeleteOrganization: failed", logger.ErrorField(err), logger.String("id", id))
@@ -94,7 +93,7 @@ func (h *OrganizationHandler) GetOrganization(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetOrganization: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	org, err := h.OrganizationService.GetOrganization(c.Context(), id)
 	if err != nil {
@@ -123,7 +122,7 @@ func (h *OrganizationHandler) GetSettings(c *fiber.Ctx) error {
 	orgID := c.Params("id")
 	if orgID == "" {
 		logger.LogError("GetSettings: org_id required", logger.String("org_id", orgID))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	settings, err := h.OrgSettingsService.GetSettings(c.Context(), orgID)
 	if err != nil {
@@ -140,7 +139,7 @@ func (h *OrganizationHandler) UpdateSettings(c *fiber.Ctx) error {
 	orgID := c.Params("id")
 	if orgID == "" {
 		logger.LogError("UpdateSettings: org_id required", logger.String("org_id", orgID))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "org_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input struct {
 		Settings map[string]interface{} `json:"settings"`

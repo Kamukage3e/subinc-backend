@@ -59,7 +59,7 @@ func (h *SecurityHandler) ListUserSecurityEvents(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
 		logger.LogError("ListUserSecurityEvents: missing user_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required", "tenant_id": getTenantID(c)})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured": getTenantID(c)})
 	}
 
 	// Optional pagination parameters
@@ -117,13 +117,13 @@ func (h *SecurityHandler) GetUserSecurityEvent(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
 		logger.LogError("GetUserSecurityEvent: missing user_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	eventID := c.Params("event_id")
 	if eventID == "" {
 		logger.LogError("GetUserSecurityEvent: missing event_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "event_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	events, err := h.SecurityEventService.ListUserSecurityEvents(c.Context(), userID)
@@ -147,7 +147,7 @@ func (h *SecurityHandler) ListUserLoginHistory(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
 		logger.LogError("ListUserLoginHistory: missing user_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	// Optional pagination parameters
@@ -179,13 +179,13 @@ func (h *SecurityHandler) GetUserLoginHistoryItem(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
 		logger.LogError("GetUserLoginHistoryItem: missing user_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	historyID := c.Params("history_id")
 	if historyID == "" {
 		logger.LogError("GetUserLoginHistoryItem: missing history_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "history_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	// Get all login history items
@@ -231,7 +231,7 @@ func (h *SecurityHandler) EnableMFA(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
 		logger.LogError("EnableMFA: missing user_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	if err := h.MFAService.EnableMFA(c.Context(), userID); err != nil {
@@ -265,7 +265,7 @@ func (h *SecurityHandler) DisableMFA(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
 		logger.LogError("DisableMFA: missing user_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	if err := h.MFAService.DisableMFA(c.Context(), userID); err != nil {
@@ -376,7 +376,7 @@ func (h *SecurityHandler) CreateUserSession(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
 		logger.LogError("CreateUserSession: missing user_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	ip := c.IP()
@@ -413,7 +413,7 @@ func (h *SecurityHandler) ListUserSessions(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
 		logger.LogError("ListUserSessions: missing user_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	sessions, err := h.SessionService.ListUserSessions(c.Context(), userID)
@@ -435,7 +435,7 @@ func (h *SecurityHandler) GetUserSession(c *fiber.Ctx) error {
 	sessionID := c.Params("session_id")
 	if sessionID == "" {
 		logger.LogError("GetUserSession: missing session_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	sess, err := h.SessionService.GetSession(c.Context(), sessionID)
@@ -451,7 +451,7 @@ func (h *SecurityHandler) DeleteUserSession(c *fiber.Ctx) error {
 	sessionID := c.Params("session_id")
 	if sessionID == "" {
 		logger.LogError("DeleteUserSession: missing session_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	if err := h.SessionService.DeleteSession(c.Context(), sessionID); err != nil {
@@ -466,13 +466,13 @@ func (h *SecurityHandler) RevokeUserSession(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
 		logger.LogError("RevokeUserSession: missing user_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	sessionID := c.Params("session_id")
 	if sessionID == "" {
 		logger.LogError("RevokeUserSession: missing session_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	if err := h.SessionService.RevokeUserSession(c.Context(), userID, sessionID); err != nil {
@@ -487,7 +487,7 @@ func (h *SecurityHandler) ListUserAPIKeys(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
 		logger.LogError("ListUserAPIKeys: missing user_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	keys, err := h.APIKeyService.ListUserAPIKeys(c.Context(), userID)
@@ -510,7 +510,7 @@ func (h *SecurityHandler) CreateUserAPIKey(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
 		logger.LogError("CreateUserAPIKey: missing user_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	var input struct {
@@ -534,13 +534,13 @@ func (h *SecurityHandler) RevokeUserAPIKey(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
 		logger.LogError("RevokeUserAPIKey: missing user_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	keyID := c.Params("key_id")
 	if keyID == "" {
 		logger.LogError("RevokeUserAPIKey: missing key_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "key_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	if err := h.APIKeyService.RevokeUserAPIKey(c.Context(), userID, keyID); err != nil {
@@ -554,7 +554,7 @@ func (h *SecurityHandler) ListUserDevices(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
 		logger.LogError("ListUserDevices: missing user_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	devices, err := h.DeviceService.ListUserDevices(c.Context(), userID)
@@ -577,13 +577,13 @@ func (h *SecurityHandler) RevokeUserDevice(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
 		logger.LogError("RevokeUserDevice: missing user_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	deviceID := c.Params("device_id")
 	if deviceID == "" {
 		logger.LogError("RevokeUserDevice: missing device_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "device_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	if err := h.DeviceService.RevokeUserDevice(c.Context(), userID, deviceID); err != nil {
@@ -608,7 +608,7 @@ func (h *SecurityHandler) TrustDevice(c *fiber.Ctx) error {
 	deviceID := c.Params("device_id")
 	if deviceID == "" {
 		logger.LogError("TrustDevice: missing device_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "device_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	if err := h.DeviceService.TrustDevice(c.Context(), userID, deviceID); err != nil {
@@ -687,7 +687,7 @@ func (h *SecurityHandler) GetBreach(c *fiber.Ctx) error {
 	breachID := c.Params("breach_id")
 	if breachID == "" {
 		logger.LogError("GetBreach: missing breach_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "breach_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	// Retrieve all breaches and search for the specified ID
@@ -775,7 +775,7 @@ func (h *SecurityHandler) UpdateSecurityPolicy(c *fiber.Ctx) error {
 	policyID := c.Params("id")
 	if policyID == "" {
 		logger.LogError("UpdateSecurityPolicy: missing policy ID")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "policy ID is required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	var policyUpdate SecurityPolicy
@@ -809,7 +809,7 @@ func (h *SecurityHandler) DeleteSecurityPolicy(c *fiber.Ctx) error {
 	policyID := c.Params("id")
 	if policyID == "" {
 		logger.LogError("DeleteSecurityPolicy: missing policy ID")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "policy ID is required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	// Verify policy exists before deletion
@@ -853,7 +853,7 @@ func (h *SecurityHandler) GetSecurityAnalytics(c *fiber.Ctx) error {
 
 	if tenantID == "" {
 		logger.LogError("GetSecurityAnalytics: tenant ID required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant ID is required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	analytics, err := h.SecurityAnalyticsService.GetSecurityAnalytics(c.Context(), tenantID)
@@ -874,7 +874,7 @@ func (h *SecurityHandler) ListAnomalies(c *fiber.Ctx) error {
 
 	if tenantID == "" {
 		logger.LogError("ListAnomalies: tenant ID required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant ID is required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	// Pagination parameters
@@ -947,13 +947,13 @@ func (h *SecurityHandler) GetAnomaly(c *fiber.Ctx) error {
 
 	if tenantID == "" {
 		logger.LogError("GetAnomaly: tenant ID required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant ID is required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	anomalyID := c.Params("anomaly_id")
 	if anomalyID == "" {
 		logger.LogError("GetAnomaly: anomaly ID required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "anomaly ID is required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	// Get all anomalies and find the specific one
@@ -1027,7 +1027,7 @@ func (h *SecurityHandler) GetNotificationConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenant_id")
 	if tenantID == "" {
 		logger.LogError("GetNotificationConfig: tenant_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	cfg, err := h.NotificationService.GetNotificationConfig(c.Context(), tenantID)
@@ -1042,7 +1042,7 @@ func (h *SecurityHandler) UpdateNotificationConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenant_id")
 	if tenantID == "" {
 		logger.LogError("UpdateNotificationConfig: tenant_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	var input NotificationConfig
@@ -1077,7 +1077,7 @@ func (h *SecurityHandler) SendTestNotification(c *fiber.Ctx) error {
 	}
 	if err := c.BodyParser(&input); err != nil || input.Channel == "" || input.Provider == "" || len(input.Recipients) == 0 {
 		logger.LogError("SendTestNotification: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "channel, provider, and recipients required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var channel NotificationChannel
 	switch input.Channel {
@@ -1104,7 +1104,7 @@ func (h *SecurityHandler) GetSecurityModuleConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenant_id")
 	if tenantID == "" {
 		logger.LogError("GetSecurityModuleConfig: tenant_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	cfg, err := h.SecurityModuleConfigService.GetSecurityModuleConfig(c.Context(), tenantID)
@@ -1119,7 +1119,7 @@ func (h *SecurityHandler) SetSecurityModuleConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenant_id")
 	if tenantID == "" {
 		logger.LogError("SetSecurityModuleConfig: tenant_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	var input struct {
@@ -1145,7 +1145,7 @@ func (h *SecurityHandler) SetNotificationChannelEnabled(c *fiber.Ctx) error {
 	if tenantID == "" || channel == "" || provider == "" {
 		logger.LogError("SetNotificationChannelEnabled: missing parameters")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "tenant_id, channel and provider parameters required",
+			"error": "error occured",
 		})
 	}
 
@@ -1183,7 +1183,7 @@ func (h *SecurityHandler) GetNotificationChannelEnabled(c *fiber.Ctx) error {
 	if tenantID == "" || channel == "" || provider == "" {
 		logger.LogError("GetNotificationChannelEnabled: missing parameters")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "tenant_id, channel and provider parameters required",
+			"error": "error occured",
 		})
 	}
 
@@ -1206,7 +1206,7 @@ func (h *SecurityHandler) SetProviderConfig(c *fiber.Ctx) error {
 	if tenantID == "" || provider == "" {
 		logger.LogError("SetProviderConfig: missing parameters")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "tenant_id and provider parameters required",
+			"error": "error occured",
 		})
 	}
 
@@ -1269,7 +1269,7 @@ func (h *SecurityHandler) GetProviderConfig(c *fiber.Ctx) error {
 	if tenantID == "" || channel == "" || provider == "" {
 		logger.LogError("GetProviderConfig: missing parameters")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "tenant_id, channel, and provider parameters required",
+			"error": "error occured",
 		})
 	}
 
@@ -1308,7 +1308,7 @@ func (h *SecurityHandler) ListWebhooks(c *fiber.Ctx) error {
 	tenantID := c.Params("tenant_id")
 	if tenantID == "" {
 		logger.LogError("ListWebhooks: tenant_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	list, err := h.SecurityEventWebhookService.ListWebhooks(c.Context(), tenantID)
 	if err != nil {
@@ -1330,7 +1330,7 @@ func (h *SecurityHandler) DeleteWebhook(c *fiber.Ctx) error {
 
 	if webhookID == "" || tenantID == "" {
 		logger.LogError("DeleteWebhook: webhook_id and tenant_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "webhook_id and tenant_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	err := h.SecurityEventWebhookService.DeleteWebhook(c.Context(), webhookID, tenantID)
@@ -1358,7 +1358,7 @@ func (h *SecurityHandler) TriggerWebhook(c *fiber.Ctx) error {
 
 	if webhookID == "" || tenantID == "" {
 		logger.LogError("TriggerWebhook: webhook_id and tenant_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "webhook_id and tenant_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	err := h.SecurityEventWebhookService.TriggerWebhook(c.Context(), webhookID, tenantID, input.EventType, input.Payload)
@@ -1379,7 +1379,7 @@ func (h *SecurityHandler) RequestPasswordResetToken(c *fiber.Ctx) error {
 	}
 	if err := c.BodyParser(&input); err != nil || input.UserID == "" || input.ExpiresIn <= 0 {
 		logger.LogError("RequestPasswordResetToken: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id and expires_in required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	token, err := h.PasswordResetTokenService.CreateToken(c.Context(), input.UserID, input.ExpiresIn)
 	if err != nil {
@@ -1831,7 +1831,7 @@ func (h *SecurityHandler) VerifyEmail(c *fiber.Ctx) error {
 		Token  string `json:"token"`
 	}
 	if err := c.BodyParser(&input); err != nil || input.UserID == "" || input.Token == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id and token required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.PasswordService.VerifyEmail(c.Context(), input.UserID, input.Token); err != nil {
 		return c.JSON(fiber.ErrExpectationFailed)
@@ -1941,7 +1941,7 @@ func (h *SecurityHandler) RefreshSession(c *fiber.Ctx) error {
 
 	if sessionID == "" {
 		logger.LogError("RefreshSession: missing session ID")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session ID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	// Default to 24 hours or parse from request
@@ -2532,7 +2532,7 @@ func (h *SecurityHandler) GetMFAConfig(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
 		logger.LogError("GetMFAConfig: missing user_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	tenantID := getTenantID(c)
@@ -2584,7 +2584,7 @@ func (h *SecurityHandler) SetMFAConfig(c *fiber.Ctx) error {
 	var input MFAConfig
 	if err := c.BodyParser(&input); err != nil || input.TenantID == "" {
 		logger.LogError("SetMFAConfig: tenant_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	err := h.Store.SetMFAConfig(c.Context(), input.TenantID, input)
 	if err != nil {
@@ -2599,7 +2599,7 @@ func (h *SecurityHandler) GetPasswordPolicyConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenant_id")
 	if tenantID == "" {
 		logger.LogError("GetPasswordPolicyConfig: tenant_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	cfg, err := h.Store.GetPasswordPolicyConfig(c.Context(), tenantID)
@@ -2614,7 +2614,7 @@ func (h *SecurityHandler) SetPasswordPolicyConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenant_id")
 	if tenantID == "" {
 		logger.LogError("SetPasswordPolicyConfig: tenant_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	var input PasswordPolicyConfig
@@ -2642,7 +2642,7 @@ func (h *SecurityHandler) GetSessionConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenant_id")
 	if tenantID == "" {
 		logger.LogError("GetSessionConfig: tenant_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	cfg, err := h.Store.GetSessionConfig(c.Context(), tenantID)
@@ -2657,7 +2657,7 @@ func (h *SecurityHandler) SetSessionConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenant_id")
 	if tenantID == "" {
 		logger.LogError("SetSessionConfig: tenant_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id parameter required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	var input SessionConfig
@@ -2900,7 +2900,7 @@ func (h *SecurityHandler) ResetUserPassword(c *fiber.Ctx) error {
 	}
 	if err := c.BodyParser(&input); err != nil || input.UserID == "" || input.NewPassword == "" {
 		logger.LogError("ResetUserPassword: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "user_id and new_password required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.PasswordService.ResetUserPassword(c.Context(), input.UserID, input.NewPassword); err != nil {
 		logger.LogError("ResetUserPassword: failed", logger.ErrorField(err), logger.String("user_id", input.UserID))

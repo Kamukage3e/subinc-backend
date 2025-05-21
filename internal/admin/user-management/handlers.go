@@ -14,8 +14,6 @@ func NewUserHandler(store *PostgresStore) *UserHandler {
 	return &UserHandler{Store: store}
 }
 
-
-
 // swagger:route POST /users user createUser
 // summary: Create a user
 // description: Creates a new user.
@@ -343,7 +341,7 @@ func (h *UserHandler) AddUserToOrg(c *fiber.Ctx) error {
 	orgID := c.Params("org_id")
 	userID := c.Params("user_id")
 	if orgID == "" || userID == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "org_id and user_id required"})
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input struct {
 		InvitedBy string `json:"invited_by"`
@@ -377,7 +375,7 @@ func (h *UserHandler) RemoveUserFromOrg(c *fiber.Ctx) error {
 	orgID := c.Params("org_id")
 	userID := c.Params("user_id")
 	if orgID == "" || userID == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "org_id and user_id required"})
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	err := h.Store.RemoveUserFromOrg(c.Context(), orgID, userID)
 	if err != nil {
@@ -402,7 +400,7 @@ func (h *UserHandler) RemoveUserFromOrg(c *fiber.Ctx) error {
 func (h *UserHandler) ListOrgUsers(c *fiber.Ctx) error {
 	orgID := c.Params("org_id")
 	if orgID == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "org_id required"})
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
 	page := c.QueryInt("page", 1)
 	pageSize := c.QueryInt("page_size", 50)
@@ -430,7 +428,7 @@ func (h *UserHandler) ListOrgUsers(c *fiber.Ctx) error {
 func (h *UserHandler) InviteUserToOrg(c *fiber.Ctx) error {
 	orgID := c.Params("org_id")
 	if orgID == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "org_id required"})
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
 	}
 	var input struct {
 		Email     string `json:"email"`
@@ -465,7 +463,7 @@ func (h *UserHandler) AddUserToProject(c *fiber.Ctx) error {
 	projectID := c.Params("project_id")
 	userID := c.Params("user_id")
 	if projectID == "" || userID == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "project_id and user_id required"})
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input struct {
 		InvitedBy string `json:"invited_by"`
@@ -499,7 +497,7 @@ func (h *UserHandler) RemoveUserFromProject(c *fiber.Ctx) error {
 	projectID := c.Params("project_id")
 	userID := c.Params("user_id")
 	if projectID == "" || userID == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "project_id and user_id required"})
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	err := h.Store.RemoveUserFromProject(c.Context(), projectID, userID)
 	if err != nil {
@@ -524,7 +522,7 @@ func (h *UserHandler) RemoveUserFromProject(c *fiber.Ctx) error {
 func (h *UserHandler) ListProjectUsers(c *fiber.Ctx) error {
 	projectID := c.Params("project_id")
 	if projectID == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "project_id required"})
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	page := c.QueryInt("page", 1)
 	pageSize := c.QueryInt("page_size", 50)
@@ -552,7 +550,7 @@ func (h *UserHandler) ListProjectUsers(c *fiber.Ctx) error {
 func (h *UserHandler) InviteUserToProject(c *fiber.Ctx) error {
 	projectID := c.Params("project_id")
 	if projectID == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "project_id required"})
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input struct {
 		Email     string `json:"email"`

@@ -314,7 +314,7 @@ func (h *DiscountHandler) UpdateCredit(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("UpdateCredit: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input Credit
 	if err := c.BodyParser(&input); err != nil {
@@ -339,7 +339,7 @@ func (h *DiscountHandler) PatchCredit(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("PatchCredit: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input struct {
 		Action string  `json:"action"`
@@ -361,7 +361,7 @@ func (h *DiscountHandler) DeleteCredit(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("DeleteCredit: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.CreditService.DeleteCredit(id); err != nil {
 		logger.LogError("DeleteCredit: failed", logger.ErrorField(err), logger.String("id", id))
@@ -375,7 +375,7 @@ func (h *DiscountHandler) GetCredit(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("GetCredit: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	credit, err := h.CreditService.GetCredit(id)
 	if err != nil {
@@ -404,14 +404,14 @@ func (h *DiscountHandler) RedeemCoupon(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("RedeemCoupon: id required", logger.String("id", id))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input struct {
 		AccountID string `json:"account_id"`
 	}
 	if err := c.BodyParser(&input); err != nil || input.AccountID == "" {
 		logger.LogError("RedeemCoupon: account_id required", logger.String("account_id", input.AccountID))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "account_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	coupon, err := h.CouponService.RedeemCoupon(id, input.AccountID)
 	if err != nil {
@@ -426,7 +426,7 @@ func (h *DiscountHandler) ApplyCreditsToInvoice(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		logger.LogError("ApplyCreditsToInvoice: invoice_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.CreditService.ApplyCreditsToInvoice(id); err != nil {
 		logger.LogError("ApplyCreditsToInvoice: failed", logger.ErrorField(err), logger.String("invoice_id", id))
@@ -491,7 +491,7 @@ func (h *DiscountHandler) ConfigureDiscountPlugin(c *fiber.Ctx) error {
 	if tenantID == "" {
 		logger.LogError("ConfigureDiscountPlugin: Tenant ID is required")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Tenant ID is required",
+			"error": "error occured",
 		})
 	}
 
@@ -528,7 +528,7 @@ func (h *DiscountHandler) ConfigureDiscountPlugin(c *fiber.Ctx) error {
 	if err := h.DiscountService.ConfigureDiscountPlugin(pluginName, config); err != nil {
 		logger.LogError("ConfigureDiscountPlugin: Failed to configure plugin", logger.ErrorField(err), logger.String("plugin_name", pluginName))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to configure plugin: %v", err),
+			"error": "Failed to configure plugin",
 		})
 	}
 
@@ -549,7 +549,7 @@ func (h *DiscountHandler) DisableDiscountPlugin(c *fiber.Ctx) error {
 	err := h.DiscountService.DisableDiscountPlugin(pluginName)
 	if err != nil {
 		logger.LogError("DisableDiscountPlugin: Failed to disable plugin", logger.ErrorField(err), logger.String("plugin_name", pluginName))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to disable plugin"})
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{

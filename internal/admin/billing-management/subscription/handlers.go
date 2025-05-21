@@ -79,7 +79,7 @@ func (h *SubscriptionHandler) DeletePlan(c *fiber.Ctx) error {
 	}
 	if err := c.BodyParser(&input); err != nil || input.PlanID == "" {
 		logger.LogError("DeletePlan: plan_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "plan_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.PlanService.DeletePlan(input.PlanID); err != nil {
 		logger.LogError("DeletePlan: failed", logger.ErrorField(err))
@@ -165,7 +165,7 @@ func (h *SubscriptionHandler) UpdateSubscription(c *fiber.Ctx) error {
 	}
 	if input.ID == "" {
 		logger.LogError("UpdateSubscription: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := input.Validate(); err != nil {
 		logger.LogError("UpdateSubscription: validation failed", logger.ErrorField(err))
@@ -187,7 +187,7 @@ func (h *SubscriptionHandler) PatchSubscription(c *fiber.Ctx) error {
 	}
 	if err := c.BodyParser(&input); err != nil || input.ID == "" || input.Action == "" {
 		logger.LogError("PatchSubscription: id and action required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id and action required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.SubscriptionService.PatchSubscription(input.ID, input.Action); err != nil {
 		logger.LogError("PatchSubscription: failed", logger.ErrorField(err), logger.String("id", input.ID))
@@ -204,7 +204,7 @@ func (h *SubscriptionHandler) DeleteSubscription(c *fiber.Ctx) error {
 	}
 	if err := c.BodyParser(&input); err != nil || input.ID == "" {
 		logger.LogError("DeleteSubscription: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.SubscriptionService.DeleteSubscription(input.ID); err != nil {
 		logger.LogError("DeleteSubscription: failed", logger.ErrorField(err), logger.String("id", input.ID))
@@ -220,7 +220,7 @@ func (h *SubscriptionHandler) GetSubscription(c *fiber.Ctx) error {
 	}
 	if err := c.BodyParser(&input); err != nil || input.ID == "" {
 		logger.LogError("GetSubscription: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	sub, err := h.SubscriptionService.GetSubscription(input.ID)
 	if err != nil {
@@ -265,7 +265,7 @@ func (h *SubscriptionHandler) ChangePlanSubscription(c *fiber.Ctx) error {
 	}
 	if err := c.BodyParser(&input); err != nil || input.ID == "" || input.PlanID == "" {
 		logger.LogError("ChangePlanSubscription: id and plan_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id and plan_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.SubscriptionService.ChangePlanSubscription(input.ID, input.PlanID); err != nil {
 		logger.LogError("ChangePlanSubscription: failed", logger.ErrorField(err))
@@ -281,7 +281,7 @@ func (h *SubscriptionHandler) CancelSubscriptionNow(c *fiber.Ctx) error {
 	}
 	if err := c.BodyParser(&input); err != nil || input.ID == "" {
 		logger.LogError("CancelSubscriptionNow: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.SubscriptionService.CancelSubscriptionNow(input.ID); err != nil {
 		logger.LogError("CancelSubscriptionNow: failed", logger.ErrorField(err))
@@ -297,7 +297,7 @@ func (h *SubscriptionHandler) ResumeSubscription(c *fiber.Ctx) error {
 	}
 	if err := c.BodyParser(&input); err != nil || input.ID == "" {
 		logger.LogError("ResumeSubscription: id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.SubscriptionService.ResumeSubscription(input.ID); err != nil {
 		logger.LogError("ResumeSubscription: failed", logger.ErrorField(err))
@@ -314,7 +314,7 @@ func (h *SubscriptionHandler) UpgradeNowSubscription(c *fiber.Ctx) error {
 	}
 	if err := c.BodyParser(&input); err != nil || input.ID == "" || input.PlanID == "" {
 		logger.LogError("UpgradeNowSubscription: id and plan_id required", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id and plan_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	if err := h.SubscriptionService.UpgradeNowSubscription(input.ID); err != nil {
 		logger.LogError("UpgradeNowSubscription: failed", logger.ErrorField(err))

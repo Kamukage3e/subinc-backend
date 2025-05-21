@@ -751,7 +751,7 @@ func (h *Handler) SetOwnerSessionConfig(c *fiber.Ctx) error {
 func (h *Handler) GetClientDBConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	cfg, err := h.Service.GetClientDBConfig(c.Context(), tenantID)
 	if err != nil {
@@ -765,7 +765,7 @@ func (h *Handler) GetClientDBConfig(c *fiber.Ctx) error {
 func (h *Handler) SetClientDBConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input ClientDBConfig
 	if err := c.BodyParser(&input); err != nil {
@@ -799,7 +799,7 @@ func (h *Handler) SetClientDBConfig(c *fiber.Ctx) error {
 func (h *Handler) GetClientRedisConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	cfg, err := h.Service.GetClientRedisConfig(c.Context(), tenantID)
 	if err != nil {
@@ -813,7 +813,7 @@ func (h *Handler) GetClientRedisConfig(c *fiber.Ctx) error {
 func (h *Handler) SetClientRedisConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input ClientRedisConfig
 	if err := c.BodyParser(&input); err != nil {
@@ -853,7 +853,7 @@ func (h *Handler) SetClientRedisConfig(c *fiber.Ctx) error {
 func (h *Handler) GetClientAWSConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	cfg, err := h.Service.GetClientAWSConfig(c.Context(), tenantID)
 	if err != nil {
@@ -867,7 +867,7 @@ func (h *Handler) GetClientAWSConfig(c *fiber.Ctx) error {
 func (h *Handler) SetClientAWSConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input ClientAWSConfig
 	if err := c.BodyParser(&input); err != nil {
@@ -909,7 +909,7 @@ func (h *Handler) SetClientAWSConfig(c *fiber.Ctx) error {
 func (h *Handler) GetClientSMTPConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	cfg, err := h.Service.GetClientSMTPConfig(c.Context(), tenantID)
 	if err != nil {
@@ -923,7 +923,7 @@ func (h *Handler) GetClientSMTPConfig(c *fiber.Ctx) error {
 func (h *Handler) SetClientSMTPConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input ClientSMTPConfig
 	if err := c.BodyParser(&input); err != nil {
@@ -976,7 +976,7 @@ func (h *Handler) SetClientSMTPConfig(c *fiber.Ctx) error {
 func (h *Handler) GetClientPaymentProviderConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	cfg, err := h.Service.GetClientPaymentProviderConfig(c.Context(), tenantID)
 	if err != nil {
@@ -990,7 +990,7 @@ func (h *Handler) GetClientPaymentProviderConfig(c *fiber.Ctx) error {
 func (h *Handler) SetClientPaymentProviderConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input ClientPaymentProviderConfig
 	if err := c.BodyParser(&input); err != nil {
@@ -1046,7 +1046,7 @@ func (h *Handler) SetClientPaymentProviderConfig(c *fiber.Ctx) error {
 func (h *Handler) GetClientJWTSecretConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	cfg, err := h.Service.GetClientJWTSecretConfig(c.Context(), tenantID)
 	if err != nil {
@@ -1060,7 +1060,7 @@ func (h *Handler) GetClientJWTSecretConfig(c *fiber.Ctx) error {
 func (h *Handler) SetClientJWTSecretConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input ClientJWTSecretConfig
 	if err := c.BodyParser(&input); err != nil {
@@ -1100,7 +1100,7 @@ func (h *Handler) SetClientJWTSecretConfig(c *fiber.Ctx) error {
 func (h *Handler) GetClientOAuthConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	cfg, err := h.Service.GetClientOAuthConfig(c.Context(), tenantID)
 	if err != nil {
@@ -1114,7 +1114,7 @@ func (h *Handler) GetClientOAuthConfig(c *fiber.Ctx) error {
 func (h *Handler) SetClientOAuthConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input ClientOAuthConfig
 	if err := c.BodyParser(&input); err != nil {
@@ -1157,7 +1157,7 @@ func (h *Handler) SetClientOAuthConfig(c *fiber.Ctx) error {
 func (h *Handler) GetClientSAMLConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	cfg, err := h.Service.GetClientSAMLConfig(c.Context(), tenantID)
 	if err != nil {
@@ -1171,7 +1171,7 @@ func (h *Handler) GetClientSAMLConfig(c *fiber.Ctx) error {
 func (h *Handler) SetClientSAMLConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input ClientSAMLConfig
 	if err := c.BodyParser(&input); err != nil {
@@ -1211,7 +1211,7 @@ func (h *Handler) SetClientSAMLConfig(c *fiber.Ctx) error {
 func (h *Handler) GetClientOpenAIConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	cfg, err := h.Service.GetClientOpenAIConfig(c.Context(), tenantID)
 	if err != nil {
@@ -1225,7 +1225,7 @@ func (h *Handler) GetClientOpenAIConfig(c *fiber.Ctx) error {
 func (h *Handler) SetClientOpenAIConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input ClientOpenAIConfig
 	if err := c.BodyParser(&input); err != nil {
@@ -1266,7 +1266,7 @@ func (h *Handler) SetClientOpenAIConfig(c *fiber.Ctx) error {
 func (h *Handler) GetClientWebhookConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	cfg, err := h.Service.GetClientWebhookConfig(c.Context(), tenantID)
 	if err != nil {
@@ -1280,7 +1280,7 @@ func (h *Handler) GetClientWebhookConfig(c *fiber.Ctx) error {
 func (h *Handler) SetClientWebhookConfig(c *fiber.Ctx) error {
 	tenantID := c.Params("tenantID")
 	if tenantID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantID required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 	var input ClientWebhookConfig
 	if err := c.BodyParser(&input); err != nil {

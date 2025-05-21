@@ -2,6 +2,7 @@ package fee
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
@@ -25,7 +26,7 @@ func (h *FeeHandler) CreateFee(c *fiber.Ctx) error {
 	}
 	if vErr := fee.Validate(); vErr != nil {
 		logger.LogError("CreateFee: validation failed", logger.ErrorField(vErr))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": vErr.Error()})
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "Validation failed. Please check your input."})
 	}
 	created, err := h.Service.CreateFee(context.Background(), fee)
 	if err != nil {
@@ -55,7 +56,7 @@ func (h *FeeHandler) UpdateFee(c *fiber.Ctx) error {
 	fee.ID = id
 	if vErr := fee.Validate(); vErr != nil {
 		logger.LogError("UpdateFee: validation failed", logger.ErrorField(vErr))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": vErr.Error()})
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "Validation failed. Please check your input."})
 	}
 	updated, err := h.Service.UpdateFee(context.Background(), fee)
 	if err != nil {
@@ -173,7 +174,7 @@ func (h *FeeHandler) ConfigureFeePlugin(c *fiber.Ctx) error {
 
 	if input.TenantID == "" {
 		logger.LogError("ConfigureFeePlugin: tenant_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id is required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	cfg, err := h.Service.SetFeePluginConfig(c.Context(), input.TenantID, pluginName)
@@ -217,7 +218,7 @@ func (h *FeeHandler) DisableFeePlugin(c *fiber.Ctx) error {
 
 	if input.TenantID == "" {
 		logger.LogError("DisableFeePlugin: tenant_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id is required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	err = h.Service.DisableFeePlugin(c.Context(), input.TenantID, pluginName)
@@ -227,7 +228,7 @@ func (h *FeeHandler) DisableFeePlugin(c *fiber.Ctx) error {
 			logger.String("plugin_name", pluginName))
 
 		if _, ok := err.(*ValidationError); ok {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid plugin configuration"})
 		}
 
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to disable plugin"})
@@ -258,7 +259,7 @@ func (h *FeeHandler) RegisterFeePlugin(c *fiber.Ctx) error {
 	err := h.Service.RegisterFeePlugin(c.Context(), pluginName, config)
 	if err != nil {
 		logger.LogError("RegisterFeePlugin: failed to register plugin", logger.ErrorField(err), logger.String("plugin_name", pluginName))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to register plugin: " + err.Error()})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to register plugin"})
 	}
 
 	// Get the plugin to return its information
@@ -271,7 +272,7 @@ func (h *FeeHandler) RegisterFeePlugin(c *fiber.Ctx) error {
 	logger.LogInfo("RegisterFeePlugin: plugin initialized successfully", logger.String("plugin_name", pluginName))
 	return c.JSON(fiber.Map{
 		"success": true,
-		"message": "Fee plugin '" + pluginName + "' registered and initialized successfully",
+		"message": fmt.Sprintf("Plugin '%s' registered and initialized successfully", pluginName),
 		"plugin": map[string]string{
 			"name":    plugin.Name(),
 			"version": plugin.Version(),
@@ -291,7 +292,7 @@ func (h *FeeHandler) UnregisterFeePlugin(c *fiber.Ctx) error {
 	plugin, err := h.Service.GetFeePlugin(c.Context(), pluginName)
 	if err != nil {
 		logger.LogError("UnregisterFeePlugin: plugin not found", logger.ErrorField(err), logger.String("plugin_name", pluginName))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Fee plugin '" + pluginName + "' not found"})
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": fmt.Sprintf("Fee plugin '%s' not found", pluginName)})
 	}
 
 	// Capture plugin info before unregistering
@@ -304,13 +305,13 @@ func (h *FeeHandler) UnregisterFeePlugin(c *fiber.Ctx) error {
 	err = h.Service.UnregisterFeePlugin(c.Context(), pluginName)
 	if err != nil {
 		logger.LogError("UnregisterFeePlugin: failed to unregister", logger.ErrorField(err), logger.String("plugin_name", pluginName))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to unregister plugin: " + err.Error()})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to unregister plugin"})
 	}
 
 	logger.LogInfo("UnregisterFeePlugin: plugin unregistered", logger.String("plugin_name", pluginName))
 	return c.JSON(fiber.Map{
 		"success": true,
-		"message": "Fee plugin '" + pluginName + "' unregistered successfully",
+		"message": fmt.Sprintf("Fee plugin '%s' unregistered successfully", pluginName),
 		"plugin":  pluginInfo,
 	})
 }
