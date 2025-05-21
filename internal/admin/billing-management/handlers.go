@@ -26,6 +26,7 @@ import (
 
 	"github.com/stripe/stripe-go/v75/webhook"
 	account "github.com/subinc/subinc-backend/internal/admin/billing-management/account"
+	discount "github.com/subinc/subinc-backend/internal/admin/billing-management/discount"
 	"github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
 	tax "github.com/subinc/subinc-backend/internal/admin/billing-management/tax"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
@@ -37,33 +38,51 @@ import (
 
 // Payment, Refund, and PaymentMethod logic is now handled exclusively in internal/admin/billing-management/payment/handlers.go
 
-func NewBillingHandler(store *PostgresStore, paymentStore payment.StoreInterface) *BillingAdminHandler {
-	// Validate inputs
-	if store == nil {
-		logger.LogError("NewBillingHandler: store is nil")
-		return nil
+func NewBillingHandler(
+	store *PostgresStore,
+	paymentStore payment.StoreInterface,
+	invoiceService InvoiceService,
+	reportService ReportService,
+	manualAdjustmentService ManualAdjustmentService,
+	creditService discount.CreditService,
+	pluginManager *plugin.Manager,
+	notify security_management.NotificationService,
+	accountService account.BillingAccountService,
+	taxService tax.TaxInfoService,
+	invoiceExportService InvoiceExportService,
+	webhookEventService WebhookEventService,
+	webhookSubscriptionService WebhookSubscriptionService,
+	dunningService DunningService,
+) *BillingAdminHandler {
+	// Validate all dependencies
+	if store == nil || paymentStore == nil || invoiceService == nil || reportService == nil ||
+		manualAdjustmentService == nil || creditService == nil || pluginManager == nil ||
+		notify == nil || accountService == nil || taxService == nil || invoiceExportService == nil ||
+		webhookEventService == nil || webhookSubscriptionService == nil || dunningService == nil {
+		logger.LogFatal("NewBillingHandler: one or more dependencies are nil")
 	}
 
-	if paymentStore == nil {
-		logger.LogError("NewBillingHandler: paymentStore is nil")
-		return nil
-	}
-
-	// Create a production-grade logger for billing operations
 	logr := logger.NewProduction(logger.InfoLevel, "json", false, "billing", "prod")
 
-	// Create the handler with necessary dependencies
 	handler := &BillingAdminHandler{
-		Store:        store,
-		PaymentStore: paymentStore,
-		Logger:       logr,
-		// Initialize plugin manager
-		PluginManager: plugin.NewManager(),
+		Store:                      store,
+		PaymentStore:               paymentStore,
+		InvoiceService:             invoiceService,
+		ReportService:              reportService,
+		ManualAdjustmentService:    manualAdjustmentService,
+		CreditService:              creditService,
+		PluginManager:              pluginManager,
+		Notify:                     notify,
+		AccountService:             accountService,
+		TaxService:                 taxService,
+		InvoiceExportService:       invoiceExportService,
+		WebhookEventService:        webhookEventService,
+		WebhookSubscriptionService: webhookSubscriptionService,
+		DunningService:             dunningService,
+		Logger:                     logr,
 	}
 
-	// Register default plugins if needed
 	handler.PluginManager.RegisterDefaultPlugins()
-
 	logr.Info("Billing admin handler initialized successfully")
 	return handler
 }
@@ -479,7 +498,6 @@ func (h *BillingAdminHandler) RetryWebhookDelivery(c *fiber.Ctx) error {
 }
 
 func (h *BillingAdminHandler) GetRevenueReport(c *fiber.Ctx) error {
-	// Get the report data
 	reportData, err := h.ReportService.GetRevenueReport(c.Context())
 	if err != nil {
 		logger.LogError("GetRevenueReport: failed to generate report", logger.ErrorField(err))
@@ -487,11 +505,14 @@ func (h *BillingAdminHandler) GetRevenueReport(c *fiber.Ctx) error {
 			"error": "Failed to process request",
 		})
 	}
-
 	return c.JSON(reportData)
 }
 
 func (h *BillingAdminHandler) GetARReport(c *fiber.Ctx) error {
+	if h.ReportService == nil {
+		logger.LogError("GetARReport: ReportService is nil")
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "ReportService not configured"})
+	}
 	// Get the accounts receivable report data
 	reportData, err := h.ReportService.GetARReport(c.Context())
 	if err != nil {
@@ -505,6 +526,10 @@ func (h *BillingAdminHandler) GetARReport(c *fiber.Ctx) error {
 }
 
 func (h *BillingAdminHandler) GetChurnReport(c *fiber.Ctx) error {
+	if h.ReportService == nil {
+		logger.LogError("GetChurnReport: ReportService is nil")
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "ReportService not configured"})
+	}
 	// Get the churn report data
 	reportData, err := h.ReportService.GetChurnReport(c.Context())
 	if err != nil {
@@ -2997,4 +3022,58 @@ func getPaymentMethodOrDefault(result *payment.PaymentResult) string {
 	}
 
 	return "unknown" // Fallback value
+}
+
+// validateAccountAccess checks if the account in the request belongs to the tenant
+// Returns true if access is allowed, false if not
+func (h *BillingAdminHandler) validateAccountAccess(c *fiber.Ctx, accountID string) bool {
+	if accountID == "" {
+		return true
+	}
+
+	tenantID := GetTenantIDFromContext(c.Context())
+	if tenantID == "" {
+		return false
+	}
+
+	// Try project account
+	acct, err := h.AccountService.Get(c.Context(), account.AccountTypeProject, accountID)
+	if err == nil {
+		if acctMap, ok := acct.(map[string]interface{}); ok {
+			if tid, ok := acctMap["tenant_id"].(string); ok && tid == tenantID {
+				return true
+			}
+		}
+		if projectAcct, ok := acct.(*account.ProjectBillingAccount); ok && projectAcct.TenantID == tenantID {
+			return true
+		}
+	}
+
+	// Try user account
+	acct, err = h.AccountService.Get(c.Context(), account.AccountTypeUser, accountID)
+	if err == nil {
+		if acctMap, ok := acct.(map[string]interface{}); ok {
+			if tid, ok := acctMap["tenant_id"].(string); ok && tid == tenantID {
+				return true
+			}
+		}
+		if userAcct, ok := acct.(*account.UserBillingAccount); ok && userAcct.TenantID == tenantID {
+			return true
+		}
+	}
+
+	// Try organization account
+	acct, err = h.AccountService.Get(c.Context(), account.AccountTypeOrganization, accountID)
+	if err == nil {
+		if acctMap, ok := acct.(map[string]interface{}); ok {
+			if tid, ok := acctMap["tenant_id"].(string); ok && tid == tenantID {
+				return true
+			}
+		}
+		if orgAcct, ok := acct.(*account.OrganizationBillingAccount); ok && orgAcct.TenantID == tenantID {
+			return true
+		}
+	}
+
+	return false
 }

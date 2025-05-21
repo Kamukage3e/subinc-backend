@@ -8,8 +8,6 @@ import (
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
-
-
 // RegisterPaymentRoutes registers payment related routes
 func RegisterRoutes(router fiber.Router, handler *PaymentHandler, jwtSecret string) {
 	route := router.Group(
@@ -67,4 +65,42 @@ func RegisterRoutes(router fiber.Router, handler *PaymentHandler, jwtSecret stri
 	pluginRoutes.Get("/:name", rbacmiddleware.RBACMiddleware("payment-plugin", "read", nil), handler.GetPaymentPlugin)
 	pluginRoutes.Post("/:name/configure", rbacmiddleware.RBACMiddleware("payment-plugin", "update", nil), handler.ConfigurePaymentPlugin)
 	pluginRoutes.Post("/:name/disable", rbacmiddleware.RBACMiddleware("payment-plugin", "update", nil), handler.DisablePaymentPlugin)
+
+	// Transaction reports
+	route.Get("/reports/transaction", rbacmiddleware.RBACMiddleware("payment-report", "read", nil), handler.GetTransactionReport)
+	route.Get("/reports/methods", rbacmiddleware.RBACMiddleware("payment-report", "read", nil), handler.GetPaymentMethodDistribution)
+	route.Get("/reports/volume", rbacmiddleware.RBACMiddleware("payment-report", "read", nil), handler.GetTransactionVolume)
+
+	// Customer portal (self-service)
+	route.Get("/customer-portal", rbacmiddleware.RBACMiddleware("payment-method", "read", nil), handler.CreateCustomerPortalSession)
+
+	// Customer portal specific sections - convenience endpoints
+	portalRoute := route.Group("/customer-portal")
+	portalRoute.Get("/subscriptions", rbacmiddleware.RBACMiddleware("payment-method", "read", nil),
+		func(c *fiber.Ctx) error {
+			// Add section hint to the client, which can be processed by frontend
+			c.Set("X-Portal-Section", "subscriptions")
+			return handler.CreateCustomerPortalSession(c)
+		})
+
+	portalRoute.Get("/payment-methods", rbacmiddleware.RBACMiddleware("payment-method", "read", nil),
+		func(c *fiber.Ctx) error {
+			// Add section hint to the client, which can be processed by frontend
+			c.Set("X-Portal-Section", "payment_methods")
+			return handler.CreateCustomerPortalSession(c)
+		})
+
+	portalRoute.Get("/invoices", rbacmiddleware.RBACMiddleware("payment-method", "read", nil),
+		func(c *fiber.Ctx) error {
+			// Add section hint to the client, which can be processed by frontend
+			c.Set("X-Portal-Section", "invoices")
+			return handler.CreateCustomerPortalSession(c)
+		})
+
+	portalRoute.Get("/usage", rbacmiddleware.RBACMiddleware("payment-method", "read", nil),
+		func(c *fiber.Ctx) error {
+			// Add section hint to the client, which can be processed by frontend
+			c.Set("X-Portal-Section", "usage")
+			return handler.CreateCustomerPortalSession(c)
+		})
 }

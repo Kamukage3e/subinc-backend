@@ -22,6 +22,7 @@ import (
 	rbac_management "github.com/subinc/subinc-backend/internal/admin/rbac-management"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
+	tenant_management "github.com/subinc/subinc-backend/internal/admin/tenant-management"
 
 	account "github.com/subinc/subinc-backend/internal/admin/billing-management/account"
 
@@ -30,6 +31,7 @@ import (
 	"github.com/subinc/subinc-backend/internal/pkg/config"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 	"github.com/subinc/subinc-backend/internal/pkg/middleware"
+	"github.com/subinc/subinc-backend/internal/pkg/plugin"
 	"github.com/subinc/subinc-backend/pkg/rbac"
 	"github.com/subinc/subinc-backend/pkg/session"
 )
@@ -100,11 +102,6 @@ func main() {
 		log.Fatalf("Failed to load logging config: %v", err)
 	}
 	logr = logger.NewProduction(logger.InfoLevel, logCfg.Format, logCfg.Color, logCfg.Service, logCfg.Env)
-
-	jwtCfg, err := serverConfigService.GetOwnerJWTSecretConfig(ctx)
-	if err != nil {
-		log.Fatalf("Failed to load JWT secret config: %v", err)
-	}
 
 	_, err = serverConfigService.GetOwnerGraphQLConfig(ctx)
 	if err != nil {
@@ -207,8 +204,34 @@ func main() {
 	adminAPI := app.Group("/api/v1/")
 	securityStore := security_management.NewPostgresStore(ownerDBPool, serverConfigService)
 
+	authManager := auth.NewAuthManager(logr)
+
+	// Register JWT provider and set as default
+	jwtAuthProvider, err := jwtProvider.NewJWTProvider(appConfig.JWT, logr)
+	if err != nil {
+		log.Fatalf("Failed to create JWT provider: %v", err)
+	}
+	if err := authManager.RegisterProvider(jwtAuthProvider); err != nil {
+		log.Fatalf("Failed to register JWT provider: %v", err)
+	}
+	authManager.Providers()["default"] = jwtAuthProvider
+	if err := authManager.SetDefaultProvider("jwt"); err != nil {
+		log.Fatalf("Failed to set default provider: %v", err)
+	}
+
+	securityHandler := security_management.NewSecurityHandler(securityStore, authManager)
+	securityHandler.PasswordService = securityStore
+	securityHandler.MFAService = securityStore
+	securityHandler.SecurityEventService = securityStore
+	securityHandler.SecurityEventWebhookService = securityStore
+	securityHandler.LoginHistoryService = securityStore
+	securityHandler.SecurityPolicyService = securityStore
+	securityHandler.SecurityModuleConfigService = securityStore
+
+	security_management.RegisterRoutes(adminAPI, securityHandler, appConfig.JWT.Secret)
+
 	rbacHandler := rbac_management.NewRBACHandler(rbacStore)
-	rbac_management.RegisterAdminRBACRoutes(adminAPI, rbacHandler, jwtCfg.SecretName)
+	rbac_management.RegisterAdminRBACRoutes(adminAPI, rbacHandler, appConfig.JWT.Secret)
 
 	// Initialize RBAC configurator for centralized RBAC control
 	redisClient := redis.NewClient(&redis.Options{
@@ -240,34 +263,7 @@ func main() {
 
 	// Continue with regular route registration, but use protectedAPI for routes that should be RBAC-protected
 	serverConfigHandler := server_config.NewHandler(serverConfigService, logr)
-	server_config.RegisterAdminServerConfigRoutes(protectedAPI, serverConfigHandler, jwtCfg.SecretName)
-
-	// Initialize auth manager
-	authManager := auth.NewAuthManager(logr)
-
-	// Initialize JWT provider with standard config (we'll get the JWT secret from config)
-	jwtConfig := jwtProvider.DefaultConfig()
-	jwtConfig.Secret = os.Getenv("JWT_SECRET") // Fall back to env var if not in server config
-	if jwtConfig.Secret == "" {
-		// For development, use a default secret, but in production this should be explicitly set
-		jwtConfig.Secret = "your-default-jwt-secret-for-dev-only"
-	}
-	jwtConfig.Issuer = appConfig.ServiceName
-	jwtConfig.TokenExpiry = time.Duration(appConfig.JWT.ExpirationHours) * time.Hour
-
-	jwtAuthProvider, err := jwtProvider.NewJWTProvider(jwtConfig)
-	if err != nil {
-		log.Fatalf("Failed to create JWT provider: %v", err)
-	}
-
-	// Register and set as default provider
-	if err := authManager.RegisterProvider(jwtAuthProvider); err != nil {
-		log.Fatalf("Failed to register JWT provider: %v", err)
-	}
-
-	if err := authManager.SetDefaultProvider("jwt"); err != nil {
-		log.Fatalf("Failed to set default provider: %v", err)
-	}
+	server_config.RegisterAdminServerConfigRoutes(protectedAPI, serverConfigHandler, appConfig.JWT.Secret)
 
 	// Initialize the payment and billing handlers
 	paymentStore := &payment.PostgresStore{
@@ -279,15 +275,47 @@ func main() {
 		ServerConfigService: serverConfigService,
 	}
 
-	billingHandler := billing_management.NewBillingHandler(billingStore, paymentStore)
-	billingHandler.Notify = securityStore
+	// Initialize the plugin manager
+	pluginManager := plugin.NewManager()
+
+	// Create the billing adapter - used as the core service implementation
+	billingAdapter := billing_management.NewBillingAdapter(ownerDBPool, serverConfigService)
+
+	// Create interface-compatible adapters using the adapter pattern from billing_management package
+	invoiceServiceAdapter := billing_management.NewInvoiceServiceAdapter(billingAdapter)
+	manualAdjustmentAdapter := billing_management.NewManualAdjustmentServiceAdapter(billingAdapter)
+	webhookEventAdapter := billing_management.NewWebhookEventServiceAdapter(billingAdapter)
+	webhookSubscriptionAdapter := billing_management.NewWebhookSubscriptionServiceAdapter(billingAdapter)
+
+	// Initialize specialized services
+	creditService := &discount.CreditServiceAdapter{Store: &discount.PostgresStore{DB: ownerDBPool, ServerConfigService: serverConfigService}}
+	accountService := account.NewBillingAccountServiceAdapter(&account.PostgresStore{DB: ownerDBPool}, pluginManager)
+	taxService := tax.NewTaxServiceAdapter(&tax.PostgresStore{DB: ownerDBPool}, pluginManager)
+
+	// Create the billing handler with all required dependencies using NewBillingHandler factory method
+	billingHandler := billing_management.NewBillingHandler(
+		billingStore,
+		paymentStore,
+		invoiceServiceAdapter,
+		billingAdapter, // ReportService
+		manualAdjustmentAdapter,
+		creditService,
+		pluginManager,
+		securityStore,
+		accountService,
+		taxService,
+		billingAdapter, // InvoiceExportService
+		webhookEventAdapter,
+		webhookSubscriptionAdapter,
+		billingAdapter, // DunningService
+	)
 
 	// Initialize billing plugin system using configuration
 	initializeBillingPlugins(billingHandler, serverConfigService, logr)
 
 	// Register billing-management main router
 	billingRoute := protectedAPI.Group("/billing-management")
-	billing_management.RegisterRoutes(protectedAPI, billingHandler, jwtCfg.SecretName)
+	billing_management.RegisterRoutes(protectedAPI, billingHandler, appConfig.JWT.Secret)
 
 	// Register all billing-management submodule routers under /billing-management
 	// --- FEE ---
@@ -307,7 +335,7 @@ func main() {
 		account.NewBillingAccountServiceAdapter(accountStore, billingHandler.PluginManager),
 		*logr,
 	)
-	discount.RegisterRoutes(billingRoute, discountHandler, jwtCfg.SecretName)
+	discount.RegisterRoutes(billingRoute, discountHandler, appConfig.JWT.Secret)
 
 	// --- PAYMENT ---
 	// Create transaction report adapter
@@ -326,12 +354,12 @@ func main() {
 		billingHandler.PaymentMethodService,
 		serverConfigService,
 		*logr,
-		securityStore,
+		billingHandler.Notify,
 		paymentStore,
 		pluginManagerAdapter, // Use the adapter that implements payment.PluginService
 		transactionReportAdapter,
 	)
-	payment.RegisterRoutes(billingRoute, paymentHandler, jwtCfg.SecretName)
+	payment.RegisterRoutes(billingRoute, paymentHandler, appConfig.JWT.Secret)
 
 	// --- TAX ---
 	taxStore := &tax.PostgresStore{DB: ownerDBPool}
@@ -340,14 +368,23 @@ func main() {
 		TaxInfoService: taxServiceAdapter,
 		Store:          *taxStore,
 	}
-	tax.RegisterRoutes(billingRoute, taxHandler, jwtCfg.SecretName)
+	tax.RegisterRoutes(billingRoute, taxHandler, appConfig.JWT.Secret)
 
 	// --- ACCOUNT ---
+	// Create tenant store for account integration
+	tenantStore := &tenant_management.PostgresStore{
+		DB:                  ownerDBPool,
+		ServerConfigService: serverConfigService,
+	}
+
 	accountHandler := &account.AccountHandler{
 		BillingAccountService: account.NewBillingAccountServiceAdapter(accountStore, billingHandler.PluginManager),
-		NotificationService:   securityStore,
+		NotificationService:   billingHandler.Notify,
+		TenantService:         tenantStore,
 	}
-	account.RegisterRoutes(billingRoute, accountHandler, jwtCfg.SecretName)
+
+	// Register account routes with tenant service
+	account.RegisterRoutes(billingRoute, accountHandler, appConfig.JWT.Secret, tenantStore)
 
 	// --- SUBSCRIPTION ---
 	subscriptionStore := &subscription.PostgresStore{DB: ownerDBPool}
@@ -466,7 +503,9 @@ func getDBPool() *pgxpool.Pool {
 func generateRandomPassword() (string, error) {
 	// Import the password generator or use crypto/rand to generate a secure password
 	// For simplicity, we'll return a fixed string here, but in production you should use a proper generator
-	return "Temp-" + fmt.Sprintf("%d", time.Now().Unix()), nil
+	password := "Temp-" + fmt.Sprintf("%d", time.Now().Unix())
+	log.Printf("Generated random password for admin: %s", password)
+	return password, nil
 }
 
 // initializeBillingPlugins loads and configures the billing plugins

@@ -1,5 +1,27 @@
 # SubInc Backend Release Plan
 
+## Backend Code Quality & Security Improvements
+
+### Critical
+- [ ] Add authentication/authorization middleware to all admin/billing endpoints
+- [ ] Add rate limiting middleware to all admin/billing endpoints
+
+### High
+- [ ] Standardize error codes and document them in a shared package
+- [ ] Ensure all log entries include request, tenant, and user IDs for traceability
+- [ ] Avoid panics in constructors (e.g., NewPostgresStore); return errors or document justification
+
+### Medium
+- [ ] Add type safety/interface checks before calling plugin Initialize via reflection
+- [ ] Always use c.Status(...).JSON(...) for error responses (avoid direct fiber.ErrBadRequest returns)
+- [ ] Mask or omit all secrets from API responses unless explicitly required for admin
+- [ ] Ensure all async goroutine errors are logged or handled (e.g., notifications)
+
+### Low
+- [ ] Add API versioning (e.g., /v1/) to all routes for future-proofing
+
+---
+
 ## Critical Fixes (Week 1)
 
 - [ ] **Security Issues**

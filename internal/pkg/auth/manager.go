@@ -647,3 +647,8 @@ func WrapError(err error, errType ErrorType, message, code string) error {
 
 	return NewAuthError(errType, message, code, err)
 }
+
+// Providers returns the providers map for direct access
+func (m *AuthManager) Providers() map[string]AuthProvider {
+	return m.providers
+}

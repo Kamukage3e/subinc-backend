@@ -41,6 +41,9 @@ type StoreInterface interface {
 	GetTransactionReport(ctx context.Context, tenantID string, startDate, endDate time.Time, includeDailyTotals bool) (*TransactionReport, error)
 	GetPaymentMethodReport(ctx context.Context, tenantID string, startDate, endDate time.Time) (map[string]int, error)
 	GetTransactionVolume(ctx context.Context, tenantID string, startDate, endDate time.Time) (float64, int, error)
+
+	// Customer portal
+	GetStripeCustomerID(ctx context.Context, accountID string) (string, error)
 }
 
 // DisputeDataStoreInterface abstracts dispute and evidence storage for testability and multi-tenant support

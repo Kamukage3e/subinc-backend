@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -151,14 +152,44 @@ func (s *PostgresStore) GetBillingAccount(ctx context.Context, accountType Billi
 		return nil, err
 	}
 
+	// Get tenant ID from context if available for tenant isolation
+	tenantID := getTenantIDFromContext(ctx)
+
 	var q string
+	var args []interface{}
+
+	// Add tenant filtering to queries if tenant ID is available
 	switch accountType {
 	case AccountTypeProject:
-		q = selectProjectBillingAccountQuery
+		if tenantID != "" {
+			q = `SELECT id, project_id, tenant_id, email, status, currency, created_at, updated_at 
+				FROM project_billing_accounts 
+				WHERE id = $1 AND tenant_id = $2`
+			args = []interface{}{id, tenantID}
+		} else {
+			q = selectProjectBillingAccountQuery
+			args = []interface{}{id}
+		}
 	case AccountTypeUser:
-		q = selectUserBillingAccountQuery
+		if tenantID != "" {
+			q = `SELECT id, user_id, tenant_id, email, status, currency, created_at, updated_at 
+				FROM user_billing_accounts 
+				WHERE id = $1 AND tenant_id = $2`
+			args = []interface{}{id, tenantID}
+		} else {
+			q = selectUserBillingAccountQuery
+			args = []interface{}{id}
+		}
 	case AccountTypeOrganization:
-		q = selectOrgBillingAccountQuery
+		if tenantID != "" {
+			q = `SELECT id, org_id, tenant_id, email, status, currency, created_at, updated_at 
+				FROM organization_billing_accounts 
+				WHERE id = $1 AND tenant_id = $2`
+			args = []interface{}{id, tenantID}
+		} else {
+			q = selectOrgBillingAccountQuery
+			args = []interface{}{id}
+		}
 	default:
 		err := errors.New("unsupported account type")
 		logger.LogError("GetBillingAccount: invalid account type", logger.String("type", string(accountType)), logger.ErrorField(err))
@@ -169,7 +200,7 @@ func (s *PostgresStore) GetBillingAccount(ctx context.Context, accountType Billi
 	case AccountTypeProject:
 		var out ProjectBillingAccount
 		scanArgs := []interface{}{&out.ID, &out.ProjectID, &out.TenantID, &out.Email, &out.Status, &out.Currency, &out.CreatedAt, &out.UpdatedAt}
-		row := s.DB.QueryRow(ctx, q, id)
+		row := s.DB.QueryRow(ctx, q, args...)
 		if err := row.Scan(scanArgs...); err != nil {
 			logger.LogError("GetBillingAccount failed", logger.ErrorField(err), logger.String("id", id))
 			return nil, err
@@ -178,7 +209,7 @@ func (s *PostgresStore) GetBillingAccount(ctx context.Context, accountType Billi
 	case AccountTypeUser:
 		var out UserBillingAccount
 		scanArgs := []interface{}{&out.ID, &out.UserID, &out.TenantID, &out.Email, &out.Status, &out.Currency, &out.CreatedAt, &out.UpdatedAt}
-		row := s.DB.QueryRow(ctx, q, id)
+		row := s.DB.QueryRow(ctx, q, args...)
 		if err := row.Scan(scanArgs...); err != nil {
 			logger.LogError("GetBillingAccount failed", logger.ErrorField(err), logger.String("id", id))
 			return nil, err
@@ -187,7 +218,7 @@ func (s *PostgresStore) GetBillingAccount(ctx context.Context, accountType Billi
 	case AccountTypeOrganization:
 		var out OrganizationBillingAccount
 		scanArgs := []interface{}{&out.ID, &out.OrgID, &out.TenantID, &out.Email, &out.Status, &out.Currency, &out.CreatedAt, &out.UpdatedAt}
-		row := s.DB.QueryRow(ctx, q, id)
+		row := s.DB.QueryRow(ctx, q, args...)
 		if err := row.Scan(scanArgs...); err != nil {
 			logger.LogError("GetBillingAccount failed", logger.ErrorField(err), logger.String("id", id))
 			return nil, err
@@ -306,67 +337,157 @@ func (s *PostgresStore) ListBillingAccounts(ctx context.Context, accountType Bil
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 1000 {
-		pageSize = 100
+	if pageSize < 1 {
+		pageSize = 10
 	}
+	offset := (page - 1) * pageSize
+
+	// Get tenant ID from context if available for tenant isolation
+	tenantID := getTenantIDFromContext(ctx)
+
 	var q string
 	var args []interface{}
+	var err error
+
+	// Add tenant filtering to queries if tenant ID is available
 	switch accountType {
 	case AccountTypeProject:
-		q = listProjectBillingAccountsQuery
-		args = []interface{}{ownerID, pageSize, (page - 1) * pageSize}
+		if tenantID != "" {
+			if ownerID != "" {
+				q = `SELECT id, project_id, tenant_id, email, status, currency, created_at, updated_at 
+					FROM project_billing_accounts 
+					WHERE project_id = $1 AND tenant_id = $2
+					ORDER BY created_at DESC LIMIT $3 OFFSET $4`
+				args = []interface{}{ownerID, tenantID, pageSize, offset}
+			} else {
+				q = `SELECT id, project_id, tenant_id, email, status, currency, created_at, updated_at 
+					FROM project_billing_accounts 
+					WHERE tenant_id = $1
+					ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+				args = []interface{}{tenantID, pageSize, offset}
+			}
+		} else {
+			if ownerID == "" {
+				err = errors.New("project_id or tenant_id required")
+				logger.LogError("ListBillingAccounts: missing filter", logger.ErrorField(err))
+				return nil, err
+			}
+			q = listProjectBillingAccountsQuery
+			args = []interface{}{ownerID, pageSize, offset}
+		}
 	case AccountTypeUser:
-		q = listUserBillingAccountsQuery
-		args = []interface{}{ownerID, pageSize, (page - 1) * pageSize}
+		if tenantID != "" {
+			if ownerID != "" {
+				q = `SELECT id, user_id, tenant_id, email, status, currency, created_at, updated_at 
+					FROM user_billing_accounts 
+					WHERE user_id = $1 AND tenant_id = $2
+					ORDER BY created_at DESC LIMIT $3 OFFSET $4`
+				args = []interface{}{ownerID, tenantID, pageSize, offset}
+			} else {
+				q = `SELECT id, user_id, tenant_id, email, status, currency, created_at, updated_at 
+					FROM user_billing_accounts 
+					WHERE tenant_id = $1
+					ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+				args = []interface{}{tenantID, pageSize, offset}
+			}
+		} else {
+			if ownerID == "" {
+				err = errors.New("user_id or tenant_id required")
+				logger.LogError("ListBillingAccounts: missing filter", logger.ErrorField(err))
+				return nil, err
+			}
+			q = listUserBillingAccountsQuery
+			args = []interface{}{ownerID, pageSize, offset}
+		}
 	case AccountTypeOrganization:
-		q = listOrgBillingAccountsQuery
-		args = []interface{}{ownerID, pageSize, (page - 1) * pageSize}
+		if tenantID != "" {
+			if ownerID != "" {
+				q = `SELECT id, org_id, tenant_id, email, status, currency, created_at, updated_at 
+					FROM organization_billing_accounts 
+					WHERE org_id = $1 AND tenant_id = $2
+					ORDER BY created_at DESC LIMIT $3 OFFSET $4`
+				args = []interface{}{ownerID, tenantID, pageSize, offset}
+			} else {
+				q = `SELECT id, org_id, tenant_id, email, status, currency, created_at, updated_at 
+					FROM organization_billing_accounts 
+					WHERE tenant_id = $1
+					ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+				args = []interface{}{tenantID, pageSize, offset}
+			}
+		} else {
+			if ownerID == "" {
+				err = errors.New("org_id or tenant_id required")
+				logger.LogError("ListBillingAccounts: missing filter", logger.ErrorField(err))
+				return nil, err
+			}
+			q = listOrgBillingAccountsQuery
+			args = []interface{}{ownerID, pageSize, offset}
+		}
 	default:
-		err := errors.New("unsupported account type")
-		logger.LogError("ListBillingAccounts: invalid account type", logger.String("type", string(accountType)), logger.ErrorField(err))
+		err = errors.New("unsupported account type")
+		logger.LogError("ListBillingAccounts: unsupported account type", logger.String("type", string(accountType)), logger.ErrorField(err))
 		return nil, err
 	}
-	rows, err := s.DB.Query(ctx, q, args...)
+
+	var rows pgx.Rows
+	rows, err = s.DB.Query(ctx, q, args...)
 	if err != nil {
-		logger.LogError("ListBillingAccounts query failed", logger.ErrorField(err), logger.String("owner_id", ownerID))
+		logger.LogError("ListBillingAccounts: query failed", logger.ErrorField(err))
 		return nil, err
 	}
 	defer rows.Close()
+
 	switch accountType {
 	case AccountTypeProject:
-		var out []*ProjectBillingAccount
+		var accounts []*ProjectBillingAccount
 		for rows.Next() {
-			var a ProjectBillingAccount
-			if err := rows.Scan(&a.ID, &a.ProjectID, &a.TenantID, &a.Email, &a.Status, &a.Currency, &a.CreatedAt, &a.UpdatedAt); err != nil {
-				logger.LogError("ListBillingAccounts scan failed", logger.ErrorField(err))
+			var account ProjectBillingAccount
+			err = rows.Scan(&account.ID, &account.ProjectID, &account.TenantID, &account.Email, &account.Status, &account.Currency, &account.CreatedAt, &account.UpdatedAt)
+			if err != nil {
+				logger.LogError("ListBillingAccounts: scan failed", logger.ErrorField(err))
 				return nil, err
 			}
-			out = append(out, &a)
+			accounts = append(accounts, &account)
 		}
-		return out, nil
+		if rows.Err() != nil {
+			logger.LogError("ListBillingAccounts: iteration error", logger.ErrorField(rows.Err()))
+			return nil, rows.Err()
+		}
+		return accounts, nil
 	case AccountTypeUser:
-		var out []*UserBillingAccount
+		var accounts []*UserBillingAccount
 		for rows.Next() {
-			var a UserBillingAccount
-			if err := rows.Scan(&a.ID, &a.UserID, &a.TenantID, &a.Email, &a.Status, &a.Currency, &a.CreatedAt, &a.UpdatedAt); err != nil {
-				logger.LogError("ListBillingAccounts scan failed", logger.ErrorField(err))
+			var account UserBillingAccount
+			err = rows.Scan(&account.ID, &account.UserID, &account.TenantID, &account.Email, &account.Status, &account.Currency, &account.CreatedAt, &account.UpdatedAt)
+			if err != nil {
+				logger.LogError("ListBillingAccounts: scan failed", logger.ErrorField(err))
 				return nil, err
 			}
-			out = append(out, &a)
+			accounts = append(accounts, &account)
 		}
-		return out, nil
+		if rows.Err() != nil {
+			logger.LogError("ListBillingAccounts: iteration error", logger.ErrorField(rows.Err()))
+			return nil, rows.Err()
+		}
+		return accounts, nil
 	case AccountTypeOrganization:
-		var out []*OrganizationBillingAccount
+		var accounts []*OrganizationBillingAccount
 		for rows.Next() {
-			var a OrganizationBillingAccount
-			if err := rows.Scan(&a.ID, &a.OrgID, &a.TenantID, &a.Email, &a.Status, &a.Currency, &a.CreatedAt, &a.UpdatedAt); err != nil {
-				logger.LogError("ListBillingAccounts scan failed", logger.ErrorField(err))
+			var account OrganizationBillingAccount
+			err = rows.Scan(&account.ID, &account.OrgID, &account.TenantID, &account.Email, &account.Status, &account.Currency, &account.CreatedAt, &account.UpdatedAt)
+			if err != nil {
+				logger.LogError("ListBillingAccounts: scan failed", logger.ErrorField(err))
 				return nil, err
 			}
-			out = append(out, &a)
+			accounts = append(accounts, &account)
 		}
-		return out, nil
+		if rows.Err() != nil {
+			logger.LogError("ListBillingAccounts: iteration error", logger.ErrorField(rows.Err()))
+			return nil, rows.Err()
+		}
+		return accounts, nil
 	}
+
 	err = errors.New("unexpected error")
 	logger.LogError("ListBillingAccounts: unexpected error", logger.ErrorField(err))
 	return nil, err
@@ -464,4 +585,16 @@ func (s *PostgresStore) DeleteBillingAccount(ctx context.Context, accountType Bi
 		return err
 	}
 	return nil
+}
+
+// getTenantIDFromContext safely extracts the tenant ID from context if available
+func getTenantIDFromContext(ctx context.Context) string {
+	tenantID := ""
+	// Try to get from context value (set by middleware)
+	if v := ctx.Value("tenant_id"); v != nil {
+		if tid, ok := v.(string); ok && tid != "" {
+			tenantID = tid
+		}
+	}
+	return tenantID
 }

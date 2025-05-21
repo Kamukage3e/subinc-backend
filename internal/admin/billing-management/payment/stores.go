@@ -1472,3 +1472,28 @@ func (s *PostgresStore) UpdateDispute(ctx context.Context, input Dispute) (Dispu
 	}
 	return out, nil
 }
+
+// GetStripeCustomerID retrieves the Stripe customer ID for a given account ID
+func (s *PostgresStore) GetStripeCustomerID(ctx context.Context, accountID string) (string, error) {
+	const query = `
+		SELECT metadata->>'stripe_customer_id' 
+		FROM billing_methods 
+		WHERE account_id = $1 
+		AND metadata->>'stripe_customer_id' IS NOT NULL 
+		LIMIT 1
+	`
+
+	var customerID string
+	err := s.DB.QueryRow(ctx, query, accountID).Scan(&customerID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", nil // No customer ID found, not an error
+		}
+		logger.LogError("PostgresStore.GetStripeCustomerID: database error",
+			logger.ErrorField(err),
+			logger.String("account_id", accountID))
+		return "", fmt.Errorf("failed to get stripe customer ID: %w", err)
+	}
+
+	return customerID, nil
+}

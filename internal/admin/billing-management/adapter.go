@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
 )
 
@@ -16,10 +17,10 @@ type BillingAdapter struct {
 }
 
 // NewBillingAdapter creates a new billing adapter instance
-func NewBillingAdapter(db *pgxpool.Pool) *BillingAdapter {
+func NewBillingAdapter(db *pgxpool.Pool, serverConfigService *server_config.Service) *BillingAdapter {
 	return &BillingAdapter{
 		db:    db,
-		store: NewPostgresStore(db, nil),
+		store: NewPostgresStore(db, serverConfigService),
 	}
 }
 
@@ -386,4 +387,128 @@ func (a *BillingAdapter) GetWebhookEvent(ctx context.Context, id string) (Webhoo
 func (a *BillingAdapter) ListWebhookEvents(ctx context.Context, accountID, status string, page, pageSize int) ([]WebhookEvent, error) {
 	// This would retrieve a list of events from the store
 	return a.store.ListWebhookEvents(ctx, accountID, status, page, pageSize)
+}
+
+// InvoiceServiceAdapter adapts BillingAdapter to InvoiceService
+type InvoiceServiceAdapter struct {
+	Adapter *BillingAdapter
+}
+
+func NewInvoiceServiceAdapter(adapter *BillingAdapter) *InvoiceServiceAdapter {
+	return &InvoiceServiceAdapter{Adapter: adapter}
+}
+
+func (a *InvoiceServiceAdapter) CreateInvoice(ctx context.Context, input Invoice) (Invoice, error) {
+	return a.Adapter.CreateInvoice(ctx, input)
+}
+
+func (a *InvoiceServiceAdapter) UpdateInvoice(input Invoice) (Invoice, error) {
+	return a.Adapter.UpdateInvoice(context.Background(), input)
+}
+
+func (a *InvoiceServiceAdapter) GetInvoice(id string) (Invoice, error) {
+	return a.Adapter.GetInvoice(context.Background(), id)
+}
+
+func (a *InvoiceServiceAdapter) ListInvoices(accountID, status string, page, pageSize int) ([]Invoice, error) {
+	return a.Adapter.ListInvoices(context.Background(), accountID, status, page, pageSize)
+}
+
+func (a *InvoiceServiceAdapter) GetInvoicePreview(accountID string) (Invoice, error) {
+	return a.Adapter.GetInvoicePreview(context.Background(), accountID)
+}
+
+func (a *InvoiceServiceAdapter) GetBillingConfig() (map[string]interface{}, error) {
+	return a.Adapter.GetBillingConfig(context.Background())
+}
+
+func (a *InvoiceServiceAdapter) SetBillingConfig(input map[string]interface{}) error {
+	return a.Adapter.SetBillingConfig(context.Background(), input)
+}
+
+func (a *InvoiceServiceAdapter) DeleteInvoice(id string) error {
+	return a.Adapter.DeleteInvoice(context.Background(), id)
+}
+
+// ManualAdjustmentServiceAdapter adapts BillingAdapter to ManualAdjustmentService
+type ManualAdjustmentServiceAdapter struct {
+	Adapter *BillingAdapter
+}
+
+func NewManualAdjustmentServiceAdapter(adapter *BillingAdapter) *ManualAdjustmentServiceAdapter {
+	return &ManualAdjustmentServiceAdapter{Adapter: adapter}
+}
+
+func (a *ManualAdjustmentServiceAdapter) CreateManualAdjustment(accountID, reason string, amount float64, currency string) error {
+	return a.Adapter.CreateManualAdjustment(context.Background(), accountID, reason, amount, currency)
+}
+
+// WebhookEventServiceAdapter adapts BillingAdapter to WebhookEventService
+type WebhookEventServiceAdapter struct {
+	Adapter *BillingAdapter
+}
+
+func NewWebhookEventServiceAdapter(adapter *BillingAdapter) *WebhookEventServiceAdapter {
+	return &WebhookEventServiceAdapter{Adapter: adapter}
+}
+
+func (a *WebhookEventServiceAdapter) CreateWebhookEvent(input WebhookEvent) (WebhookEvent, error) {
+	return a.Adapter.CreateWebhookEvent(context.Background(), input)
+}
+
+func (a *WebhookEventServiceAdapter) UpdateWebhookEvent(input WebhookEvent) (WebhookEvent, error) {
+	return a.Adapter.UpdateWebhookEvent(context.Background(), input)
+}
+
+func (a *WebhookEventServiceAdapter) DeleteWebhookEvent(id string) error {
+	return a.Adapter.DeleteWebhookEvent(context.Background(), id)
+}
+
+func (a *WebhookEventServiceAdapter) GetWebhookEvent(id string) (WebhookEvent, error) {
+	return a.Adapter.GetWebhookEvent(context.Background(), id)
+}
+
+func (a *WebhookEventServiceAdapter) ListWebhookEvents(accountID, status string, page, pageSize int) ([]WebhookEvent, error) {
+	return a.Adapter.ListWebhookEvents(context.Background(), accountID, status, page, pageSize)
+}
+
+// WebhookSubscriptionServiceAdapter adapts BillingAdapter to WebhookSubscriptionService
+type WebhookSubscriptionServiceAdapter struct {
+	Adapter *BillingAdapter
+}
+
+func NewWebhookSubscriptionServiceAdapter(adapter *BillingAdapter) *WebhookSubscriptionServiceAdapter {
+	return &WebhookSubscriptionServiceAdapter{Adapter: adapter}
+}
+
+func (a *WebhookSubscriptionServiceAdapter) CreateWebhookSubscription(url, secret, description string, events []string) error {
+	return a.Adapter.CreateWebhookSubscription(context.Background(), url, secret, description, events)
+}
+
+func (a *WebhookSubscriptionServiceAdapter) DeleteWebhookSubscription(id string) error {
+	return a.Adapter.DeleteWebhookSubscription(context.Background(), id)
+}
+
+func (a *WebhookSubscriptionServiceAdapter) ListWebhookSubscriptions(tenantID string, page, pageSize int) ([]WebhookSubscription, error) {
+	return a.Adapter.ListWebhookSubscriptions(context.Background(), tenantID, page, pageSize)
+}
+
+func (a *WebhookSubscriptionServiceAdapter) TestWebhookSubscription(id string, eventType string, payload map[string]interface{}) error {
+	return a.Adapter.TestWebhookSubscription(context.Background(), id, eventType, payload)
+}
+
+func (a *WebhookSubscriptionServiceAdapter) GetWebhookSubscription(id string) (WebhookSubscription, error) {
+	return a.Adapter.GetWebhookSubscription(context.Background(), id)
+}
+
+func (a *WebhookSubscriptionServiceAdapter) UpdateWebhookSubscription(id string, url, secret string, events []string, status string) error {
+	return a.Adapter.UpdateWebhookSubscription(context.Background(), id, url, secret, events, status)
+}
+
+func (a *WebhookSubscriptionServiceAdapter) GetWebhookDeliveryLogs(subscriptionID string, page, pageSize int) ([]WebhookDeliveryLog, error) {
+	return a.Adapter.GetWebhookDeliveryLogs(context.Background(), subscriptionID, page, pageSize)
+}
+
+func (a *WebhookSubscriptionServiceAdapter) RetryWebhookDelivery(deliveryID string) error {
+	return a.Adapter.RetryWebhookDelivery(context.Background(), deliveryID)
 }

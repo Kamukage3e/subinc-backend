@@ -9,6 +9,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/subinc/subinc-backend/internal/pkg/auth"
+	"github.com/subinc/subinc-backend/internal/pkg/config"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
 
@@ -58,54 +59,48 @@ type VerifyOptions struct {
 	VerifyExpiry  bool
 }
 
-// DefaultConfig returns a default JWT configuration
-func DefaultConfig() Config {
-	return Config{
-		Secret:            "", // Must be set by user
-		Issuer:            "subinc-backend",
-		TokenExpiry:       24 * time.Hour,
-		RefreshExpiry:     7 * 24 * time.Hour,
-		HeaderName:        "Authorization",
-		AllowedAlgorithms: []string{"HS256", "HS384", "HS512"},
-		VerifyOptions: VerifyOptions{
-			VerifyIssuer:  true,
-			VerifySubject: false,
-			VerifyExpiry:  true,
-		},
-	}
-}
-
 // JWTProvider implements the AuthProvider interface for JWT tokens
 type JWTProvider struct {
 	config Config
 	logger *logger.Logger
 }
 
-// NewJWTProvider creates a new JWT auth provider with the given config
-func NewJWTProvider(config Config) (*JWTProvider, error) {
-	if config.Secret == "" {
+// NewJWTProvider creates a new JWT auth provider with the given config.JWTConfig
+func NewJWTProvider(cfg config.JWTConfig, logger *logger.Logger) (*JWTProvider, error) {
+	if cfg.Secret == "" {
 		return nil, errors.New("jwt: secret cannot be empty")
 	}
-
-	if config.TokenExpiry <= 0 {
-		config.TokenExpiry = 24 * time.Hour
+	if logger == nil {
+		return nil, errors.New("jwt: logger cannot be nil")
 	}
-
-	if config.RefreshExpiry <= 0 {
-		config.RefreshExpiry = 7 * 24 * time.Hour
+	tokenExpiry := time.Duration(cfg.ExpirationHours) * time.Hour
+	refreshExpiry := time.Duration(cfg.RefreshExpirationHours) * time.Hour
+	if tokenExpiry <= 0 {
+		tokenExpiry = 24 * time.Hour
 	}
-
-	if config.Logger == nil {
-		config.Logger = logger.Default
+	if refreshExpiry <= 0 {
+		refreshExpiry = 7 * 24 * time.Hour
 	}
-
-	if len(config.AllowedAlgorithms) == 0 {
-		config.AllowedAlgorithms = []string{"HS256"}
+	algos := cfg.AllowedAlgorithms
+	if len(algos) == 0 {
+		algos = []string{"HS256"}
 	}
-
 	return &JWTProvider{
-		config: config,
-		logger: config.Logger,
+		config: Config{
+			Secret:            cfg.Secret,
+			Issuer:            cfg.Issuer,
+			TokenExpiry:       tokenExpiry,
+			RefreshExpiry:     refreshExpiry,
+			Logger:            logger,
+			HeaderName:        cfg.HeaderName,
+			AllowedAlgorithms: algos,
+			VerifyOptions: VerifyOptions{
+				VerifyIssuer:  cfg.VerifyIssuer,
+				VerifySubject: cfg.VerifySubject,
+				VerifyExpiry:  cfg.VerifyExpiry,
+			},
+		},
+		logger: logger,
 	}, nil
 }
 

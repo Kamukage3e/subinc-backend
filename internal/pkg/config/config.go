@@ -58,9 +58,16 @@ type RedisConfig struct {
 
 // JWTConfig holds JWT related configuration
 type JWTConfig struct {
-	SecretName      string
-	Secret          string
-	ExpirationHours int
+	SecretName             string
+	Secret                 string
+	Issuer                 string
+	ExpirationHours        int
+	RefreshExpirationHours int
+	HeaderName             string
+	AllowedAlgorithms      []string
+	VerifyIssuer           bool
+	VerifySubject          bool
+	VerifyExpiry           bool
 }
 
 // StripeConfig holds Stripe related configuration
@@ -134,9 +141,16 @@ func LoadConfig(logger *logger.Logger) (*Config, error) {
 		},
 
 		JWT: JWTConfig{
-			SecretName:      getEnv("JWT_SECRET_NAME", "jwt_secret"),
-			Secret:          getEnv("JWT_SECRET", "your-secret-key-here"),
-			ExpirationHours: getEnvAsInt("JWT_EXPIRATION_HOURS", 24),
+			SecretName:             getEnv("JWT_SECRET_NAME", "jwt_secret"),
+			Secret:                 getEnv("JWT_SECRET", "your-secret-key-here"),
+			Issuer:                 getEnv("JWT_ISSUER", "subinc-backend"),
+			ExpirationHours:        getEnvAsInt("JWT_EXPIRATION_HOURS", 24),
+			RefreshExpirationHours: getEnvAsInt("JWT_REFRESH_EXPIRATION_HOURS", 168), // 7 days
+			HeaderName:             getEnv("JWT_HEADER_NAME", "Authorization"),
+			AllowedAlgorithms:      getEnvAsSlice("JWT_ALLOWED_ALGORITHMS", "HS256,HS384,HS512"),
+			VerifyIssuer:           getEnvAsBool("JWT_VERIFY_ISSUER", true),
+			VerifySubject:          getEnvAsBool("JWT_VERIFY_SUBJECT", false),
+			VerifyExpiry:           getEnvAsBool("JWT_VERIFY_EXPIRY", true),
 		},
 
 		Stripe: StripeConfig{

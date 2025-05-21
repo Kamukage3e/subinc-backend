@@ -14,6 +14,7 @@ import (
 	paypal "github.com/plutov/paypal/v4"
 	stripe "github.com/stripe/stripe-go/v75"
 	stripeAccount "github.com/stripe/stripe-go/v75/account"
+	billingportal "github.com/stripe/stripe-go/v75/billingportal/session"
 	"github.com/stripe/stripe-go/v75/paymentintent"
 	"github.com/stripe/stripe-go/v75/refund"
 
@@ -1779,4 +1780,92 @@ func (h *PaymentHandler) CreateManualRefund(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(refund)
+}
+
+// CreateCustomerPortalSession creates a new Stripe Customer Portal session
+func (h *PaymentHandler) CreateCustomerPortalSession(c *fiber.Ctx) error {
+	// Get the current user's account ID
+	accountID := c.Query("account_id")
+	if accountID == "" {
+		logger.LogError("CreateCustomerPortalSession: account_id required")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Missing required parameter: account_id",
+		})
+	}
+
+	// Get the return URL
+	returnURL := c.Query("return_url")
+	if returnURL == "" {
+		returnURL = "/" // Default return URL
+	}
+
+	// Get tenant ID
+	tenantID := c.Get("X-Tenant-ID", "")
+	if tenantID == "" {
+		logger.LogError("CreateCustomerPortalSession: X-Tenant-ID header missing")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Missing tenant ID",
+		})
+	}
+
+	// Get Stripe provider for tenant
+	provider, err := GetProviderForTenant(c.Context(), h.Store, tenantID, h.ConfigService)
+	if err != nil {
+		logger.LogError("CreateCustomerPortalSession: failed to get provider", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to initialize payment provider",
+		})
+	}
+
+	// Check if the provider is Stripe
+	stripeProvider, ok := provider.(*StripeProvider)
+	if !ok {
+		logger.LogError("CreateCustomerPortalSession: provider is not Stripe")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Currently only Stripe is supported for customer portal",
+		})
+	}
+
+	// Get the Stripe customer ID for this account
+	customerID, err := h.Store.GetStripeCustomerID(c.Context(), accountID)
+	if err != nil {
+		logger.LogError("CreateCustomerPortalSession: failed to get Stripe customer ID",
+			logger.ErrorField(err),
+			logger.String("account_id", accountID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to retrieve customer information",
+		})
+	}
+
+	if customerID == "" {
+		logger.LogError("CreateCustomerPortalSession: customer ID not found",
+			logger.String("account_id", accountID))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Customer not found in Stripe",
+		})
+	}
+
+	// Set up API key for Stripe
+	stripe.Key = stripeProvider.APIKey
+
+	// Create the session
+	params := &stripe.BillingPortalSessionParams{
+		Customer:  stripe.String(customerID),
+		ReturnURL: stripe.String(returnURL),
+	}
+
+	portalSession, err := billingportal.New(params)
+	if err != nil {
+		logger.LogError("CreateCustomerPortalSession: failed to create session",
+			logger.ErrorField(err),
+			logger.String("customer_id", customerID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to create customer portal session",
+		})
+	}
+
+	// Return the session URL
+	return c.JSON(fiber.Map{
+		"url": portalSession.URL,
+	})
 }

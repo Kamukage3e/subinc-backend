@@ -9,8 +9,6 @@ import (
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
-
-
 func RegisterRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret string) {
 	// Validate required parameters
 	if router == nil || handler == nil {
@@ -18,60 +16,66 @@ func RegisterRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret
 		return
 	}
 
+	// Create base route with authentication
 	route := router.Group(
 		"/billing-management",
 		security_management.OIDCMiddleware(jwtSecret),
 	)
 
-	// Register account routes
+	// Apply account isolation middleware to all protected billing routes
+	// This ensures tenant and account validation on all operations
+	billingRoute := route.Group(
+		"/",
+		AccountIsolationMiddleware(),
+	)
 
 	// Standard billing routes
-	route.Get("/accounts/invoice-preview", rbacmiddleware.RBACMiddleware("invoice", "read", nil), handler.GetInvoicePreview)
+	billingRoute.Get("/accounts/invoice-preview", rbacmiddleware.RBACMiddleware("invoice", "read", nil), handler.GetInvoicePreview)
 
-	route.Get("/invoices", rbacmiddleware.RBACMiddleware("invoice", "read", nil), handler.ListInvoices)
-	route.Get("/invoices/:id", rbacmiddleware.RBACMiddleware("invoice", "read", nil), handler.GetInvoice)
-	route.Post("/invoices", rbacmiddleware.RBACMiddleware("invoice", "create", nil), handler.CreateInvoice)
-	route.Put("/invoices/:id", rbacmiddleware.RBACMiddleware("invoice", "update", nil), handler.UpdateInvoice)
-	route.Delete("/invoices/:id", rbacmiddleware.RBACMiddleware("invoice", "delete", nil), handler.DeleteInvoice)
+	billingRoute.Get("/invoices", rbacmiddleware.RBACMiddleware("invoice", "read", nil), handler.ListInvoices)
+	billingRoute.Get("/invoices/:id", rbacmiddleware.RBACMiddleware("invoice", "read", nil), handler.GetInvoice)
+	billingRoute.Post("/invoices", rbacmiddleware.RBACMiddleware("invoice", "create", nil), handler.CreateInvoice)
+	billingRoute.Put("/invoices/:id", rbacmiddleware.RBACMiddleware("invoice", "update", nil), handler.UpdateInvoice)
+	billingRoute.Delete("/invoices/:id", rbacmiddleware.RBACMiddleware("invoice", "delete", nil), handler.DeleteInvoice)
 
-	route.Get("/invoices/:id/pdf", rbacmiddleware.RBACMiddleware("invoice", "read", nil), handler.DownloadInvoicePDF)
-	route.Post("/invoices/:id/apply-credits", rbacmiddleware.RBACMiddleware("invoice", "apply-credits", nil), handler.ApplyCreditsToInvoice)
-	route.Post("/invoices/:id/with-fees-tax", rbacmiddleware.RBACMiddleware("invoice", "create", nil), handler.CreateInvoiceWithFeesAndTax)
-	route.Post("/invoices/:id/manual-adjustment", rbacmiddleware.RBACMiddleware("invoice", "manual-adjustment", nil), handler.CreateManualAdjustment)
+	billingRoute.Get("/invoices/:id/pdf", rbacmiddleware.RBACMiddleware("invoice", "read", nil), handler.DownloadInvoicePDF)
+	billingRoute.Post("/invoices/:id/apply-credits", rbacmiddleware.RBACMiddleware("invoice", "apply-credits", nil), handler.ApplyCreditsToInvoice)
+	billingRoute.Post("/invoices/:id/with-fees-tax", rbacmiddleware.RBACMiddleware("invoice", "create", nil), handler.CreateInvoiceWithFeesAndTax)
+	billingRoute.Post("/invoices/:id/manual-adjustment", rbacmiddleware.RBACMiddleware("invoice", "manual-adjustment", nil), handler.CreateManualAdjustment)
 
-	route.Post("/webhook-events", rbacmiddleware.RBACMiddleware("webhook-event", "create", nil), handler.CreateWebhookEvent)
-	route.Get("/webhook-events", rbacmiddleware.RBACMiddleware("webhook-event", "read", nil), handler.ListWebhookEvents)
-	route.Get("/webhook-events/:id", rbacmiddleware.RBACMiddleware("webhook-event", "read", nil), handler.GetWebhookEvent)
-	route.Put("/webhook-events/:id", rbacmiddleware.RBACMiddleware("webhook-event", "update", nil), handler.UpdateWebhookEvent)
-	route.Delete("/webhook-events/:id", rbacmiddleware.RBACMiddleware("webhook-event", "delete", nil), handler.DeleteWebhookEvent)
+	billingRoute.Post("/webhook-events", rbacmiddleware.RBACMiddleware("webhook-event", "create", nil), handler.CreateWebhookEvent)
+	billingRoute.Get("/webhook-events", rbacmiddleware.RBACMiddleware("webhook-event", "read", nil), handler.ListWebhookEvents)
+	billingRoute.Get("/webhook-events/:id", rbacmiddleware.RBACMiddleware("webhook-event", "read", nil), handler.GetWebhookEvent)
+	billingRoute.Put("/webhook-events/:id", rbacmiddleware.RBACMiddleware("webhook-event", "update", nil), handler.UpdateWebhookEvent)
+	billingRoute.Delete("/webhook-events/:id", rbacmiddleware.RBACMiddleware("webhook-event", "delete", nil), handler.DeleteWebhookEvent)
 
-	route.Post("/invoice-adjustments", rbacmiddleware.RBACMiddleware("invoice-adjustment", "create", nil), handler.CreateInvoiceAdjustment)
-	route.Get("/invoice-adjustments", rbacmiddleware.RBACMiddleware("invoice-adjustment", "read", nil), handler.ListInvoiceAdjustments)
-	route.Get("/invoice-adjustments/:id", rbacmiddleware.RBACMiddleware("invoice-adjustment", "read", nil), handler.GetInvoiceAdjustment)
-	route.Put("/invoice-adjustments/:id", rbacmiddleware.RBACMiddleware("invoice-adjustment", "update", nil), handler.UpdateInvoiceAdjustment)
-	route.Delete("/invoice-adjustments/:id", rbacmiddleware.RBACMiddleware("invoice-adjustment", "delete", nil), handler.DeleteInvoiceAdjustment)
+	billingRoute.Post("/invoice-adjustments", rbacmiddleware.RBACMiddleware("invoice-adjustment", "create", nil), handler.CreateInvoiceAdjustment)
+	billingRoute.Get("/invoice-adjustments", rbacmiddleware.RBACMiddleware("invoice-adjustment", "read", nil), handler.ListInvoiceAdjustments)
+	billingRoute.Get("/invoice-adjustments/:id", rbacmiddleware.RBACMiddleware("invoice-adjustment", "read", nil), handler.GetInvoiceAdjustment)
+	billingRoute.Put("/invoice-adjustments/:id", rbacmiddleware.RBACMiddleware("invoice-adjustment", "update", nil), handler.UpdateInvoiceAdjustment)
+	billingRoute.Delete("/invoice-adjustments/:id", rbacmiddleware.RBACMiddleware("invoice-adjustment", "delete", nil), handler.DeleteInvoiceAdjustment)
 
-	route.Get("/reports/revenue", rbacmiddleware.RBACMiddleware("report", "read", nil), handler.GetRevenueReport)
-	route.Get("/reports/accounts-receivable", rbacmiddleware.RBACMiddleware("report", "read", nil), handler.GetARReport)
-	route.Get("/reports/churn", rbacmiddleware.RBACMiddleware("report", "read", nil), handler.GetChurnReport)
+	billingRoute.Get("/reports/revenue", rbacmiddleware.RBACMiddleware("report", "read", nil), handler.GetRevenueReport)
+	billingRoute.Get("/reports/accounts-receivable", rbacmiddleware.RBACMiddleware("report", "read", nil), handler.GetARReport)
+	billingRoute.Get("/reports/churn", rbacmiddleware.RBACMiddleware("report", "read", nil), handler.GetChurnReport)
 
-	route.Get("/billing/config", rbacmiddleware.RBACMiddleware("billing-config", "read", nil), handler.GetBillingConfig)
-	route.Put("/billing/config", rbacmiddleware.RBACMiddleware("billing-config", "update", nil), handler.SetBillingConfig)
+	billingRoute.Get("/billing/config", rbacmiddleware.RBACMiddleware("billing-config", "read", nil), handler.GetBillingConfig)
+	billingRoute.Put("/billing/config", rbacmiddleware.RBACMiddleware("billing-config", "update", nil), handler.SetBillingConfig)
 
-	route.Post("/webhook-subscriptions", rbacmiddleware.RBACMiddleware("webhook-subscription", "create", nil), handler.CreateWebhookSubscription)
-	route.Get("/webhook-subscriptions", rbacmiddleware.RBACMiddleware("webhook-subscription", "read", nil), handler.ListWebhookSubscriptions)
-	route.Get("/webhook-subscriptions/:id", rbacmiddleware.RBACMiddleware("webhook-subscription", "read", nil), handler.GetWebhookSubscription)
-	route.Put("/webhook-subscriptions/:id", rbacmiddleware.RBACMiddleware("webhook-subscription", "update", nil), handler.UpdateWebhookSubscription)
-	route.Delete("/webhook-subscriptions/:id", rbacmiddleware.RBACMiddleware("webhook-subscription", "delete", nil), handler.DeleteWebhookSubscription)
-	route.Post("/webhook-subscriptions/:id/test", rbacmiddleware.RBACMiddleware("webhook-subscription", "update", nil), handler.TestWebhookSubscription)
-	route.Get("/webhook-subscriptions/:id/logs", rbacmiddleware.RBACMiddleware("webhook-subscription", "read", nil), handler.GetWebhookDeliveryLogs)
-	route.Post("/webhook-deliveries/:id/retry", rbacmiddleware.RBACMiddleware("webhook-subscription", "update", nil), handler.RetryWebhookDelivery)
+	billingRoute.Post("/webhook-subscriptions", rbacmiddleware.RBACMiddleware("webhook-subscription", "create", nil), handler.CreateWebhookSubscription)
+	billingRoute.Get("/webhook-subscriptions", rbacmiddleware.RBACMiddleware("webhook-subscription", "read", nil), handler.ListWebhookSubscriptions)
+	billingRoute.Get("/webhook-subscriptions/:id", rbacmiddleware.RBACMiddleware("webhook-subscription", "read", nil), handler.GetWebhookSubscription)
+	billingRoute.Put("/webhook-subscriptions/:id", rbacmiddleware.RBACMiddleware("webhook-subscription", "update", nil), handler.UpdateWebhookSubscription)
+	billingRoute.Delete("/webhook-subscriptions/:id", rbacmiddleware.RBACMiddleware("webhook-subscription", "delete", nil), handler.DeleteWebhookSubscription)
+	billingRoute.Post("/webhook-subscriptions/:id/test", rbacmiddleware.RBACMiddleware("webhook-subscription", "update", nil), handler.TestWebhookSubscription)
+	billingRoute.Get("/webhook-subscriptions/:id/logs", rbacmiddleware.RBACMiddleware("webhook-subscription", "read", nil), handler.GetWebhookDeliveryLogs)
+	billingRoute.Post("/webhook-deliveries/:id/retry", rbacmiddleware.RBACMiddleware("webhook-subscription", "update", nil), handler.RetryWebhookDelivery)
 
-	route.Post("/tenant-currency", rbacmiddleware.RBACMiddleware("tenant-currency", "update", nil), handler.SetTenantCurrency)
-	route.Get("/tenant-currency", rbacmiddleware.RBACMiddleware("tenant-currency", "read", nil), handler.GetTenantCurrency)
+	billingRoute.Post("/tenant-currency", rbacmiddleware.RBACMiddleware("tenant-currency", "update", nil), handler.SetTenantCurrency)
+	billingRoute.Get("/tenant-currency", rbacmiddleware.RBACMiddleware("tenant-currency", "read", nil), handler.GetTenantCurrency)
 
 	// Dunning management routes
-	dunningRoutes := route.Group("/dunning")
+	dunningRoutes := billingRoute.Group("/dunning")
 	dunningRoutes.Get("/config", rbacmiddleware.RBACMiddleware("dunning", "read", nil), handler.GetDunningConfig)
 	dunningRoutes.Post("/config", rbacmiddleware.RBACMiddleware("dunning", "update", nil), handler.UpdateDunningConfig)
 	dunningRoutes.Post("/invoices/:id/retry", rbacmiddleware.RBACMiddleware("dunning", "update", nil), handler.ManualRetryDunning)
@@ -79,7 +83,7 @@ func RegisterRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret
 	dunningRoutes.Get("/dashboard", rbacmiddleware.RBACMiddleware("dunning", "read", nil), handler.GetDunningDashboard)
 
 	// Unified plugin management endpoints
-	pluginRoutes := route.Group("/plugins")
+	pluginRoutes := billingRoute.Group("/plugins")
 	pluginRoutes.Get(":type", rbacmiddleware.RBACMiddleware("plugin", "read", nil), handler.ListPlugins)
 	pluginRoutes.Get(":type/:name", rbacmiddleware.RBACMiddleware("plugin", "read", nil), handler.GetPlugin)
 	pluginRoutes.Post(":type/:name/configure", rbacmiddleware.RBACMiddleware("plugin", "update", nil), handler.ConfigurePlugin)
@@ -87,5 +91,6 @@ func RegisterRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret
 	pluginRoutes.Post(":type/:name/register", rbacmiddleware.RBACMiddleware("plugin", "create", nil), handler.RegisterPlugin)
 	pluginRoutes.Post(":type/:name/unregister", rbacmiddleware.RBACMiddleware("plugin", "delete", nil), handler.UnregisterPlugin)
 
-	route.Post("/stripe/webhook", handler.StripeWebhookHandler) // Stripe webhooks are public, do not wrap
+	// Stripe webhooks are public endpoints, do not wrap them with security middleware
+	route.Post("/stripe/webhook", handler.StripeWebhookHandler)
 }

@@ -34,6 +34,11 @@ func getActorID(c *fiber.Ctx) string {
 	if id != "" {
 		return id
 	}
+	if v := c.Locals("user_id"); v != nil {
+		if s, ok := v.(string); ok && s != "" {
+			return s
+		}
+	}
 	return ""
 }
 
@@ -1471,8 +1476,6 @@ func (h *SecurityHandler) UsePasswordResetToken(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-
-
 // --- Auth Endpoints ---
 
 // swagger:route POST /auth/login auth login
@@ -2004,13 +2007,15 @@ func (h *SecurityHandler) RefreshSession(c *fiber.Ctx) error {
 func (h *SecurityHandler) GetProfile(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
+		logger.LogInfo("GetProfile: missing user_id")
 		userID = getActorID(c) // Fallback to the current user
+		logger.LogInfo("GetProfile: user_id", logger.String("user_id", userID))
 	}
 
-	if userID == "" {
-		logger.LogError("GetProfile: unauthorized", logger.String("user_id", userID))
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
-	}
+	// if userID == "" {
+	// 	logger.LogError("GetProfile: unauthorized", logger.String("user_id", userID))
+	// 	return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	// }
 
 	profile, err := h.PasswordService.GetProfile(c.Context(), userID)
 	if err != nil {

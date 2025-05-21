@@ -7,13 +7,25 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
+	tenant_management "github.com/subinc/subinc-backend/internal/admin/tenant-management"
 )
 
 // AccountHandler handles dynamic account endpoints for user, project, and organization billing accounts.
 type AccountHandler struct {
 	BillingAccountService BillingAccountService
 	NotificationService   security_management.NotificationService
+	TenantService         tenant_management.TenantService
 }
+
+// TenantType defines the type of tenant
+type TenantType string
+
+const (
+	// TenantTypeDedicated indicates a tenant with its own server/database
+	TenantTypeDedicated TenantType = "dedicated"
+	// TenantTypeShared indicates a tenant sharing resources with other tenants
+	TenantTypeShared TenantType = "shared"
+)
 
 type UserBillingAccount struct {
 	ID        string    `json:"id"`
