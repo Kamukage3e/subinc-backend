@@ -114,6 +114,27 @@ The billing system is built around the following core components:
 - JWT authentication
 - Audit logging for security events
 
+### API Security: ID Hashing
+
+The application includes a security feature to prevent API ID enumeration attacks:
+
+- All IDs exposed in REST API responses are automatically hashed using HMAC-SHA256
+- Prevents sequential ID enumeration attacks and information leakage
+- Configurable through environment variables or database config:
+  - `ID_HASHING_SECRET`: Secret key for HMAC hashing
+  - `ID_HASHING_SALT`: Salt for additional entropy
+- Includes middleware that automatically:
+  - Obfuscates sensitive ID fields in API responses
+  - Manages ID decoding for inbound requests
+  - Supports time-limited temporary hashes for sensitive operations
+
+Client applications must:
+- Pass the original hashed IDs without modification in requests
+- Be prepared to receive hashed IDs in responses
+- Never rely on the internal structure of hashed IDs
+
+Note: The system previously included rate limiting functionality, but it has been removed in the current version.
+
 ### Multi-tenant Architecture
 
 Tenant data is isolated at multiple levels:
@@ -163,10 +184,11 @@ For production Kubernetes deployment, use the provided Helm chart in `./charts/s
 - [x] Complete Stripe integration with idempotency and webhook handling
 - [ ] Complete PayPal integration
 - [ ] Complete Braintree integration
-- [ ] Add transaction reporting and analytics
+- [x] Add transaction reporting and analytics
 - [x] Implement multi-currency support with automatic exchange rate updates
 - [x] Enhance tax handling for international markets
 - [x] Improve dunning system with configuration, manual retries, and dashboard
+- [x] Implement REST API ID hashing to prevent enumeration attacks
 - [ ] Add comprehensive test coverage
 
 ## License

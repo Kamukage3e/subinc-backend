@@ -9,9 +9,7 @@ import (
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
-func billingScopeExtractor(c *fiber.Ctx) (string, string) {
-	return "billing", c.Get("X-Billing-ID")
-}
+
 
 func RegisterRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret string) {
 	// Validate required parameters
@@ -20,15 +18,10 @@ func RegisterRoutes(router fiber.Router, handler *BillingAdminHandler, jwtSecret
 		return
 	}
 
-	// Initialize the rate limit handler
-
-
 	route := router.Group(
 		"/billing-management",
 		security_management.OIDCMiddleware(jwtSecret),
-		security_management.NewRateLimitMiddleware(handler.RateLimitService, billingScopeExtractor),
 	)
-
 
 	// Register account routes
 

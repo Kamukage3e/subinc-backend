@@ -6,15 +6,9 @@ import (
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
-// accountScopeExtractor extracts account-specific identifiers for rate limiting
-func billingScopeExtractor(c *fiber.Ctx) (string, string) {
-	return "account", c.Get("X-Account-ID")
-}
-
-func RegisterRoutes(r fiber.Router, handler *AccountHandler, jwtCfg string, rateLimitService security_management.RateLimitService) {
+func RegisterRoutes(r fiber.Router, handler *AccountHandler, jwtCfg string) {
 	route := r.Group("/accounts",
 		security_management.OIDCMiddleware(jwtCfg),
-		security_management.NewRateLimitMiddleware(rateLimitService, billingScopeExtractor),
 	)
 	route.Post("/", rbacmiddleware.RBACMiddleware("account", "create", nil), handler.CreateAccount)
 	route.Get("/:id", rbacmiddleware.RBACMiddleware("account", "read", nil), handler.GetAccount)

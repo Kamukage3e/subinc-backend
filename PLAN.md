@@ -12,6 +12,15 @@
       - Fixed panic in RBAC middleware
       - Improved error handling in global RBAC store
       - Proper logging and user-friendly errors for all critical services
+  - [x] Implement REST API ID hashing to prevent enumeration attacks
+      - Created ID hashing utility with HMAC-SHA256 for secure ID obfuscation
+      - Implemented middleware that automatically hashes IDs in responses and decodes IDs in requests
+      - Added comprehensive testing for all ID hashing functions
+      - Audited tenant-management routes for proper ID hashing
+  - [-] Implement distributed rate limiting to prevent DoS attacks
+      - Removed from application as no longer required
+  - [ ] Fix all permission issues in RBAC middleware
+  - [ ] Implement proper context handling with timeouts, cancellation, etc.
 
 - [x] **Database Migration**
   - [x] Create migration scripts from schema.hcl
@@ -93,10 +102,20 @@
   - [ ] Add plugin management endpoints
   - [ ] *Frontend Integration:* Plugin configuration UI (admin only)
 
-- [ ] **Multi-Tenant Architecture**
-  - [ ] Verify complete isolation between tenants
-  - [ ] Add tenant provisioning API
-  - [ ] Create tenant migration tools
+- [x] **Multi-Tenant Architecture**
+  - [x] Verify complete isolation between tenants
+      - Implemented tenant isolation verification endpoint with comprehensive checks
+      - Added data isolation mode configuration in tenant settings
+      - Created proper validation for isolation status
+  - [x] Add tenant provisioning API
+      - Implemented tenant provisioning endpoint with isolation configuration
+      - Added support for initial tenant settings during provisioning
+      - Incorporated RBAC configuration during tenant creation
+  - [x] Create tenant migration tools
+      - Implemented tenant data export and import functionality
+      - Created tenant-to-tenant migration capability with validation
+      - Added transaction support for consistent migrations
+      - Implemented data integrity validation during migration
   - [ ] *No Frontend Integration Required*
 
 - [x] **RBAC System**
@@ -274,7 +293,11 @@
 1. Complete plugin system
 2. ~~Enhance tax handling for international markets~~ (Completed)
 3. ~~Improve dunning system~~ (Completed)
-4. Enhance webhook subscription management
+4. ~~Implement multi-tenant architecture~~ (Completed)
+   - ~~Added tenant isolation verification~~
+   - ~~Implemented tenant provisioning API~~
+   - ~~Created tenant migration tools~~
+5. Enhance webhook subscription management
 
 - [ ] **Audit Logging**
   - [x] Design and implement comprehensive audit logging for all security events

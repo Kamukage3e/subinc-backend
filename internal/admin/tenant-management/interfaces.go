@@ -2,8 +2,6 @@ package tenant_management
 
 import (
 	"context"
-
-
 )
 
 // TenantService handles core tenant operations
@@ -21,7 +19,6 @@ type TenantService interface {
 
 // All audit logging must use AuditLogger for decoupling and optionality.
 
-
 // TenantSettingsService handles tenant settings operations
 type TenantSettingsService interface {
 	GetTenantSettings(ctx context.Context, tenantID string) (map[string]interface{}, error)
@@ -32,4 +29,19 @@ type TenantSettingsService interface {
 type TenantLifecycleService interface {
 	SetTenantStatus(ctx context.Context, tenantID string, status TenantStatus) error
 	GetTenantStatus(ctx context.Context, tenantID string) (TenantStatus, error)
+}
+
+// TenantMigrationService handles the migration of tenant data
+type TenantMigrationService interface {
+	// MigrateTenant migrates all tenant data from one tenant to another
+	MigrateTenant(ctx context.Context, sourceTenantID, targetTenantID string) error
+
+	// ExportTenantData exports tenant data as a structured format
+	ExportTenantData(ctx context.Context, tenantID string) ([]byte, error)
+
+	// ImportTenantData imports tenant data from a structured format
+	ImportTenantData(ctx context.Context, targetTenantID string, data []byte) error
+
+	// ValidateMigration validates if a migration is possible between tenants
+	ValidateMigration(ctx context.Context, sourceTenantID, targetTenantID string) (bool, map[string]interface{}, error)
 }

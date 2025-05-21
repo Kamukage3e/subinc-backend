@@ -40,15 +40,13 @@ type DatabaseConfig struct {
 
 // ServerConfig holds server related configuration
 type ServerConfig struct {
-	Port              string
-	ReadTimeout       time.Duration
-	WriteTimeout      time.Duration
-	IdleTimeout       time.Duration
-	ShutdownTimeout   time.Duration
-	AllowedOrigins    []string
-	TrustedProxies    []string
-	RateLimit         int
-	RateLimitDuration time.Duration
+	Port            string
+	ReadTimeout     time.Duration
+	WriteTimeout    time.Duration
+	IdleTimeout     time.Duration
+	ShutdownTimeout time.Duration
+	AllowedOrigins  []string
+	TrustedProxies  []string
 }
 
 // RedisConfig holds Redis related configuration
@@ -120,15 +118,13 @@ func LoadConfig(logger *logger.Logger) (*Config, error) {
 		},
 
 		Server: ServerConfig{
-			Port:              getEnv("PORT", "8080"),
-			ReadTimeout:       getEnvAsDuration("SERVER_READ_TIMEOUT", 5*time.Second),
-			WriteTimeout:      getEnvAsDuration("SERVER_WRITE_TIMEOUT", 10*time.Second),
-			IdleTimeout:       getEnvAsDuration("SERVER_IDLE_TIMEOUT", 120*time.Second),
-			ShutdownTimeout:   getEnvAsDuration("SERVER_SHUTDOWN_TIMEOUT", 20*time.Second),
-			AllowedOrigins:    getEnvAsSlice("CORS_ALLOWED_ORIGINS", "*"),
-			TrustedProxies:    getEnvAsSlice("TRUSTED_PROXIES", "127.0.0.1"),
-			RateLimit:         getEnvAsInt("RATE_LIMIT", 100),
-			RateLimitDuration: getEnvAsDuration("RATE_LIMIT_DURATION", time.Minute),
+			Port:            getEnv("PORT", "8080"),
+			ReadTimeout:     getEnvAsDuration("SERVER_READ_TIMEOUT", 5*time.Second),
+			WriteTimeout:    getEnvAsDuration("SERVER_WRITE_TIMEOUT", 10*time.Second),
+			IdleTimeout:     getEnvAsDuration("SERVER_IDLE_TIMEOUT", 120*time.Second),
+			ShutdownTimeout: getEnvAsDuration("SERVER_SHUTDOWN_TIMEOUT", 20*time.Second),
+			AllowedOrigins:  getEnvAsSlice("CORS_ALLOWED_ORIGINS", "*"),
+			TrustedProxies:  getEnvAsSlice("TRUSTED_PROXIES", "127.0.0.1"),
 		},
 
 		Redis: RedisConfig{

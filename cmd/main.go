@@ -29,6 +29,7 @@ import (
 	jwtProvider "github.com/subinc/subinc-backend/internal/pkg/auth/providers/jwt"
 	"github.com/subinc/subinc-backend/internal/pkg/config"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
+	"github.com/subinc/subinc-backend/internal/pkg/middleware"
 	"github.com/subinc/subinc-backend/pkg/rbac"
 	"github.com/subinc/subinc-backend/pkg/session"
 )
@@ -161,6 +162,43 @@ func main() {
 		return c.Next()
 	})
 
+	// Apply global ID hashing middleware for all API endpoints to prevent API ID enumeration
+	// Configure from environment or server config
+	idHashingSecret := os.Getenv("ID_HASHING_SECRET")
+	idHashingSalt := os.Getenv("ID_HASHING_SALT")
+
+	// Try to get from server config
+	hashIDConfig, err := serverConfigService.GetOwnerHashIDConfig(ctx)
+	if err == nil && hashIDConfig.Salt != "" {
+		idHashingSalt = hashIDConfig.Salt
+	}
+
+	// Use defaults if values are still empty
+	if idHashingSecret == "" {
+		idHashingSecret = "change-me-in-production-" + appConfig.ServiceName
+		logr.Warn("Using default ID hashing secret. For production, set ID_HASHING_SECRET env var or configure in server config.")
+	}
+
+	if idHashingSalt == "" {
+		idHashingSalt = "change-me-in-production-salt-" + appConfig.ServiceName
+		logr.Warn("Using default ID hashing salt. For production, set ID_HASHING_SALT env var or configure in server config.")
+	}
+
+	// Apply global API middleware
+	middleware.GlobalAPIMiddleware(app, middleware.APIMiddlewareConfig{
+		// ID hashing configuration
+		IDHashingSecret: idHashingSecret,
+		IDHashingSalt:   idHashingSalt,
+		Logger:          logr,
+		SkipPaths: []string{
+			"/api/v1/health",
+			"/api/v1/db",
+			"/docs",
+			"/swagger.json",
+			"/swagger.yaml",
+		},
+	})
+
 	// Create RBAC store before any route registration
 	rbacStore := &rbac_management.PostgresStore{DB: ownerDBPool}
 	rbac_management.InitGlobalRBACStore(rbacStore)
@@ -271,19 +309,20 @@ func main() {
 	discount.RegisterRoutes(billingRoute, discountHandler, jwtCfg.SecretName)
 
 	// --- PAYMENT ---
+	// Create transaction report adapter
+	transactionReportAdapter := &payment.TransactionServiceAdapter{Store: paymentStore}
+
 	paymentHandler := payment.NewPaymentHandler(
 		&payment.PaymentServiceAdapter{Store: paymentStore},      // PaymentService
 		&payment.RefundServiceAdapter{Store: paymentStore},       // RefundService
 		&payment.ManualRefundServiceAdapter{Store: paymentStore}, // ManualRefundService
 		billingHandler.PaymentMethodService,
-		billingHandler.RateLimitService,
 		serverConfigService,
 		*logr,
 		securityStore,
-		feeServiceAdapter,
-		discountServiceAdapter,
-		subscriptionServiceAdapter,
 		paymentStore,
+		billingHandler.PluginManager,
+		transactionReportAdapter,
 	)
 	payment.RegisterRoutes(billingRoute, paymentHandler, jwtCfg.SecretName)
 
@@ -299,9 +338,8 @@ func main() {
 	accountHandler := &account.AccountHandler{
 		BillingAccountService: &account.BillingAccountServiceAdapter{Store: accountStore},
 		NotificationService:   securityStore,
-		RateLimitService:      &billingHandler.RateLimitService,
 	}
-	account.RegisterRoutes(billingRoute, accountHandler, jwtCfg.SecretName, billingHandler.RateLimitService)
+	account.RegisterRoutes(billingRoute, accountHandler, jwtCfg.SecretName)
 
 	// --- SUBSCRIPTION ---
 	subscriptionStore := &subscription.PostgresStore{DB: ownerDBPool}

@@ -17,20 +17,19 @@ var (
 
 // Service provides runtime CRUD, in-memory cache, and hot-reload for server config.
 type Service struct {
-	store       *Store
-	cache       map[string]ServerConfig
-	mu          sync.RWMutex
-	refresh     time.Duration
-	stopCh      chan struct{}
-
+	store   *Store
+	cache   map[string]ServerConfig
+	mu      sync.RWMutex
+	refresh time.Duration
+	stopCh  chan struct{}
 }
 
 func NewService(store *Store, refresh time.Duration) *Service {
 	s := &Service{
-		store:       store,
-		cache:       make(map[string]ServerConfig),
-		refresh:     refresh,
-		stopCh:      make(chan struct{}),
+		store:   store,
+		cache:   make(map[string]ServerConfig),
+		refresh: refresh,
+		stopCh:  make(chan struct{}),
 	}
 	s.reload(context.Background())
 	go s.autoReload()

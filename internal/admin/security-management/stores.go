@@ -966,58 +966,6 @@ func (s *PostgresStore) UseToken(ctx context.Context, token string, email string
 	return tx.Commit(ctx)
 }
 
-// --- RateLimitService Postgres Implementation ---
-
-func (s *PostgresStore) SetRateLimit(ctx context.Context, cfg RateLimitConfig) (RateLimitConfig, error) {
-	if cfg.Scope == "" || cfg.ScopeID == "" || cfg.Limit <= 0 || cfg.WindowSeconds <= 0 {
-		return RateLimitConfig{}, errors.New("invalid rate limit config")
-	}
-	const upsert = `INSERT INTO rate_limits (id, scope, scope_id, limit, window_seconds, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-		ON CONFLICT (scope, scope_id) DO UPDATE SET limit = $4, window_seconds = $5, updated_at = NOW()
-		RETURNING id, created_at, updated_at`
-	id := cfg.ID
-	if id == "" {
-		id = commonutil.GenerateUUID()
-	}
-	row := s.DB.QueryRow(ctx, upsert, id, cfg.Scope, cfg.ScopeID, cfg.Limit, cfg.WindowSeconds)
-	var createdAt, updatedAt time.Time
-	if err := row.Scan(&id, &createdAt, &updatedAt); err != nil {
-		return RateLimitConfig{}, errors.New("failed to upsert rate limit")
-	}
-	cfg.ID = id
-	cfg.CreatedAt = createdAt
-	cfg.UpdatedAt = updatedAt
-	return cfg, nil
-}
-
-func (s *PostgresStore) GetRateLimit(ctx context.Context, scope, scopeID string) (RateLimitConfig, error) {
-	if scope == "" || scopeID == "" {
-		return RateLimitConfig{}, errors.New("scope and scope_id required")
-	}
-	const q = `SELECT id, scope, scope_id, limit, window_seconds, created_at, updated_at FROM rate_limits WHERE scope = $1 AND scope_id = $2`
-	row := s.DB.QueryRow(ctx, q, scope, scopeID)
-	var cfg RateLimitConfig
-	if err := row.Scan(&cfg.ID, &cfg.Scope, &cfg.ScopeID, &cfg.Limit, &cfg.WindowSeconds, &cfg.CreatedAt, &cfg.UpdatedAt); err != nil {
-		logger.LogError("GetRateLimit: rate limit not found", logger.String("scope", scope), logger.String("scope_id", scopeID), logger.ErrorField(err))
-		return RateLimitConfig{}, errors.New("rate limit not found")
-	}
-	return cfg, nil
-}
-
-func (s *PostgresStore) DeleteRateLimit(ctx context.Context, id string) error {
-	if id == "" {
-		return errors.New("id required")
-	}
-	const q = `DELETE FROM rate_limits WHERE id = $1`
-	_, err := s.DB.Exec(ctx, q, id)
-	if err != nil {
-		logger.LogError("DeleteRateLimit: failed to delete rate limit", logger.String("id", id), logger.ErrorField(err))
-		return errors.New("failed to delete rate limit")
-	}
-	return nil
-}
-
 // --- PasswordService extensions ---
 func hashPassword(password string) (string, error) {
 	if password == "" {
@@ -2073,39 +2021,6 @@ func (s *PostgresStore) SetSessionConfig(ctx context.Context, tenantID string, c
 
 	if err != nil {
 		return wrapDBErr("SetSessionConfig", err)
-	}
-
-	return nil
-}
-
-// SetRateLimitConfig sets rate limit configuration for a specific scope/ID
-func (s *PostgresStore) SetRateLimitConfig(ctx context.Context, config RateLimitConfig) error {
-	if err := config.Validate(); err != nil {
-		return err
-	}
-
-	query := `INSERT INTO rate_limit_configs
-			(scope, scope_id, limit, window_seconds, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6)
-			ON CONFLICT (scope, scope_id) 
-			DO UPDATE SET 
-				limit = $3,
-				window_seconds = $4,
-				updated_at = $6`
-
-	now := time.Now()
-
-	_, err := s.DB.Exec(ctx, query,
-		config.Scope,
-		config.ScopeID,
-		config.Limit,
-		config.WindowSeconds,
-		now,
-		now,
-	)
-
-	if err != nil {
-		return wrapDBErr("SetRateLimitConfig", err)
 	}
 
 	return nil

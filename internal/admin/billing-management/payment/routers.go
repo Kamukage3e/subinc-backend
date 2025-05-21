@@ -8,16 +8,13 @@ import (
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
-func paymentScopeExtractor(c *fiber.Ctx) (string, string) {
-	return "payment", c.Get("X-Payment-ID")
-}
+
 
 // RegisterPaymentRoutes registers payment related routes
 func RegisterRoutes(router fiber.Router, handler *PaymentHandler, jwtSecret string) {
 	route := router.Group(
 		"/payments",
 		security_management.OIDCMiddleware(jwtSecret),
-		security_management.NewRateLimitMiddleware(handler.RateLimitService, paymentScopeExtractor),
 	)
 
 	// Payment endpoints

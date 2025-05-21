@@ -4,9 +4,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func rbacScopeExtractor(c *fiber.Ctx) (string, string) {
-	return "rbac", c.Get("X-RBAC-ID")
-}
 
 // RBACMiddleware enforces RBAC/ABAC for a given resource/action.
 func RBACMiddleware(resource, action string, handler *RBACHandler) fiber.Handler {
@@ -21,9 +18,6 @@ func RBACMiddleware(resource, action string, handler *RBACHandler) fiber.Handler
 // RegisterAdminRBACRoutes enforces RBAC/ABAC by default for owner/admin routes.
 func RegisterAdminRBACRoutes(router fiber.Router, handler *RBACHandler, jwtSecretName string) {
 	rbac := router.Group("/rbac-management") // security_management.OIDCMiddleware(jwtSecretName),
-
-	// Rate limiter middleware commented out
-	// security_management.NewRateLimitMiddleware(handler.RateLimitService, rbacScopeExtractor),
 
 	// Note: Audit logging should be added in main.go to avoid import cycles
 

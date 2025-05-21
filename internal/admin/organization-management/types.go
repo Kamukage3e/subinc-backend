@@ -5,7 +5,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	project_management "github.com/subinc/subinc-backend/internal/admin/project-management"
-	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	user_management "github.com/subinc/subinc-backend/internal/admin/user-management"
 )
@@ -53,7 +53,7 @@ type OrganizationHandler struct {
 	OrganizationService OrganizationService
 	OrgSettingsService  OrgSettingsService
 	UserService         user_management.UserService          // optional, may be nil
-	RateLimitService    security_management.RateLimitService // for distributed rate limiting
+
 	ProjectService      project_management.ProjectService    // optional, may be nil
 	Store               *PostgresStore
 }

@@ -33,7 +33,7 @@ type PaymentHandler struct {
 	DisputeService       DisputeDataStoreInterface // For dispute management
 	EvidenceService      DisputeDataStoreInterface // For dispute evidence management
 	Store                StoreInterface
-	RateLimitService     security_management.RateLimitService
+
 	ConfigService        *server_config.Service
 	Logger               logger.Logger
 	Notify               security_management.NotificationService
@@ -47,7 +47,7 @@ func NewPaymentHandler(
 	refundService RefundService,
 	manualRefundService ManualRefundService,
 	paymentMethodService PaymentMethodService,
-	rateLimitService security_management.RateLimitService,
+
 	configService *server_config.Service,
 	logger logger.Logger,
 	notify security_management.NotificationService,
@@ -60,7 +60,7 @@ func NewPaymentHandler(
 		RefundService:        refundService,
 		PaymentMethodService: paymentMethodService,
 		ManualRefundService:  manualRefundService,
-		RateLimitService:     rateLimitService,
+
 		ConfigService:        configService,
 		Logger:               logger,
 		Notify:               notify,

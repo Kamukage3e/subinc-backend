@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
+
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	user_management "github.com/subinc/subinc-backend/internal/admin/user-management"
 )
@@ -72,14 +72,9 @@ type TenantAdminHandler struct {
 	// AuditLogger records security-relevant tenant operations
 	// Optional for deployments that don't require audit logging
 
-
 	// UserHandler handles delegated user operations
 	// Optional for deployments that don't need user management integration
 	UserHandler *user_management.UserHandler
-
-	// RateLimitService provides rate limiting for tenant operations
-	// Optional for deployments that don't require rate limiting
-	RateLimitService security_management.RateLimitService
 }
 
 // PostgresStore implements persistence layer for tenant operations
@@ -90,7 +85,6 @@ type PostgresStore struct {
 	DB *pgxpool.Pool
 
 	// AuditLogger records security-relevant database operations
-
 
 	// ServerConfigService provides access to server configuration
 	ServerConfigService *server_config.Service

@@ -12,7 +12,7 @@ func NewProjectHandler(store *PostgresStore) *ProjectHandler {
 		Store:                  store,
 		ProjectService:         store,
 		ProjectSettingsService: store,
-		RateLimitService:       nil, // This will be set by the router
+
 	}
 }
 
@@ -166,15 +166,3 @@ func (h *ProjectHandler) UpdateSettings(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"settings": updated})
 }
 
-// getActorID extracts the actor/user id from the request context or headers for audit logging
-func getActorID(c *fiber.Ctx) string {
-	id := c.Get("X-Actor-ID")
-	if id != "" {
-		return id
-	}
-	id = c.Get("X-User-ID")
-	if id != "" {
-		return id
-	}
-	return ""
-}

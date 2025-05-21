@@ -6,15 +6,13 @@ import (
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
-func projectScopeExtractor(c *fiber.Ctx) (string, string) {
-	return "project", c.Get("X-Project-ID")
-}
+
 
 func RegisterRoutes(router fiber.Router, handler *ProjectHandler, jwtSecret string) {
 	route := router.Group(
 		"/projects",
 		security_management.OIDCMiddleware(jwtSecret),
-		security_management.NewRateLimitMiddleware(handler.RateLimitService, projectScopeExtractor),
+
 	)
 	// Projects CRUD
 	route.Post("/", rbacmiddleware.RBACMiddleware("project", "create", nil), handler.CreateProject)

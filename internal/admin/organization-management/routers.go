@@ -12,7 +12,6 @@ func RegisterRoutes(router fiber.Router, handler *OrganizationHandler, jwtSecret
 	route := router.Group(
 		"/organizations",
 		security_management.OIDCMiddleware(jwtSecretName),
-		security_management.NewRateLimitMiddleware(handler.RateLimitService, orgScopeExtractor),
 	)
 
 	route.Post("/", rbacmiddleware.RBACMiddleware("organization", "create", nil), handler.CreateOrganization)
@@ -22,8 +21,4 @@ func RegisterRoutes(router fiber.Router, handler *OrganizationHandler, jwtSecret
 	route.Delete("/:id", rbacmiddleware.RBACMiddleware("organization", "delete", nil), handler.DeleteOrganization)
 	route.Get("/:id/settings", rbacmiddleware.RBACMiddleware("organization-settings", "read", nil), handler.GetSettings)
 	route.Put("/:id/settings", rbacmiddleware.RBACMiddleware("organization-settings", "update", nil), handler.UpdateSettings)
-}
-
-func orgScopeExtractor(c *fiber.Ctx) (string, string) {
-	return "org", c.Get("X-Org-ID")
 }

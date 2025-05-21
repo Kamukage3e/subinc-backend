@@ -7,9 +7,6 @@ import (
 	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
-func userScopeExtractor(c *fiber.Ctx) (string, string) {
-	return "user", c.Get("X-User-ID")
-}
 
 // RegisterRoutes registers all user management routes
 // Uses RESTful API design principles:

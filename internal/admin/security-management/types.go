@@ -46,7 +46,6 @@ type SecurityHandler struct {
 	PasswordResetTokenService   PasswordResetTokenService
 	SessionService              SessionService
 
-	RateLimitService            RateLimitService
 	APIKeyService               APIKeyService
 	DeviceService               DeviceService
 	BreachService               BreachService
@@ -199,18 +198,6 @@ type PasswordResetToken struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// RateLimitConfig represents a rate limit for a tenant/org/user
-// Scope: "tenant", "org", or "user"
-type RateLimitConfig struct {
-	ID            string    `json:"id"`
-	Scope         string    `json:"scope"`
-	ScopeID       string    `json:"scope_id"`
-	Limit         int       `json:"limit"`
-	WindowSeconds int       `json:"window_seconds"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-}
-
 type OAuthConfig struct {
 	Google struct {
 		ClientID     string   `json:"client_id"`
@@ -226,7 +213,7 @@ type SAMLConfig struct {
 	ACSURL      string `json:"acs_url"`
 }
 
-// NotificationConfig, RateLimitConfig, etc. already present, add Validate() methods
+// NotificationConfig, etc. already present, add Validate() methods
 func (c NotificationConfig) Validate() error {
 	if c.TenantID == "" {
 		return errors.New("tenant_id required")
@@ -236,22 +223,6 @@ func (c NotificationConfig) Validate() error {
 	}
 	if len(c.Recipients) == 0 {
 		return errors.New("at least one recipient required")
-	}
-	return nil
-}
-
-func (c RateLimitConfig) Validate() error {
-	if c.Scope == "" {
-		return errors.New("scope required")
-	}
-	if c.ScopeID == "" {
-		return errors.New("scope_id required")
-	}
-	if c.Limit <= 0 {
-		return errors.New("limit must be > 0")
-	}
-	if c.WindowSeconds <= 0 {
-		return errors.New("window_seconds must be > 0")
 	}
 	return nil
 }

@@ -13,7 +13,6 @@ import (
 type AccountHandler struct {
 	BillingAccountService BillingAccountService
 	NotificationService   security_management.NotificationService
-	RateLimitService      *security_management.RateLimitService
 }
 
 type UserBillingAccount struct {

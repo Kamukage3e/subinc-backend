@@ -1,8 +1,6 @@
 package billing_management
 
 import (
-	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -11,7 +9,6 @@ import (
 	discount "github.com/subinc/subinc-backend/internal/admin/billing-management/discount"
 	payment "github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
 	tax "github.com/subinc/subinc-backend/internal/admin/billing-management/tax"
-	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
 )
@@ -34,12 +31,12 @@ type BillingAdminHandler struct {
 	InvoiceExportService       InvoiceExportService
 	Store                      *PostgresStore
 	PaymentStore               payment.StoreInterface
-	AuditLogger                BillingAuditLogger                      // use interface for audit logging
-	RateLimitService           security_management.RateLimitService    // for distributed rate limiting
-	ConfigService              *server_config.Service                  // for fetching secrets, keys, and static configs from server-config
-	Logger                     *logger.Logger                          // add logger for webhook and handler logging
-	Notify                     security_management.NotificationService // add notification service for webhook and event notifications
-	PluginManager              PluginManager                           // for managing hot-pluggable billing plugins
+	AuditLogger                BillingAuditLogger     // use interface for audit logging
+	ConfigService              *server_config.Service // for fetching secrets, keys, and static configs from server-config
+	Logger                     *logger.Logger
+	PluginManager              *plugin.Manager                        // plugin manager for billing plugins
+	InvoiceValidationService   InvoiceValidationService               // for invoice validation
+	Notify                     billing_management.NotificationService // for notifications
 }
 
 // Account represents a billing account
@@ -204,7 +201,7 @@ func (a *InvoiceAdjustment) Validate() *Error {
 	return nil
 }
 
-// Add tenant-aware fields, API metering, audit, currency, region, localization, webhooks, SLA, rate limiting, plugin types
+// Add tenant-aware fields, API metering, audit, currency, region, localization, webhooks, SLA, plugin types
 
 // APIUsage tracks per-tenant API usage for metering and billing
 // All fields are required for SaaS metering and analytics
@@ -245,17 +242,6 @@ type APIKeyRotation struct {
 	TenantID  string    `json:"tenant_id"`
 	RotatedAt time.Time `json:"rotated_at"`
 	ActorID   string    `json:"actor_id"`
-}
-
-// RateLimit defines per-tenant or per-key rate limiting for APIs
-type RateLimit struct {
-	ID        string    `json:"id"`
-	TenantID  string    `json:"tenant_id"`
-	APIKeyID  string    `json:"api_key_id"`
-	Limit     int64     `json:"limit"`
-	Period    string    `json:"period"` // e.g., second, minute, hour, day
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // SLA defines per-tenant service level agreements
@@ -516,400 +502,4 @@ type InvoicePluginConfig struct {
 // Address represents a billing address for tax calculation
 // All fields are required for tax compliance
 type Address struct {
-	ID         string `json:"id"`
-	Line1      string `json:"line1"`
-	Line2      string `json:"line2,omitempty"`
-	City       string `json:"city"`
-	State      string `json:"state"`
-	PostalCode string `json:"postal_code"`
-	Country    string `json:"country"` // ISO 3166-1 alpha-2
-	Validated  bool   `json:"validated"`
-}
-
-// TaxLine represents a single tax applied to an invoice
-// All fields are required for tax compliance
-type TaxLine struct {
-	ID           string  `json:"id"`
-	InvoiceID    string  `json:"invoice_id"`
-	TaxType      string  `json:"tax_type"` // e.g., VAT, GST, Sales Tax
-	TaxRate      float64 `json:"tax_rate"`
-	TaxAmount    float64 `json:"tax_amount"`
-	Jurisdiction string  `json:"jurisdiction"`
-	TaxID        string  `json:"tax_id,omitempty"` // e.g., VAT number
-	Exempt       bool    `json:"exempt"`
-	Reason       string  `json:"reason,omitempty"` // reason for exemption
-}
-
-// DefaultPluginManager implements the PluginManager interface.
-type DefaultPluginManager struct {
-	invoicePlugins      map[string]InvoicePlugin
-	paymentPlugins      map[string]PaymentPlugin
-	taxPlugins          map[string]TaxPlugin
-	subscriptionPlugins map[string]SubscriptionPlugin
-	feePlugins          map[string]FeePlugin
-	accountPlugins      map[string]AccountPlugin
-	logger              *logger.Logger
-}
-
-// NewPluginManager creates a new DefaultPluginManager
-func NewPluginManager(logger *logger.Logger) *DefaultPluginManager {
-	// Use the provided logger or keep it nil - the service that uses the plugin manager
-	// should always provide a logger, so we don't create one here to avoid package cycles
-	return &DefaultPluginManager{
-		invoicePlugins:      make(map[string]InvoicePlugin),
-		paymentPlugins:      make(map[string]PaymentPlugin),
-		taxPlugins:          make(map[string]TaxPlugin),
-		subscriptionPlugins: make(map[string]SubscriptionPlugin),
-		feePlugins:          make(map[string]FeePlugin),
-		accountPlugins:      make(map[string]AccountPlugin),
-		logger:              logger,
-	}
-}
-
-// RegisterPlugin registers a plugin of a specific type
-func (pm *DefaultPluginManager) RegisterPlugin(pluginType string, plugin interface{}) error {
-	if pluginType == "" {
-		return fmt.Errorf("plugin type cannot be empty")
-	}
-
-	if plugin == nil {
-		return fmt.Errorf("plugin cannot be nil")
-	}
-
-	// Use reflection to get the plugin's Name() method
-	pluginValue := reflect.ValueOf(plugin)
-	nameMethod := pluginValue.MethodByName("Name")
-	if !nameMethod.IsValid() {
-		return fmt.Errorf("plugin must have a Name() method")
-	}
-
-	nameResult := nameMethod.Call([]reflect.Value{})
-	if len(nameResult) == 0 {
-		return fmt.Errorf("plugin Name() method did not return a result")
-	}
-
-	name := nameResult[0].String()
-	if name == "" {
-		return fmt.Errorf("plugin name cannot be empty")
-	}
-
-	var version string
-	if versionMethod := pluginValue.MethodByName("Version"); versionMethod.IsValid() {
-		versionResult := versionMethod.Call([]reflect.Value{})
-		if len(versionResult) > 0 {
-			version = versionResult[0].String()
-		}
-	}
-
-	switch pluginType {
-	case "invoice":
-		invoicePlugin, ok := plugin.(InvoicePlugin)
-		if !ok {
-			return fmt.Errorf("plugin is not an InvoicePlugin")
-		}
-
-		if _, exists := pm.invoicePlugins[name]; exists {
-			return fmt.Errorf("invoice plugin %s is already registered", name)
-		}
-
-		pm.invoicePlugins[name] = invoicePlugin
-
-	case "payment":
-		paymentPlugin, ok := plugin.(PaymentPlugin)
-		if !ok {
-			return fmt.Errorf("plugin is not a PaymentPlugin")
-		}
-
-		if _, exists := pm.paymentPlugins[name]; exists {
-			return fmt.Errorf("payment plugin %s is already registered", name)
-		}
-
-		pm.paymentPlugins[name] = paymentPlugin
-
-	case "tax":
-		taxPlugin, ok := plugin.(TaxPlugin)
-		if !ok {
-			return fmt.Errorf("plugin is not a TaxPlugin")
-		}
-
-		if _, exists := pm.taxPlugins[name]; exists {
-			return fmt.Errorf("tax plugin %s is already registered", name)
-		}
-
-		pm.taxPlugins[name] = taxPlugin
-
-	case "subscription":
-		subscriptionPlugin, ok := plugin.(SubscriptionPlugin)
-		if !ok {
-			return fmt.Errorf("plugin is not a SubscriptionPlugin")
-		}
-
-		if _, exists := pm.subscriptionPlugins[name]; exists {
-			return fmt.Errorf("subscription plugin %s is already registered", name)
-		}
-
-		pm.subscriptionPlugins[name] = subscriptionPlugin
-
-	case "fee":
-		feePlugin, ok := plugin.(FeePlugin)
-		if !ok {
-			return fmt.Errorf("plugin is not a FeePlugin")
-		}
-
-		if _, exists := pm.feePlugins[name]; exists {
-			return fmt.Errorf("fee plugin %s is already registered", name)
-		}
-
-		pm.feePlugins[name] = feePlugin
-
-	case "account":
-		accountPlugin, ok := plugin.(AccountPlugin)
-		if !ok {
-			return fmt.Errorf("plugin is not an AccountPlugin")
-		}
-
-		if _, exists := pm.accountPlugins[name]; exists {
-			return fmt.Errorf("account plugin %s is already registered", name)
-		}
-
-		pm.accountPlugins[name] = accountPlugin
-
-	default:
-		return fmt.Errorf("unsupported plugin type: %s", pluginType)
-	}
-
-	pm.logger.Info(fmt.Sprintf("Registered %s plugin: %s (%s)", pluginType, name, version))
-	return nil
-}
-
-// UnregisterPlugin unregisters a plugin of a specific type
-func (pm *DefaultPluginManager) UnregisterPlugin(pluginType string, pluginName string) error {
-	if pluginType == "" {
-		return fmt.Errorf("plugin type cannot be empty")
-	}
-
-	if pluginName == "" {
-		return fmt.Errorf("plugin name cannot be empty")
-	}
-
-	var exists bool
-
-	switch pluginType {
-	case "invoice":
-		_, exists = pm.invoicePlugins[pluginName]
-		if !exists {
-			return fmt.Errorf("invoice plugin %s is not registered", pluginName)
-		}
-		delete(pm.invoicePlugins, pluginName)
-
-	case "payment":
-		_, exists = pm.paymentPlugins[pluginName]
-		if !exists {
-			return fmt.Errorf("payment plugin %s is not registered", pluginName)
-		}
-		delete(pm.paymentPlugins, pluginName)
-
-	case "tax":
-		_, exists = pm.taxPlugins[pluginName]
-		if !exists {
-			return fmt.Errorf("tax plugin %s is not registered", pluginName)
-		}
-		delete(pm.taxPlugins, pluginName)
-
-	case "subscription":
-		_, exists = pm.subscriptionPlugins[pluginName]
-		if !exists {
-			return fmt.Errorf("subscription plugin %s is not registered", pluginName)
-		}
-		delete(pm.subscriptionPlugins, pluginName)
-
-	case "fee":
-		_, exists = pm.feePlugins[pluginName]
-		if !exists {
-			return fmt.Errorf("fee plugin %s is not registered", pluginName)
-		}
-		delete(pm.feePlugins, pluginName)
-
-	case "account":
-		_, exists = pm.accountPlugins[pluginName]
-		if !exists {
-			return fmt.Errorf("account plugin %s is not registered", pluginName)
-		}
-		delete(pm.accountPlugins, pluginName)
-
-	default:
-		return fmt.Errorf("unsupported plugin type: %s", pluginType)
-	}
-
-	pm.logger.Info(fmt.Sprintf("Unregistered %s plugin: %s", pluginType, pluginName))
-	return nil
-}
-
-// GetInvoicePlugin returns an invoice plugin by name
-func (pm *DefaultPluginManager) GetInvoicePlugin(name string) (InvoicePlugin, bool) {
-	plugin, exists := pm.invoicePlugins[name]
-	return plugin, exists
-}
-
-// GetPaymentPlugin returns a payment plugin by name
-func (pm *DefaultPluginManager) GetPaymentPlugin(name string) (PaymentPlugin, bool) {
-	plugin, exists := pm.paymentPlugins[name]
-	return plugin, exists
-}
-
-// GetTaxPlugin returns a tax plugin by name
-func (pm *DefaultPluginManager) GetTaxPlugin(name string) (TaxPlugin, bool) {
-	plugin, exists := pm.taxPlugins[name]
-	return plugin, exists
-}
-
-// ListPlugins returns a list of registered plugins by type
-func (pm *DefaultPluginManager) ListPlugins(pluginType string) []string {
-	if pluginType == "" {
-		return []string{}
-	}
-
-	var pluginNames []string
-
-	switch pluginType {
-	case "invoice":
-		pluginNames = make([]string, 0, len(pm.invoicePlugins))
-		for name := range pm.invoicePlugins {
-			pluginNames = append(pluginNames, name)
-		}
-	case "payment":
-		pluginNames = make([]string, 0, len(pm.paymentPlugins))
-		for name := range pm.paymentPlugins {
-			pluginNames = append(pluginNames, name)
-		}
-	case "tax":
-		pluginNames = make([]string, 0, len(pm.taxPlugins))
-		for name := range pm.taxPlugins {
-			pluginNames = append(pluginNames, name)
-		}
-	case "subscription":
-		pluginNames = make([]string, 0, len(pm.subscriptionPlugins))
-		for name := range pm.subscriptionPlugins {
-			pluginNames = append(pluginNames, name)
-		}
-	case "fee":
-		pluginNames = make([]string, 0, len(pm.feePlugins))
-		for name := range pm.feePlugins {
-			pluginNames = append(pluginNames, name)
-		}
-	case "account":
-		pluginNames = make([]string, 0, len(pm.accountPlugins))
-		for name := range pm.accountPlugins {
-			pluginNames = append(pluginNames, name)
-		}
-	}
-
-	return pluginNames
-}
-
-// InitializePlugins initializes all registered plugins with provided configuration
-func (pm *DefaultPluginManager) InitializePlugins(config map[string]interface{}) error {
-	if config == nil {
-		return fmt.Errorf("plugin configuration cannot be nil")
-	}
-
-	// Initialize invoice plugins
-	for name, plugin := range pm.invoicePlugins {
-		if err := plugin.Initialize(config); err != nil {
-			pm.logger.Error(fmt.Sprintf("Failed to initialize invoice plugin %s: %v", name, err))
-			return fmt.Errorf("failed to initialize invoice plugin %s: %w", name, err)
-		}
-		pm.logger.Info(fmt.Sprintf("Initialized invoice plugin: %s", name))
-	}
-
-	// Initialize payment plugins
-	for name, plugin := range pm.paymentPlugins {
-		if err := plugin.Initialize(config); err != nil {
-			pm.logger.Error(fmt.Sprintf("Failed to initialize payment plugin %s: %v", name, err))
-			return fmt.Errorf("failed to initialize payment plugin %s: %w", name, err)
-		}
-		pm.logger.Info(fmt.Sprintf("Initialized payment plugin: %s", name))
-	}
-
-	// Initialize tax plugins
-	for name, plugin := range pm.taxPlugins {
-		if err := plugin.Initialize(config); err != nil {
-			pm.logger.Error(fmt.Sprintf("Failed to initialize tax plugin %s: %v", name, err))
-			return fmt.Errorf("failed to initialize tax plugin %s: %w", name, err)
-		}
-		pm.logger.Info(fmt.Sprintf("Initialized tax plugin: %s", name))
-	}
-
-	// Initialize subscription plugins
-	for name, plugin := range pm.subscriptionPlugins {
-		if err := plugin.Initialize(config); err != nil {
-			pm.logger.Error(fmt.Sprintf("Failed to initialize subscription plugin %s: %v", name, err))
-			return fmt.Errorf("failed to initialize subscription plugin %s: %w", name, err)
-		}
-		pm.logger.Info(fmt.Sprintf("Initialized subscription plugin: %s", name))
-	}
-
-	// Initialize fee plugins
-	for name, plugin := range pm.feePlugins {
-		if err := plugin.Initialize(config); err != nil {
-			pm.logger.Error(fmt.Sprintf("Failed to initialize fee plugin %s: %v", name, err))
-			return fmt.Errorf("failed to initialize fee plugin %s: %w", name, err)
-		}
-		pm.logger.Info(fmt.Sprintf("Initialized fee plugin: %s", name))
-	}
-
-	// Initialize account plugins
-	for name, plugin := range pm.accountPlugins {
-		if err := plugin.Initialize(config); err != nil {
-			pm.logger.Error(fmt.Sprintf("Failed to initialize account plugin %s: %v", name, err))
-			return fmt.Errorf("failed to initialize account plugin %s: %w", name, err)
-		}
-		pm.logger.Info(fmt.Sprintf("Initialized account plugin: %s", name))
-	}
-
-	return nil
-}
-
-// GetPlugin returns a plugin by type and name
-func (pm *DefaultPluginManager) GetPlugin(pluginType string, name string) (interface{}, bool) {
-	switch pluginType {
-	case "invoice":
-		plugin, exists := pm.GetInvoicePlugin(name)
-		return plugin, exists
-	case "payment":
-		plugin, exists := pm.GetPaymentPlugin(name)
-		return plugin, exists
-	case "tax":
-		plugin, exists := pm.GetTaxPlugin(name)
-		return plugin, exists
-	case "subscription":
-		plugin, exists := pm.GetSubscriptionPlugin(name)
-		return plugin, exists
-	case "fee":
-		plugin, exists := pm.GetFeePlugin(name)
-		return plugin, exists
-	case "account":
-		plugin, exists := pm.GetAccountPlugin(name)
-		return plugin, exists
-	default:
-		return nil, false
-	}
-}
-
-// GetSubscriptionPlugin returns a subscription plugin by name
-func (pm *DefaultPluginManager) GetSubscriptionPlugin(name string) (SubscriptionPlugin, bool) {
-	plugin, exists := pm.subscriptionPlugins[name]
-	return plugin, exists
-}
-
-// GetFeePlugin returns a fee plugin by name
-func (pm *DefaultPluginManager) GetFeePlugin(name string) (FeePlugin, bool) {
-	plugin, exists := pm.feePlugins[name]
-	return plugin, exists
-}
-
-// GetAccountPlugin returns an account plugin by name
-func (pm *DefaultPluginManager) GetAccountPlugin(name string) (AccountPlugin, bool) {
-	plugin, exists := pm.accountPlugins[name]
-	return plugin, exists
-}
+	ID         string `

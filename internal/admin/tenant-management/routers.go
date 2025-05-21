@@ -3,15 +3,10 @@ package tenant_management
 import (
 	"github.com/gofiber/fiber/v2"
 
-	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
-
+	rbacmiddleware "github.com/subinc/subinc-backend/internal/pkg/rbacmiddleware"
 )
 
-// tenantScopeExtractor extracts tenant-specific identifiers for rate limiting
-func tenantScopeExtractor(c *fiber.Ctx) (string, string) {
-	return "tenant", c.Get("X-Tenant-ID")
-}
 
 // RegisterRoutes registers all tenant management routes
 // Uses standard RESTful conventions:
@@ -24,9 +19,8 @@ func RegisterRoutes(router fiber.Router, handler *TenantAdminHandler, jwtSecret 
 	route := router.Group(
 		"/tenant-management",
 		security_management.OIDCMiddleware(jwtSecret),
-		security_management.NewRateLimitMiddleware(handler.RateLimitService, tenantScopeExtractor),
-
 	)
+
 	// Tenants CRUD
 	route.Post("/tenants", rbacmiddleware.RBACMiddleware("tenant", "create", nil), handler.CreateTenant)
 	route.Get("/tenants", rbacmiddleware.RBACMiddleware("tenant", "read", nil), handler.ListTenants)
@@ -41,4 +35,13 @@ func RegisterRoutes(router fiber.Router, handler *TenantAdminHandler, jwtSecret 
 	// Status
 	route.Get("/tenants/:id/status", rbacmiddleware.RBACMiddleware("tenant-status", "read", nil), handler.GetTenantStatus)
 	route.Put("/tenants/:id/status", rbacmiddleware.RBACMiddleware("tenant-status", "update", nil), handler.SetTenantStatus)
+
+	// Tenant Provisioning and Isolation
+	route.Post("/tenants/provision", rbacmiddleware.RBACMiddleware("tenant", "create", nil), handler.ProvisionTenant)
+	route.Get("/tenants/:id/verify-isolation", rbacmiddleware.RBACMiddleware("tenant", "read", nil), handler.VerifyTenantIsolation)
+
+	// Tenant Migration
+	route.Post("/tenants/:id/migrate", rbacmiddleware.RBACMiddleware("tenant-migration", "create", nil), handler.MigrateTenant)
+	route.Get("/tenants/:id/export", rbacmiddleware.RBACMiddleware("tenant-migration", "read", nil), handler.ExportTenantData)
+	route.Post("/tenants/:id/import", rbacmiddleware.RBACMiddleware("tenant-migration", "create", nil), handler.ImportTenantData)
 }

@@ -116,12 +116,6 @@ type PasswordResetTokenService interface {
 	UseToken(ctx context.Context, token string, email string, password string) error
 }
 
-type RateLimitService interface {
-	SetRateLimit(ctx context.Context, cfg RateLimitConfig) (RateLimitConfig, error)
-	GetRateLimit(ctx context.Context, scope, scopeID string) (RateLimitConfig, error)
-	DeleteRateLimit(ctx context.Context, id string) error
-}
-
 type NotificationProvider interface {
 	Send(ctx context.Context, to []string, event string, details map[string]interface{}) error
 	Status(ctx context.Context) (string, error)
@@ -150,7 +144,6 @@ type ConfigurationService interface {
 	SetSAMLConfig(ctx context.Context, tenantID string, config SAMLConfigDB) error
 	GetAuthTypeConfig(ctx context.Context, tenantID string) (AuthTypeConfigDB, error)
 	SetAuthTypeConfig(ctx context.Context, tenantID string, config AuthTypeConfigDB) error
-	SetRateLimitConfig(ctx context.Context, config RateLimitConfig) error
 }
 
 // NotificationQueueService handles notification queueing and processing
