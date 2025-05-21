@@ -3,15 +3,19 @@ package fee
 import (
 	"context"
 	"fmt"
+
+	"github.com/subinc/subinc-backend/internal/pkg/logger"
+	"github.com/subinc/subinc-backend/internal/pkg/plugin"
 )
 
 type FeeServiceAdapter struct {
-	Store *PostgresStore
+	Store         *PostgresStore
+	PluginManager *plugin.Manager
 }
 
 // NewFeeServiceAdapter creates a new fee service adapter
-func NewFeeServiceAdapter(store *PostgresStore) *FeeServiceAdapter {
-	return &FeeServiceAdapter{Store: store}
+func NewFeeServiceAdapter(store *PostgresStore, pluginManager *plugin.Manager) *FeeServiceAdapter {
+	return &FeeServiceAdapter{Store: store, PluginManager: pluginManager}
 }
 
 // CreateFee creates a new fee in the system
@@ -44,7 +48,7 @@ func (a *FeeServiceAdapter) SetFeePluginConfig(ctx context.Context, tenantID, pl
 	return a.Store.SetFeePluginConfig(ctx, tenantID, pluginName)
 }
 
-// GetFeePluginConfig retrieves the fee plugin configuration for a tenant
+// GetFeePlugin retrieves the fee plugin configuration for a tenant
 func (a *FeeServiceAdapter) GetFeePluginConfig(ctx context.Context, tenantID string) (FeePluginConfig, error) {
 	return a.Store.GetFeePluginConfig(ctx, tenantID)
 }
@@ -63,47 +67,54 @@ func (a *FeeServiceAdapter) ListFeePlugins(ctx context.Context) ([]string, error
 // GetFeePlugin returns a specific fee plugin by name
 func (a *FeeServiceAdapter) GetFeePlugin(ctx context.Context, pluginName string) (FeePlugin, error) {
 	if pluginName == "" {
+		logger.LogError("GetFeePlugin: plugin name required")
 		return nil, fmt.Errorf("plugin name is required")
 	}
-
-	plugin, exists := FeePlugins.Lookup(pluginName)
-	if !exists {
-		return nil, fmt.Errorf("fee plugin '%s' not found", pluginName)
+	p, ok := a.PluginManager.GetPlugin("fee", pluginName)
+	if !ok {
+		logger.LogError("GetFeePlugin: plugin not found", logger.String("plugin_name", pluginName))
+		return nil, fmt.Errorf("fee plugin not found")
 	}
-
+	plugin, ok := p.(FeePlugin)
+	if !ok {
+		logger.LogError("GetFeePlugin: invalid plugin type", logger.String("plugin_name", pluginName))
+		return nil, fmt.Errorf("invalid plugin type")
+	}
 	return plugin, nil
 }
 
 // RegisterFeePlugin registers a plugin with specified configuration
 func (a *FeeServiceAdapter) RegisterFeePlugin(ctx context.Context, pluginName string, config map[string]interface{}) error {
 	if pluginName == "" {
+		logger.LogError("RegisterFeePlugin: plugin name required")
 		return fmt.Errorf("plugin name is required")
 	}
-
-	plugin, exists := FeePlugins.Lookup(pluginName)
-	if !exists {
-		return fmt.Errorf("fee plugin '%s' not found", pluginName)
+	p, ok := a.PluginManager.GetPlugin("fee", pluginName)
+	if !ok {
+		logger.LogError("RegisterFeePlugin: plugin not found", logger.String("plugin_name", pluginName))
+		return fmt.Errorf("fee plugin not found")
 	}
-
-	// Initialize the plugin with configuration
+	plugin, ok := p.(FeePlugin)
+	if !ok {
+		logger.LogError("RegisterFeePlugin: invalid plugin type", logger.String("plugin_name", pluginName))
+		return fmt.Errorf("invalid plugin type")
+	}
 	if err := plugin.Initialize(config); err != nil {
-		return fmt.Errorf("failed to initialize plugin: %v", err)
+		logger.LogError("RegisterFeePlugin: failed to initialize plugin", logger.String("plugin_name", pluginName), logger.ErrorField(err))
+		return fmt.Errorf("failed to initialize plugin")
 	}
-
 	return nil
 }
 
 // UnregisterFeePlugin removes a plugin from the registry
 func (a *FeeServiceAdapter) UnregisterFeePlugin(ctx context.Context, pluginName string) error {
 	if pluginName == "" {
+		logger.LogError("UnregisterFeePlugin: plugin name required")
 		return fmt.Errorf("plugin name is required")
 	}
-
-	_, exists := FeePlugins.Lookup(pluginName)
-	if !exists {
-		return fmt.Errorf("fee plugin '%s' not found", pluginName)
+	if err := a.PluginManager.UnregisterPlugin("fee", pluginName); err != nil {
+		logger.LogError("UnregisterFeePlugin: failed", logger.String("plugin_name", pluginName), logger.ErrorField(err))
+		return fmt.Errorf("failed to unregister plugin")
 	}
-
-	FeePlugins.Unregister(pluginName)
 	return nil
 }

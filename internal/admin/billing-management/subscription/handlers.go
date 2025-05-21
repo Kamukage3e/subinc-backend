@@ -326,7 +326,11 @@ func (h *SubscriptionHandler) UpgradeNowSubscription(c *fiber.Ctx) error {
 
 // ListSubscriptionPlugins returns all registered subscription plugins
 func (h *SubscriptionHandler) ListSubscriptionPlugins(c *fiber.Ctx) error {
-	pluginNames := h.SubscriptionService.ListSubscriptionPlugins()
+	pluginNames, err := h.SubscriptionService.ListSubscriptionPlugins(c.Context())
+	if err != nil {
+		logger.LogError("ListSubscriptionPlugins: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
+	}
 	if len(pluginNames) == 0 {
 		logger.LogInfo("ListSubscriptionPlugins: no plugins found")
 	}
@@ -341,10 +345,10 @@ func (h *SubscriptionHandler) GetSubscriptionPlugin(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
 
-	_, exists := h.SubscriptionService.GetSubscriptionPlugin(pluginName)
-	if !exists {
-		logger.LogError("GetSubscriptionPlugin: plugin not found", logger.String("plugin_name", pluginName))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Resource not found"})
+	_, err := h.SubscriptionService.GetSubscriptionPlugin(c.Context(), pluginName)
+	if err != nil {
+		logger.LogError("GetSubscriptionPlugin: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 
 	return c.JSON(fiber.Map{
@@ -367,7 +371,7 @@ func (h *SubscriptionHandler) ConfigureSubscriptionPlugin(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
 
-	if err := h.SubscriptionService.ConfigureSubscriptionPlugin(pluginName, config); err != nil {
+	if err := h.SubscriptionService.ConfigureSubscriptionPlugin(c.Context(), pluginName, config); err != nil {
 		if err == ErrPluginNotFound {
 			logger.LogError("ConfigureSubscriptionPlugin: plugin not found", logger.String("plugin_name", pluginName))
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Resource not found"})
@@ -390,7 +394,7 @@ func (h *SubscriptionHandler) DisableSubscriptionPlugin(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required parameter"})
 	}
 
-	if err := h.SubscriptionService.DisableSubscriptionPlugin(pluginName); err != nil {
+	if err := h.SubscriptionService.DisableSubscriptionPlugin(c.Context(), pluginName); err != nil {
 		if err == ErrPluginNotFound {
 			logger.LogError("DisableSubscriptionPlugin: plugin not found", logger.String("plugin_name", pluginName))
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Resource not found"})

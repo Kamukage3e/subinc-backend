@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -922,4 +924,164 @@ func (s *Service) SetOwnerRBACConfig(ctx context.Context, rbacCfg RBACConfig, up
 	}
 
 	return s.Set(ctx, "owner_admin_rbac_config", string(val), updatedBy)
+}
+
+// GetPluginSystemConfig fetches the plugin system configuration
+func (s *Service) GetPluginSystemConfig(ctx context.Context) (*PluginSystemConfig, error) {
+	cfg, err := s.Get(ctx, "plugin_system")
+	if err != nil {
+		return nil, err
+	}
+
+	var pluginConfig PluginSystemConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &pluginConfig); err != nil {
+		return nil, fmt.Errorf("failed to parse plugin system config: %w", err)
+	}
+
+	return &pluginConfig, nil
+}
+
+// UpdatePluginSystemConfig updates the plugin system configuration
+func (s *Service) UpdatePluginSystemConfig(ctx context.Context, config *PluginSystemConfig) error {
+	if config == nil {
+		return errors.New("config cannot be nil")
+	}
+
+	configBytes, err := json.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal plugin system config: %w", err)
+	}
+
+	// Save to the config store
+	_, err = s.Set(ctx, "plugin_system", string(configBytes), "system")
+	return err
+}
+
+// GetPluginConfig fetches configuration for a specific plugin type
+func (s *Service) GetPluginConfig(ctx context.Context, pluginType string) (*PluginConfig, error) {
+	configKey := fmt.Sprintf("plugin_%s", pluginType)
+	cfg, err := s.Get(ctx, configKey)
+	if err != nil {
+		// If not found, try to get from the system config
+		systemCfg, sysErr := s.GetPluginSystemConfig(ctx)
+		if sysErr != nil {
+			return nil, err
+		}
+
+		// Return the appropriate config based on plugin type
+		switch pluginType {
+		case "invoice":
+			return &systemCfg.Invoice, nil
+		case "payment":
+			return &systemCfg.Payment, nil
+		case "tax":
+			return &systemCfg.Tax, nil
+		case "fee":
+			return &systemCfg.Fee, nil
+		case "subscription":
+			return &systemCfg.Subscription, nil
+		case "account":
+			return &systemCfg.Account, nil
+		default:
+			return nil, fmt.Errorf("unknown plugin type: %s", pluginType)
+		}
+	}
+
+	var pluginConfig PluginConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &pluginConfig); err != nil {
+		return nil, fmt.Errorf("failed to parse plugin config: %w", err)
+	}
+
+	return &pluginConfig, nil
+}
+
+// UpdatePluginConfig updates configuration for a specific plugin type
+func (s *Service) UpdatePluginConfig(ctx context.Context, pluginType string, config *PluginConfig) error {
+	if config == nil {
+		return errors.New("config cannot be nil")
+	}
+
+	configKey := fmt.Sprintf("plugin_%s", pluginType)
+	configBytes, err := json.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal plugin config: %w", err)
+	}
+
+	// Save to the config store
+	_, err = s.Set(ctx, configKey, string(configBytes), "system")
+	return err
+}
+
+// GetSecretManagerConfig fetches the secret manager configuration
+func (s *Service) GetSecretManagerConfig(ctx context.Context) (*SecretManagerConfig, error) {
+	cfg, err := s.Get(ctx, "secret_manager")
+	if err != nil {
+		return nil, err
+	}
+
+	var secretConfig SecretManagerConfig
+	if err := json.Unmarshal([]byte(cfg.Value), &secretConfig); err != nil {
+		return nil, fmt.Errorf("failed to parse secret manager config: %w", err)
+	}
+
+	return &secretConfig, nil
+}
+
+// UpdateSecretManagerConfig updates the secret manager configuration
+func (s *Service) UpdateSecretManagerConfig(ctx context.Context, config *SecretManagerConfig) error {
+	if config == nil {
+		return errors.New("config cannot be nil")
+	}
+
+	configBytes, err := json.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal secret manager config: %w", err)
+	}
+
+	// Save to the config store
+	_, err = s.Set(ctx, "secret_manager", string(configBytes), "system")
+	return err
+}
+
+// GetSecretValue fetches a secret value from the configured secret provider
+func (s *Service) GetSecretValue(ctx context.Context, secretName string) (string, error) {
+	// First try to get directly from the config store (legacy/simple mode)
+	secretKey := fmt.Sprintf("secret_%s", secretName)
+	cfg, err := s.Get(ctx, secretKey)
+	if err == nil {
+		return cfg.Value, nil
+	}
+
+	// If not found directly, use the secret manager configuration
+	secretCfg, err := s.GetSecretManagerConfig(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get secret manager config: %w", err)
+	}
+
+	// Determine which provider to use
+	switch secretCfg.Provider {
+	case "env":
+		// Use environment variables
+		return os.Getenv(secretCfg.KeyPrefix + secretName), nil
+	case "vault", "aws-secrets", "gcp-secrets", "azure-key-vault":
+		// These require external providers - would need implementation
+		return "", fmt.Errorf("secret provider %s not implemented", secretCfg.Provider)
+	default:
+		return "", fmt.Errorf("unknown secret provider: %s", secretCfg.Provider)
+	}
+}
+
+// SetSecretValue sets a secret value using the configured secret provider
+func (s *Service) SetSecretValue(ctx context.Context, secretName, value string) error {
+	// First check if we should use a secret manager
+	secretCfg, err := s.GetSecretManagerConfig(ctx)
+	if err != nil || secretCfg.Provider == "config" {
+		// Store directly in the config store (legacy/simple mode)
+		secretKey := fmt.Sprintf("secret_%s", secretName)
+		_, err = s.Set(ctx, secretKey, value, "system")
+		return err
+	}
+
+	// For other providers, implementation would depend on the specific provider
+	return fmt.Errorf("setting secrets for provider %s not implemented", secretCfg.Provider)
 }

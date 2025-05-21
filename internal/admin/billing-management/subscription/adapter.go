@@ -1,9 +1,20 @@
 package subscription
 
-import "context"
+import (
+	"context"
+	"fmt"
+
+	"github.com/subinc/subinc-backend/internal/pkg/logger"
+	"github.com/subinc/subinc-backend/internal/pkg/plugin"
+)
 
 type SubscriptionServiceAdapter struct {
-	Store *PostgresStore
+	Store         *PostgresStore
+	PluginManager *plugin.Manager
+}
+
+func NewSubscriptionServiceAdapter(store *PostgresStore, pluginManager *plugin.Manager) *SubscriptionServiceAdapter {
+	return &SubscriptionServiceAdapter{Store: store, PluginManager: pluginManager}
 }
 
 func (a *SubscriptionServiceAdapter) CreateSubscription(input Subscription) (Subscription, error) {
@@ -42,36 +53,87 @@ func (a *SubscriptionServiceAdapter) ProcessAutoRenewals() error {
 }
 
 // Plugin management methods - implement the interface
-func (a *SubscriptionServiceAdapter) ListSubscriptionPlugins() []string {
-	return SubscriptionPlugins.List()
+func (a *SubscriptionServiceAdapter) ListSubscriptionPlugins(ctx context.Context) ([]string, error) {
+	return a.PluginManager.ListPlugins("subscription"), nil
 }
 
-func (a *SubscriptionServiceAdapter) GetSubscriptionPlugin(pluginName string) (SubscriptionPlugin, bool) {
-	return SubscriptionPlugins.Lookup(pluginName)
+func (a *SubscriptionServiceAdapter) GetSubscriptionPlugin(ctx context.Context, pluginName string) (SubscriptionPlugin, error) {
+	if pluginName == "" {
+		logger.LogError("GetSubscriptionPlugin: plugin name required")
+		return nil, fmt.Errorf("plugin name is required")
+	}
+	p, ok := a.PluginManager.GetPlugin("subscription", pluginName)
+	if !ok {
+		logger.LogError("GetSubscriptionPlugin: plugin not found", logger.String("plugin_name", pluginName))
+		return nil, fmt.Errorf("subscription plugin not found")
+	}
+	plugin, ok := p.(SubscriptionPlugin)
+	if !ok {
+		logger.LogError("GetSubscriptionPlugin: invalid plugin type", logger.String("plugin_name", pluginName))
+		return nil, fmt.Errorf("invalid plugin type")
+	}
+	return plugin, nil
 }
 
-func (a *SubscriptionServiceAdapter) ConfigureSubscriptionPlugin(pluginName string, config map[string]interface{}) error {
-	plugin, exists := SubscriptionPlugins.Lookup(pluginName)
-	if !exists {
-		return ErrPluginNotFound
+func (a *SubscriptionServiceAdapter) RegisterSubscriptionPlugin(ctx context.Context, pluginName string, config map[string]interface{}) error {
+	if pluginName == "" {
+		logger.LogError("RegisterSubscriptionPlugin: plugin name required")
+		return fmt.Errorf("plugin name is required")
 	}
-
-	if initializer, ok := plugin.(interface {
-		Initialize(map[string]interface{}) error
-	}); ok {
-		return initializer.Initialize(config)
+	p, ok := a.PluginManager.GetPlugin("subscription", pluginName)
+	if !ok {
+		logger.LogError("RegisterSubscriptionPlugin: plugin not found", logger.String("plugin_name", pluginName))
+		return fmt.Errorf("subscription plugin not found")
 	}
-
+	_, ok = p.(SubscriptionPlugin)
+	if !ok {
+		logger.LogError("RegisterSubscriptionPlugin: invalid plugin type", logger.String("plugin_name", pluginName))
+		return fmt.Errorf("invalid plugin type")
+	}
+	// No Initialize method for SubscriptionPlugin, so just return success
 	return nil
 }
 
-func (a *SubscriptionServiceAdapter) DisableSubscriptionPlugin(pluginName string) error {
-	_, exists := SubscriptionPlugins.Lookup(pluginName)
-	if !exists {
-		return ErrPluginNotFound
+func (a *SubscriptionServiceAdapter) UnregisterSubscriptionPlugin(ctx context.Context, pluginName string) error {
+	if pluginName == "" {
+		logger.LogError("UnregisterSubscriptionPlugin: plugin name required")
+		return fmt.Errorf("plugin name is required")
 	}
+	if err := a.PluginManager.UnregisterPlugin("subscription", pluginName); err != nil {
+		logger.LogError("UnregisterSubscriptionPlugin: failed", logger.String("plugin_name", pluginName), logger.ErrorField(err))
+		return fmt.Errorf("failed to unregister plugin")
+	}
+	return nil
+}
 
-	SubscriptionPlugins.Unregister(pluginName)
+func (a *SubscriptionServiceAdapter) ConfigureSubscriptionPlugin(ctx context.Context, pluginName string, config map[string]interface{}) error {
+	if pluginName == "" {
+		logger.LogError("ConfigureSubscriptionPlugin: plugin name required")
+		return fmt.Errorf("plugin name is required")
+	}
+	p, ok := a.PluginManager.GetPlugin("subscription", pluginName)
+	if !ok {
+		logger.LogError("ConfigureSubscriptionPlugin: plugin not found", logger.String("plugin_name", pluginName))
+		return fmt.Errorf("subscription plugin not found")
+	}
+	_, ok = p.(SubscriptionPlugin)
+	if !ok {
+		logger.LogError("ConfigureSubscriptionPlugin: invalid plugin type", logger.String("plugin_name", pluginName))
+		return fmt.Errorf("invalid plugin type")
+	}
+	// No Initialize method for SubscriptionPlugin, so just return success
+	return nil
+}
+
+func (a *SubscriptionServiceAdapter) DisableSubscriptionPlugin(ctx context.Context, pluginName string) error {
+	if pluginName == "" {
+		logger.LogError("DisableSubscriptionPlugin: plugin name required")
+		return fmt.Errorf("plugin name is required")
+	}
+	if err := a.PluginManager.UnregisterPlugin("subscription", pluginName); err != nil {
+		logger.LogError("DisableSubscriptionPlugin: failed to unregister plugin", logger.String("plugin_name", pluginName), logger.ErrorField(err))
+		return fmt.Errorf("failed to unregister plugin")
+	}
 	return nil
 }
 

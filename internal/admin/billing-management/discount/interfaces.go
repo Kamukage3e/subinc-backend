@@ -20,13 +20,13 @@ type DiscountService interface {
 
 	// Plugin-related methods
 	// ListDiscountPlugins returns a list of available discount plugin names
-	ListDiscountPlugins() ([]string, error)
+	ListDiscountPlugins(ctx context.Context) ([]string, error)
 	// GetDiscountPlugin retrieves a discount plugin by name
-	GetDiscountPlugin(pluginName string) (DiscountPlugin, error)
+	GetDiscountPlugin(ctx context.Context, pluginName string) (DiscountPlugin, error)
 	// ConfigureDiscountPlugin configures a plugin with the provided configuration
-	ConfigureDiscountPlugin(pluginName string, config map[string]interface{}) error
+	ConfigureDiscountPlugin(ctx context.Context, pluginName string, config map[string]interface{}) error
 	// DisableDiscountPlugin disables a plugin for a tenant
-	DisableDiscountPlugin(pluginName string) error
+	DisableDiscountPlugin(ctx context.Context, pluginName string) error
 }
 
 // CouponService defines all coupon CRUD, lookup, and redemption operations for SaaS billing.

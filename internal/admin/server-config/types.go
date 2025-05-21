@@ -345,3 +345,38 @@ type ClientWebhookConfig struct {
 type GraphQLConfig struct {
 	Enabled bool `json:"enabled"`
 }
+
+// PluginConfig defines centralized configuration for plugin management
+type PluginConfig struct {
+	Enabled     bool                   `json:"enabled"`     // Whether the plugin is enabled
+	DefaultName string                 `json:"default"`     // Default plugin name
+	Plugins     map[string]interface{} `json:"plugins"`     // Plugin-specific configurations
+	Secrets     map[string]string      `json:"secrets"`     // Encrypted secrets for plugins
+	Permissions []string               `json:"permissions"` // Required permissions to use this plugin
+}
+
+// PluginSystemConfig defines the centralized configuration for the entire plugin system
+type PluginSystemConfig struct {
+	// Plugin type configurations
+	Invoice      PluginConfig `json:"invoice"`      // Invoice plugin configuration
+	Payment      PluginConfig `json:"payment"`      // Payment plugin configuration
+	Tax          PluginConfig `json:"tax"`          // Tax plugin configuration
+	Fee          PluginConfig `json:"fee"`          // Fee plugin configuration
+	Subscription PluginConfig `json:"subscription"` // Subscription plugin configuration
+	Account      PluginConfig `json:"account"`      // Account plugin configuration
+
+	// Global plugin settings
+	HotReload      bool `json:"hot_reload"`       // Whether plugins can be reloaded at runtime
+	AutoDiscover   bool `json:"auto_discover"`    // Whether to auto-discover plugins in plugin directory
+	EnableSandbox  bool `json:"enable_sandbox"`   // Whether to run plugins in a sandboxed environment
+	PluginLogLevel int  `json:"plugin_log_level"` // Log level for plugin operations (0-4)
+}
+
+// SecretManagerConfig defines the configuration for the secret management system
+type SecretManagerConfig struct {
+	Provider       string            `json:"provider"`        // Secret provider (e.g., "vault", "aws-secrets", "env")
+	Settings       map[string]string `json:"settings"`        // Provider-specific settings
+	MasterKeyID    string            `json:"master_key_id"`   // Master encryption key ID
+	RotationPeriod string            `json:"rotation_period"` // Secret rotation period (e.g., "30d")
+	KeyPrefix      string            `json:"key_prefix"`      // Prefix for secret keys
+}

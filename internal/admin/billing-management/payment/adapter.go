@@ -2,7 +2,11 @@ package payment
 
 import (
 	"context"
+	"errors"
 	"time"
+
+	"github.com/subinc/subinc-backend/internal/pkg/logger"
+	"github.com/subinc/subinc-backend/internal/pkg/plugin"
 )
 
 type PaymentServiceAdapter struct {
@@ -141,24 +145,52 @@ func (a *TransactionServiceAdapter) GetTransactionVolume(ctx context.Context, te
 	return a.Store.GetTransactionVolume(ctx, tenantID, startDate, endDate)
 }
 
-// Plugin management adapter
-type PluginServiceAdapter struct {
-	Store    *PostgresStore
-	Registry *PaymentPluginRegistry
+// PluginManagerAdapter adapts a plugin.Manager to implement the PluginService interface
+// Centralized plugin management for payment plugins
+
+type PluginManagerAdapter struct {
+	Manager *plugin.Manager
+	Store   StoreInterface
 }
 
-func (a *PluginServiceAdapter) ListPaymentPlugins() []string {
-	return a.Registry.List()
+func (a *PluginManagerAdapter) ListPaymentPlugins(context.Context) ([]string, error) {
+	if a.Manager == nil {
+		logger.LogError("ListPaymentPlugins: plugin manager is nil")
+		return []string{}, errors.New("plugin manager is nil")
+	}
+	return a.Manager.ListPlugins("payment"), nil
 }
 
-func (a *PluginServiceAdapter) GetPaymentPlugin(name string) (PaymentPlugin, bool) {
-	return a.Registry.Lookup(name)
+func (a *PluginManagerAdapter) GetPaymentPlugin(ctx context.Context, name string) (PaymentPlugin, error) {
+	if a.Manager == nil {
+		logger.LogError("GetPaymentPlugin: plugin manager is nil")
+		return nil, errors.New("plugin manager is nil")
+	}
+	pluginObj, exists := a.Manager.GetPlugin("payment", name)
+	if !exists {
+		logger.LogError("GetPaymentPlugin: plugin not found", logger.String("plugin_name", name))
+		return nil, errors.New("plugin not found")
+	}
+	paymentPlugin, ok := pluginObj.(PaymentPlugin)
+	if !ok {
+		logger.LogError("GetPaymentPlugin: invalid plugin type", logger.String("plugin_name", name))
+		return nil, errors.New("invalid plugin type")
+	}
+	return paymentPlugin, nil
 }
 
-func (a *PluginServiceAdapter) SavePaymentPluginConfig(ctx context.Context, config *PaymentPluginConfig) error {
+func (a *PluginManagerAdapter) SavePaymentPluginConfig(ctx context.Context, config *PaymentPluginConfig) error {
+	if a.Store == nil {
+		logger.LogError("SavePaymentPluginConfig: store not initialized")
+		return errors.New("payment store not initialized")
+	}
 	return a.Store.SavePaymentPluginConfig(ctx, config)
 }
 
-func (a *PluginServiceAdapter) DisablePaymentPlugin(ctx context.Context, tenantID, pluginName string) error {
+func (a *PluginManagerAdapter) DisablePaymentPlugin(ctx context.Context, tenantID, pluginName string) error {
+	if a.Store == nil {
+		logger.LogError("DisablePaymentPlugin: store not initialized")
+		return errors.New("payment store not initialized")
+	}
 	return a.Store.DisablePaymentPlugin(ctx, tenantID, pluginName)
 }

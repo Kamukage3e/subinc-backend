@@ -1,9 +1,13 @@
 package commonutil
 
 import (
+	"os"
 	"strings"
 
+	"errors"
+
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
@@ -22,23 +26,46 @@ func IsValidUUID(id string) bool {
 // GetActorOrSystem extracts the actor ID from the request context or returns "system" if not available
 // This is a simplified replacement for the audit logger's actor extraction
 func GetActorOrSystem(c *fiber.Ctx) string {
-	// Try to get user ID from context/headers
 	if c != nil {
-		// Check for X-User-ID header
 		if userID := c.Get("X-User-ID"); userID != "" {
 			return userID
 		}
-
-		// Check for Authorization header (JWT often contains user info)
 		if auth := c.Get("Authorization"); auth != "" && strings.HasPrefix(auth, "Bearer ") {
-			return "user_from_token" // In a real implementation, would parse the token
+			secret := os.Getenv("JWT_SECRET")
+			if secret == "" {
+				return "system"
+			}
+			tokenString := strings.TrimPrefix(auth, "Bearer ")
+			userID, err := UserFromToken(tokenString, secret)
+			if err == nil && userID != "" {
+				return userID
+			}
+			return "system"
 		}
-
-		// Check locals (fiber's context store)
 		if userID, ok := c.Locals("user_id").(string); ok && userID != "" {
 			return userID
 		}
 	}
-
 	return "system"
+}
+
+func UserFromToken(tokenString string, secret string) (string, error) {
+	if tokenString == "" {
+		return "", errors.New("token is empty")
+	}
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return []byte(secret), nil
+	})
+	if err != nil || !token.Valid {
+		return "", errors.New("invalid token")
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", errors.New("invalid claims")
+	}
+	userID, ok := claims["sub"].(string)
+	if !ok || userID == "" {
+		return "", errors.New("user id not found in token")
+	}
+	return userID, nil
 }

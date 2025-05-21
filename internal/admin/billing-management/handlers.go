@@ -32,6 +32,7 @@ import (
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	"github.com/subinc/subinc-backend/internal/pkg/commonutil"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
+	"github.com/subinc/subinc-backend/internal/pkg/plugin"
 )
 
 // Payment, Refund, and PaymentMethod logic is now handled exclusively in internal/admin/billing-management/payment/handlers.go
@@ -56,10 +57,12 @@ func NewBillingHandler(store *PostgresStore, paymentStore payment.StoreInterface
 		Store:        store,
 		PaymentStore: paymentStore,
 		Logger:       logr,
+		// Initialize plugin manager
+		PluginManager: plugin.NewManager(),
 	}
 
-	// Note: Plugin manager is initialized elsewhere and injected by the caller
-	// This avoids the undefined NewPluginManager error
+	// Register default plugins if needed
+	handler.PluginManager.RegisterDefaultPlugins()
 
 	logr.Info("Billing admin handler initialized successfully")
 	return handler
@@ -598,16 +601,16 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 	}
 
 	// Get the tax plugin from the plugin manager
-	plugin, ok := h.PluginManager.GetTaxPlugin(pluginName)
+	plugin, ok := h.PluginManager.GetPlugin("tax", pluginName)
 	if !ok {
 		// If not found in the plugin manager, check if we can find the default plugin
-		defaultPlugin, ok := h.PluginManager.GetTaxPlugin("default")
+		defaultPlugin, ok := h.PluginManager.GetPlugin("tax", "default")
 		if !ok {
 			// Register the built-in default plugin if needed
 			defPlugin := tax.DefaultTaxPlugin{}
 			if h.PluginManager != nil {
 				_ = h.PluginManager.RegisterPlugin("tax", defPlugin)
-				plugin, _ = h.PluginManager.GetTaxPlugin("default")
+				plugin, _ = h.PluginManager.GetPlugin("tax", "default")
 			} else {
 				// Last resort, use a direct instance
 				h.Logger.Warn("Using direct DefaultTaxPlugin instance as fallback")
@@ -653,7 +656,14 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 		UpdatedAt: accountObj.UpdatedAt,
 	}
 
-	taxAmount, taxRate, terr := plugin.CalculateTax(c.Context(), taxInvoice, taxAccount, accountObj.TenantID)
+	// Type assert to the specific tax plugin interface
+	taxPlugin, ok := plugin.(tax.TaxPlugin)
+	if !ok {
+		logger.LogError("CreateInvoice: plugin not compatible with TaxPlugin interface", logger.String("plugin", pluginName))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "invalid tax plugin type"})
+	}
+
+	taxAmount, taxRate, terr := taxPlugin.CalculateTax(c.Context(), taxInvoice, taxAccount, accountObj.TenantID)
 	if terr != nil {
 		logger.LogError("CreateInvoice: tax plugin failed", logger.ErrorField(terr), logger.String("plugin", pluginName))
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tax calculation failed: "})
@@ -2049,14 +2059,23 @@ func (h *BillingAdminHandler) RegisterInvoicePlugin(c *fiber.Ctx) error {
 	}
 
 	// Plugins are registered via code, this endpoint just enables/configures them
-	plugin, exists := h.PluginManager.GetInvoicePlugin(pluginName)
+	plugin, exists := h.PluginManager.GetPlugin("invoice", pluginName)
 	if !exists {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": fmt.Sprintf("Invoice plugin '%s' not found", pluginName),
 		})
 	}
 
-	if err := plugin.Initialize(config); err != nil {
+	// Type assert to the invoice plugin interface
+	invoicePlugin, ok := plugin.(InvoicePlugin)
+	if !ok {
+		h.Logger.Error(fmt.Sprintf("Plugin %s is not a valid invoice plugin", pluginName))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Invalid plugin type",
+		})
+	}
+
+	if err := invoicePlugin.Initialize(config); err != nil {
 		h.Logger.Error(fmt.Sprintf("Failed to initialize invoice plugin %s: %v", pluginName, err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to initialize plugin",
@@ -2134,14 +2153,23 @@ func (h *BillingAdminHandler) RegisterPaymentPlugin(c *fiber.Ctx) error {
 	}
 
 	// Plugins are registered via code, this endpoint just enables/configures them
-	plugin, exists := h.PluginManager.GetPaymentPlugin(pluginName)
+	plugin, exists := h.PluginManager.GetPlugin("payment", pluginName)
 	if !exists {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": fmt.Sprintf("Payment plugin '%s' not found", pluginName),
 		})
 	}
 
-	if err := plugin.Initialize(config); err != nil {
+	// Type assert to the payment plugin interface
+	paymentPlugin, ok := plugin.(payment.PaymentPlugin)
+	if !ok {
+		h.Logger.Error(fmt.Sprintf("Plugin %s is not a valid payment plugin", pluginName))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Invalid plugin type",
+		})
+	}
+
+	if err := paymentPlugin.Initialize(config); err != nil {
 		h.Logger.Error(fmt.Sprintf("Failed to initialize payment plugin %s: %v", pluginName, err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to initialize plugin",
@@ -2219,14 +2247,23 @@ func (h *BillingAdminHandler) RegisterTaxPlugin(c *fiber.Ctx) error {
 	}
 
 	// Plugins are registered via code, this endpoint just enables/configures them
-	plugin, exists := h.PluginManager.GetTaxPlugin(pluginName)
+	plugin, exists := h.PluginManager.GetPlugin("tax", pluginName)
 	if !exists {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": fmt.Sprintf("Tax plugin '%s' not found", pluginName),
 		})
 	}
 
-	if err := plugin.Initialize(config); err != nil {
+	// Type assert to the tax plugin interface
+	taxPlugin, ok := plugin.(tax.TaxPlugin)
+	if !ok {
+		h.Logger.Error(fmt.Sprintf("Plugin %s is not a valid tax plugin", pluginName))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Invalid plugin type",
+		})
+	}
+
+	if err := taxPlugin.Initialize(config); err != nil {
 		h.Logger.Error(fmt.Sprintf("Failed to initialize tax plugin %s: %v", pluginName, err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to initialize plugin",

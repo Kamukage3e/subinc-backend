@@ -292,18 +292,19 @@ func main() {
 	// Register all billing-management submodule routers under /billing-management
 	// --- FEE ---
 	feeStore := fee.NewPostgresStore(ownerDBPool)
-	feeServiceAdapter := fee.NewFeeServiceAdapter(feeStore)
+	feeServiceAdapter := fee.NewFeeServiceAdapter(feeStore, billingHandler.PluginManager)
 	feeHandler := fee.NewFeeHandler(feeServiceAdapter)
 	fee.RegisterRoutes(billingRoute, feeHandler)
 
 	// --- DISCOUNT ---
 	discountStore := &discount.PostgresStore{DB: ownerDBPool, ServerConfigService: serverConfigService}
 	accountStore := &account.PostgresStore{DB: ownerDBPool}
+	discountServiceAdapter := discount.NewDiscountServiceAdapter(discountStore, billingHandler.PluginManager)
 	discountHandler := discount.NewDiscountHandler(
-		&discount.DiscountServiceAdapter{Store: discountStore}, // DiscountService
-		&discount.CouponServiceAdapter{Store: discountStore},   // CouponService
-		&discount.CreditServiceAdapter{Store: discountStore},   // CreditService
-		&account.BillingAccountServiceAdapter{Store: accountStore},
+		discountServiceAdapter,                               // DiscountService
+		&discount.CouponServiceAdapter{Store: discountStore}, // CouponService
+		&discount.CreditServiceAdapter{Store: discountStore}, // CreditService
+		account.NewBillingAccountServiceAdapter(accountStore, billingHandler.PluginManager),
 		*logr,
 	)
 	discount.RegisterRoutes(billingRoute, discountHandler, jwtCfg.SecretName)
@@ -311,6 +312,12 @@ func main() {
 	// --- PAYMENT ---
 	// Create transaction report adapter
 	transactionReportAdapter := &payment.TransactionServiceAdapter{Store: paymentStore}
+
+	// Create plugin manager adapter for payment package
+	pluginManagerAdapter := &payment.PluginManagerAdapter{
+		Manager: billingHandler.PluginManager,
+		Store:   paymentStore,
+	}
 
 	paymentHandler := payment.NewPaymentHandler(
 		&payment.PaymentServiceAdapter{Store: paymentStore},      // PaymentService
@@ -321,32 +328,34 @@ func main() {
 		*logr,
 		securityStore,
 		paymentStore,
-		billingHandler.PluginManager,
+		pluginManagerAdapter, // Use the adapter that implements payment.PluginService
 		transactionReportAdapter,
 	)
 	payment.RegisterRoutes(billingRoute, paymentHandler, jwtCfg.SecretName)
 
 	// --- TAX ---
 	taxStore := &tax.PostgresStore{DB: ownerDBPool}
+	taxServiceAdapter := tax.NewTaxServiceAdapter(taxStore, billingHandler.PluginManager)
 	taxHandler := &tax.TaxHandler{
-		TaxInfoService: billingHandler.TaxService,
+		TaxInfoService: taxServiceAdapter,
 		Store:          *taxStore,
 	}
 	tax.RegisterRoutes(billingRoute, taxHandler, jwtCfg.SecretName)
 
 	// --- ACCOUNT ---
 	accountHandler := &account.AccountHandler{
-		BillingAccountService: &account.BillingAccountServiceAdapter{Store: accountStore},
+		BillingAccountService: account.NewBillingAccountServiceAdapter(accountStore, billingHandler.PluginManager),
 		NotificationService:   securityStore,
 	}
 	account.RegisterRoutes(billingRoute, accountHandler, jwtCfg.SecretName)
 
 	// --- SUBSCRIPTION ---
 	subscriptionStore := &subscription.PostgresStore{DB: ownerDBPool}
+	subscriptionServiceAdapter := subscription.NewSubscriptionServiceAdapter(subscriptionStore, billingHandler.PluginManager)
 	subscriptionHandler := &subscription.SubscriptionHandler{
 		PlanService:         &subscription.PlanServiceAdapter{Store: subscriptionStore},
 		UsageService:        &subscription.UsageServiceAdapter{Store: subscriptionStore},
-		SubscriptionService: &subscription.SubscriptionServiceAdapter{Store: subscriptionStore},
+		SubscriptionService: subscriptionServiceAdapter,
 		Store:               subscriptionStore,
 	}
 	subscription.RegisterRoutes(billingRoute, subscriptionHandler)
@@ -470,31 +479,113 @@ func initializeBillingPlugins(handler *billing_management.BillingAdminHandler, c
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Get billing configuration from server config
-	billingCfg, err := configService.GetOwnerBillingConfig(ctx)
+	// Get centralized plugin system configuration
+	pluginSystemCfg, err := configService.GetPluginSystemConfig(ctx)
 	if err != nil {
-		logger.Error(fmt.Sprintf("Failed to load billing config: %v", err))
-		return
-	}
+		// Fall back to billing configuration for backward compatibility
+		billingCfg, billingErr := configService.GetOwnerBillingConfig(ctx)
+		if billingErr != nil {
+			logger.Error(fmt.Sprintf("Failed to load plugin or billing config: %v, %v", err, billingErr))
+			return
+		}
 
-	// Convert to map for plugin manager
-	config := map[string]interface{}{
-		"tax_rate":    billingCfg.TaxRate,
-		"fixed_fee":   billingCfg.FixedFee,
-		"percent_fee": billingCfg.PercentFee,
-	}
+		// Convert billing config to generic plugin configuration
+		config := map[string]interface{}{
+			"tax_rate":    billingCfg.TaxRate,
+			"fixed_fee":   billingCfg.FixedFee,
+			"percent_fee": billingCfg.PercentFee,
+		}
 
-	// Initialize plugins with configuration
-	if err := handler.PluginManager.InitializePlugins(config); err != nil {
-		logger.Error(fmt.Sprintf("Failed to initialize billing plugins: %v", err))
-		return
+		// Initialize plugins with billing configuration
+		if err := handler.PluginManager.InitializePlugins(config); err != nil {
+			logger.Error(fmt.Sprintf("Failed to initialize billing plugins: %v", err))
+			return
+		}
+	} else {
+		// Register and initialize invoice plugins
+		if pluginSystemCfg.Invoice.Enabled {
+			invoicePluginCfg, err := configService.GetPluginConfig(ctx, "invoice")
+			if err == nil && invoicePluginCfg != nil && invoicePluginCfg.Enabled {
+				// Initialize with specific invoice plugin config
+				if err := handler.PluginManager.InitializePlugins(map[string]interface{}{
+					"type":    "invoice",
+					"plugins": invoicePluginCfg.Plugins,
+					"default": invoicePluginCfg.DefaultName,
+				}); err != nil {
+					logger.Error(fmt.Sprintf("Failed to initialize invoice plugins: %v", err))
+				}
+			}
+		}
+
+		// Register and initialize payment plugins
+		if pluginSystemCfg.Payment.Enabled {
+			paymentPluginCfg, err := configService.GetPluginConfig(ctx, "payment")
+			if err == nil && paymentPluginCfg != nil && paymentPluginCfg.Enabled {
+				// Initialize with specific payment plugin config
+				if err := handler.PluginManager.InitializePlugins(map[string]interface{}{
+					"type":    "payment",
+					"plugins": paymentPluginCfg.Plugins,
+					"default": paymentPluginCfg.DefaultName,
+				}); err != nil {
+					logger.Error(fmt.Sprintf("Failed to initialize payment plugins: %v", err))
+				}
+			}
+		}
+
+		// Register and initialize tax plugins
+		if pluginSystemCfg.Tax.Enabled {
+			taxPluginCfg, err := configService.GetPluginConfig(ctx, "tax")
+			if err == nil && taxPluginCfg != nil && taxPluginCfg.Enabled {
+				// Initialize with specific tax plugin config
+				if err := handler.PluginManager.InitializePlugins(map[string]interface{}{
+					"type":    "tax",
+					"plugins": taxPluginCfg.Plugins,
+					"default": taxPluginCfg.DefaultName,
+				}); err != nil {
+					logger.Error(fmt.Sprintf("Failed to initialize tax plugins: %v", err))
+				}
+			}
+		}
+
+		// Register and initialize fee plugins if configured
+		if pluginSystemCfg.Fee.Enabled {
+			feePluginCfg, err := configService.GetPluginConfig(ctx, "fee")
+			if err == nil && feePluginCfg != nil && feePluginCfg.Enabled {
+				// Initialize with specific fee plugin config
+				if err := handler.PluginManager.InitializePlugins(map[string]interface{}{
+					"type":    "fee",
+					"plugins": feePluginCfg.Plugins,
+					"default": feePluginCfg.DefaultName,
+				}); err != nil {
+					logger.Error(fmt.Sprintf("Failed to initialize fee plugins: %v", err))
+				}
+			}
+		}
+
+		// Register and initialize subscription plugins if configured
+		if pluginSystemCfg.Subscription.Enabled {
+			subPluginCfg, err := configService.GetPluginConfig(ctx, "subscription")
+			if err == nil && subPluginCfg != nil && subPluginCfg.Enabled {
+				// Initialize with specific subscription plugin config
+				if err := handler.PluginManager.InitializePlugins(map[string]interface{}{
+					"type":    "subscription",
+					"plugins": subPluginCfg.Plugins,
+					"default": subPluginCfg.DefaultName,
+				}); err != nil {
+					logger.Error(fmt.Sprintf("Failed to initialize subscription plugins: %v", err))
+				}
+			}
+		}
 	}
 
 	// Log available plugins
 	invoicePlugins := handler.PluginManager.ListPlugins("invoice")
 	paymentPlugins := handler.PluginManager.ListPlugins("payment")
 	taxPlugins := handler.PluginManager.ListPlugins("tax")
+	feePlugins := handler.PluginManager.ListPlugins("fee")
+	discountPlugins := handler.PluginManager.ListPlugins("discount")
+	subscriptionPlugins := handler.PluginManager.ListPlugins("subscription")
 
-	logger.Info(fmt.Sprintf("Billing plugin system initialized with %d invoice, %d payment, and %d tax plugins",
-		len(invoicePlugins), len(paymentPlugins), len(taxPlugins)))
+	logger.Info(fmt.Sprintf("Billing plugin system initialized with %d invoice, %d payment, %d tax, %d fee, %d discount, and %d subscription plugins",
+		len(invoicePlugins), len(paymentPlugins), len(taxPlugins), len(feePlugins), len(discountPlugins), len(subscriptionPlugins)))
 }

@@ -1469,7 +1469,11 @@ func (h *PaymentHandler) DeleteEvidence(c *fiber.Ctx) error {
 
 // ListPaymentPlugins returns all registered payment plugins
 func (h *PaymentHandler) ListPaymentPlugins(c *fiber.Ctx) error {
-	pluginNames := h.PluginService.ListPaymentPlugins()
+	pluginNames, err := h.PluginService.ListPaymentPlugins(c.Context())
+	if err != nil {
+		logger.LogError("ListPaymentPlugins: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
+	}
 	return c.JSON(fiber.Map{
 		"plugins": pluginNames,
 	})
@@ -1621,12 +1625,10 @@ func (h *PaymentHandler) GetPaymentPlugin(c *fiber.Ctx) error {
 		})
 	}
 
-	plugin, exists := h.PluginService.GetPaymentPlugin(pluginName)
-	if !exists {
-		h.Logger.Error("GetPaymentPlugin: plugin not found", logger.String("plugin_name", pluginName))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Resource not found",
-		})
+	plugin, err := h.PluginService.GetPaymentPlugin(c.Context(), pluginName)
+	if err != nil {
+		h.Logger.Error("GetPaymentPlugin: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 
 	return c.JSON(fiber.Map{
@@ -1655,12 +1657,10 @@ func (h *PaymentHandler) ConfigurePaymentPlugin(c *fiber.Ctx) error {
 	}
 
 	// Check if the plugin exists
-	plugin, exists := h.PluginService.GetPaymentPlugin(pluginName)
-	if !exists {
-		h.Logger.Error("ConfigurePaymentPlugin: plugin not found", logger.String("plugin_name", pluginName))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Resource not found",
-		})
+	plugin, err := h.PluginService.GetPaymentPlugin(c.Context(), pluginName)
+	if err != nil {
+		h.Logger.Error("ConfigurePaymentPlugin: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 
 	// Parse the configuration
@@ -1723,12 +1723,10 @@ func (h *PaymentHandler) DisablePaymentPlugin(c *fiber.Ctx) error {
 	}
 
 	// Check if the plugin exists
-	_, exists := h.PluginService.GetPaymentPlugin(pluginName)
-	if !exists {
-		h.Logger.Error("DisablePaymentPlugin: plugin not found", logger.String("plugin_name", pluginName))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Resource not found",
-		})
+	_, err := h.PluginService.GetPaymentPlugin(c.Context(), pluginName)
+	if err != nil {
+		h.Logger.Error("DisablePaymentPlugin: failed", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process request"})
 	}
 
 	// Disable the plugin in the database

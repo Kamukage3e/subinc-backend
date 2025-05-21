@@ -1562,27 +1562,26 @@ func (s *PostgresStore) GetWebhookEvent(ctx context.Context, id string) (Webhook
 
 // DownloadInvoicePDF generates and returns a PDF for an invoice
 func (s *PostgresStore) DownloadInvoicePDF(ctx context.Context, invoiceID string) ([]byte, error) {
-	// Get the invoice
 	invoice, err := s.GetInvoice(ctx, invoiceID)
 	if err != nil {
 		logger.LogError("DownloadInvoicePDF: failed to get invoice", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
 		return nil, err
 	}
 
-	// Ideally, this would use a PDF generation library or an external service
-	// For now, we're generating a simple PDF representation
-	var pdfContent bytes.Buffer
-	pdfContent.WriteString(fmt.Sprintf("Invoice PDF for: %s\n", invoice.ID))
-	pdfContent.WriteString(fmt.Sprintf("Account: %s\n", invoice.AccountID))
-	pdfContent.WriteString(fmt.Sprintf("Amount: %.2f\n", invoice.Amount))
-	pdfContent.WriteString(fmt.Sprintf("Status: %s\n", invoice.Status))
-	pdfContent.WriteString(fmt.Sprintf("Due Date: %s\n", invoice.DueDate.Format("2006-01-02")))
-	pdfContent.WriteString(fmt.Sprintf("Created At: %s\n", invoice.CreatedAt.Format("2006-01-02 15:04:05")))
+	// Prepare the data for the PDF generator
+	pdfData := map[string]interface{}{
+		"title":          "Invoice",
+		"invoice_number": invoice.ID,
+		"invoice_date":   invoice.CreatedAt.Format("2006-01-02"),
+		"due_date":       invoice.DueDate.Format("2006-01-02"),
+		"status":         invoice.Status,
+		"account_id":     invoice.AccountID,
+		"amount":         fmt.Sprintf("%.2f", invoice.Amount),
+		// Add more fields as needed
+	}
 
-	// In a production environment, we would use a PDF library such as fpdf or gofpdf
-	// to generate a properly formatted PDF
-
-	return pdfContent.Bytes(), nil
+	// Call the real PDF generator
+	return generateInvoicePDF(pdfData)
 }
 
 // --- Plugin System ---

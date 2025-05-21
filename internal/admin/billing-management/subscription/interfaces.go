@@ -29,10 +29,10 @@ type SubscriptionService interface {
 	ProcessAutoRenewals() error
 
 	// Plugin management methods
-	ListSubscriptionPlugins() []string
-	GetSubscriptionPlugin(pluginName string) (SubscriptionPlugin, bool)
-	ConfigureSubscriptionPlugin(pluginName string, config map[string]interface{}) error
-	DisableSubscriptionPlugin(pluginName string) error
+	ListSubscriptionPlugins(ctx context.Context) ([]string, error)
+	GetSubscriptionPlugin(ctx context.Context, pluginName string) (SubscriptionPlugin, error)
+	ConfigureSubscriptionPlugin(ctx context.Context, pluginName string, config map[string]interface{}) error
+	DisableSubscriptionPlugin(ctx context.Context, pluginName string) error
 }
 
 // SubscriptionPlugin defines a hot-pluggable interface for subscription logic.

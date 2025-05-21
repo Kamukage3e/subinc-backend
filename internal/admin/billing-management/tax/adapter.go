@@ -2,17 +2,21 @@ package tax
 
 import (
 	"context"
-	"time"
+	"fmt"
+
+	"github.com/subinc/subinc-backend/internal/pkg/logger"
+	"github.com/subinc/subinc-backend/internal/pkg/plugin"
 )
 
 // TaxServiceAdapter adapts the PostgresStore to the TaxInfoService interface
 type TaxServiceAdapter struct {
-	Store *PostgresStore
+	Store         *PostgresStore
+	PluginManager *plugin.Manager
 }
 
 // NewTaxServiceAdapter creates a new tax service adapter
-func NewTaxServiceAdapter(store *PostgresStore) *TaxServiceAdapter {
-	return &TaxServiceAdapter{Store: store}
+func NewTaxServiceAdapter(store *PostgresStore, pluginManager *plugin.Manager) *TaxServiceAdapter {
+	return &TaxServiceAdapter{Store: store, PluginManager: pluginManager}
 }
 
 // SetTaxInfo sets tax information for a tenant
@@ -27,38 +31,62 @@ func (a *TaxServiceAdapter) GetTaxInfo(ctx context.Context, tenantID string) (Ta
 
 // ListTaxPlugins returns a list of available tax plugins
 func (a *TaxServiceAdapter) ListTaxPlugins(ctx context.Context) ([]string, error) {
-	return a.Store.ListTaxPlugins(ctx)
+	return a.PluginManager.ListPlugins("tax"), nil
 }
 
 // GetTaxPlugin retrieves a tax plugin by name
 func (a *TaxServiceAdapter) GetTaxPlugin(ctx context.Context, pluginName string) (TaxPlugin, error) {
-	plugin, exists := TaxPlugins.Lookup(pluginName)
-	if !exists {
-		return nil, ErrPluginNotFound
+	if pluginName == "" {
+		logger.LogError("GetTaxPlugin: plugin name required")
+		return nil, fmt.Errorf("plugin name is required")
+	}
+	p, ok := a.PluginManager.GetPlugin("tax", pluginName)
+	if !ok {
+		logger.LogError("GetTaxPlugin: plugin not found", logger.String("plugin_name", pluginName))
+		return nil, fmt.Errorf("tax plugin not found")
+	}
+	plugin, ok := p.(TaxPlugin)
+	if !ok {
+		logger.LogError("GetTaxPlugin: invalid plugin type", logger.String("plugin_name", pluginName))
+		return nil, fmt.Errorf("invalid plugin type")
 	}
 	return plugin, nil
 }
 
-// ConfigureTaxPlugin configures a tax plugin
-func (a *TaxServiceAdapter) ConfigureTaxPlugin(ctx context.Context, pluginName string, tenantID string, config map[string]interface{}) error {
-	plugin, exists := TaxPlugins.Lookup(pluginName)
-	if !exists {
-		return ErrPluginNotFound
+// RegisterTaxPlugin registers a tax plugin
+func (a *TaxServiceAdapter) RegisterTaxPlugin(ctx context.Context, pluginName string, config map[string]interface{}) error {
+	if pluginName == "" {
+		logger.LogError("RegisterTaxPlugin: plugin name required")
+		return fmt.Errorf("plugin name is required")
 	}
-
+	p, ok := a.PluginManager.GetPlugin("tax", pluginName)
+	if !ok {
+		logger.LogError("RegisterTaxPlugin: plugin not found", logger.String("plugin_name", pluginName))
+		return fmt.Errorf("tax plugin not found")
+	}
+	plugin, ok := p.(TaxPlugin)
+	if !ok {
+		logger.LogError("RegisterTaxPlugin: invalid plugin type", logger.String("plugin_name", pluginName))
+		return fmt.Errorf("invalid plugin type")
+	}
 	if err := plugin.Initialize(config); err != nil {
-		return err
+		logger.LogError("RegisterTaxPlugin: failed to initialize plugin", logger.String("plugin_name", pluginName), logger.ErrorField(err))
+		return fmt.Errorf("failed to initialize plugin")
 	}
+	return nil
+}
 
-	// Create a TaxPluginConfig for storage
-	pluginConfig := TaxPluginConfig{
-		TenantID:   tenantID,
-		PluginName: pluginName,
-		UpdatedAt:  time.Now(),
+// UnregisterTaxPlugin unregisters a tax plugin
+func (a *TaxServiceAdapter) UnregisterTaxPlugin(ctx context.Context, pluginName string) error {
+	if pluginName == "" {
+		logger.LogError("UnregisterTaxPlugin: plugin name required")
+		return fmt.Errorf("plugin name is required")
 	}
-
-	_, err := a.Store.SetTaxPluginConfig(ctx, pluginConfig)
-	return err
+	if err := a.PluginManager.UnregisterPlugin("tax", pluginName); err != nil {
+		logger.LogError("UnregisterTaxPlugin: failed", logger.String("plugin_name", pluginName), logger.ErrorField(err))
+		return fmt.Errorf("failed to unregister plugin")
+	}
+	return nil
 }
 
 // SetTaxPluginConfig sets the tax plugin configuration for a tenant
@@ -74,4 +102,27 @@ func (a *TaxServiceAdapter) GetTaxPluginConfig(ctx context.Context, tenantID str
 // RemoveTaxPluginConfig removes the tax plugin configuration for a tenant
 func (a *TaxServiceAdapter) RemoveTaxPluginConfig(ctx context.Context, tenantID, pluginName string) error {
 	return a.Store.RemoveTaxPluginConfig(ctx, tenantID, pluginName)
+}
+
+// ConfigureTaxPlugin configures a tax plugin for a tenant
+func (a *TaxServiceAdapter) ConfigureTaxPlugin(ctx context.Context, pluginName string, tenantID string, config map[string]interface{}) error {
+	if pluginName == "" {
+		logger.LogError("ConfigureTaxPlugin: plugin name required")
+		return fmt.Errorf("plugin name is required")
+	}
+	p, ok := a.PluginManager.GetPlugin("tax", pluginName)
+	if !ok {
+		logger.LogError("ConfigureTaxPlugin: plugin not found", logger.String("plugin_name", pluginName))
+		return fmt.Errorf("tax plugin not found")
+	}
+	plugin, ok := p.(TaxPlugin)
+	if !ok {
+		logger.LogError("ConfigureTaxPlugin: invalid plugin type", logger.String("plugin_name", pluginName))
+		return fmt.Errorf("invalid plugin type")
+	}
+	if err := plugin.Initialize(config); err != nil {
+		logger.LogError("ConfigureTaxPlugin: failed to initialize plugin", logger.String("plugin_name", pluginName), logger.ErrorField(err))
+		return fmt.Errorf("failed to initialize plugin")
+	}
+	return nil
 }

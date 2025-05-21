@@ -967,24 +967,26 @@ func (s *PostgresStore) UseToken(ctx context.Context, token string, email string
 }
 
 // --- PasswordService extensions ---
-func hashPassword(password string) (string, error) {
+func HashPassword(password string) (string, error) {
 	if password == "" {
-		return "", errors.New("password required")
+		return "", errors.New("password is empty")
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		logger.LogError("hashPassword: failed to hash password", logger.ErrorField(err))
 		return "", err
 	}
 	return string(hash), nil
 }
 
-func checkPassword(hash, password string) error {
-	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+func CheckPasswordHash(password, hash string) bool {
+	if password == "" || hash == "" {
+		return false
+	}
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }
 
 func (s *PostgresStore) RegisterUser(ctx context.Context, email, password string) (User, error) {
-	hash, err := hashPassword(password)
+	hash, err := HashPassword(password)
 	if err != nil {
 		logger.LogError("RegisterUser hash failed", logger.ErrorField(err), logger.String("email", email))
 		return User{}, wrapDBErr("register_user_hash", err)
@@ -1010,8 +1012,8 @@ func (s *PostgresStore) AuthenticateUser(ctx context.Context, email, password st
 		logger.LogError("AuthenticateUser failed", logger.ErrorField(err), logger.String("email", email))
 		return User{}, wrapDBErr("authenticate_user", err)
 	}
-	if err := checkPassword(hash, password); err != nil {
-		logger.LogError("AuthenticateUser: invalid credentials", logger.ErrorField(err), logger.String("email", email))
+	if !CheckPasswordHash(password, hash) {
+		logger.LogError("AuthenticateUser: invalid credentials", logger.String("email", email))
 		return User{}, errors.New("invalid credentials")
 	}
 	return u, nil
@@ -1430,13 +1432,13 @@ func (s *PostgresStore) ChangePassword(ctx context.Context, userID, oldPassword,
 	}
 
 	// Verify old password
-	if err := checkPassword(passwordHash, oldPassword); err != nil {
-		logger.LogError("ChangePassword invalid old password", logger.ErrorField(err), logger.String("user_id", userID))
+	if !CheckPasswordHash(oldPassword, passwordHash) {
+		logger.LogError("ChangePassword invalid old password", logger.String("user_id", userID))
 		return errors.New("invalid old password")
 	}
 
 	// Hash the new password
-	newHash, err := hashPassword(newPassword)
+	newHash, err := HashPassword(newPassword)
 	if err != nil {
 		logger.LogError("ChangePassword failed to hash new password", logger.ErrorField(err))
 		return wrapDBErr("change_password", err)

@@ -128,8 +128,8 @@ type PaymentPlugin interface {
 
 // PluginService manages payment plugin operations
 type PluginService interface {
-	ListPaymentPlugins() []string
-	GetPaymentPlugin(name string) (PaymentPlugin, bool)
+	ListPaymentPlugins(ctx context.Context) ([]string, error)
+	GetPaymentPlugin(ctx context.Context, name string) (PaymentPlugin, error)
 	SavePaymentPluginConfig(ctx context.Context, config *PaymentPluginConfig) error
 	DisablePaymentPlugin(ctx context.Context, tenantID, pluginName string) error
 }

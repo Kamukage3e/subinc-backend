@@ -3,11 +3,19 @@ package discount
 import (
 	"context"
 	"fmt"
+
+	"github.com/subinc/subinc-backend/internal/pkg/logger"
+	"github.com/subinc/subinc-backend/internal/pkg/plugin"
 )
 
 // DiscountServiceAdapter provides dynamic, type-agnostic account operations.
 type DiscountServiceAdapter struct {
-	Store *PostgresStore
+	Store         *PostgresStore
+	PluginManager *plugin.Manager
+}
+
+func NewDiscountServiceAdapter(store *PostgresStore, pluginManager *plugin.Manager) *DiscountServiceAdapter {
+	return &DiscountServiceAdapter{Store: store, PluginManager: pluginManager}
 }
 
 func (a *DiscountServiceAdapter) CreateDiscount(d Discount) (Discount, error) {
@@ -30,54 +38,94 @@ func (a *DiscountServiceAdapter) ListDiscounts(activeOnly bool, page, pageSize i
 }
 
 // Plugin-related methods
-func (a *DiscountServiceAdapter) ListDiscountPlugins() ([]string, error) {
-	return DiscountPlugins.List(), nil
+func (a *DiscountServiceAdapter) ListDiscountPlugins(ctx context.Context) ([]string, error) { 
+	return a.PluginManager.ListPlugins("discount"), nil
 }
 
-func (a *DiscountServiceAdapter) GetDiscountPlugin(pluginName string) (DiscountPlugin, error) {
+func (a *DiscountServiceAdapter) GetDiscountPlugin(ctx context.Context, pluginName string) (DiscountPlugin, error) {
 	if pluginName == "" {
+		logger.LogError("GetDiscountPlugin: plugin name required")
 		return nil, fmt.Errorf("plugin name is required")
 	}
-
-	plugin, exists := DiscountPlugins.Lookup(pluginName)
-	if !exists {
-		return nil, fmt.Errorf("discount plugin '%s' not found", pluginName)
+	p, ok := a.PluginManager.GetPlugin("discount", pluginName)
+	if !ok {
+		logger.LogError("GetDiscountPlugin: plugin not found", logger.String("plugin_name", pluginName))
+		return nil, fmt.Errorf("discount plugin not found")
 	}
-
+	plugin, ok := p.(DiscountPlugin)
+	if !ok {
+		logger.LogError("GetDiscountPlugin: invalid plugin type", logger.String("plugin_name", pluginName))
+		return nil, fmt.Errorf("invalid plugin type")
+	}
 	return plugin, nil
 }
 
-func (a *DiscountServiceAdapter) ConfigureDiscountPlugin(pluginName string, config map[string]interface{}) error {
+func (a *DiscountServiceAdapter) RegisterDiscountPlugin(ctx context.Context, pluginName string, config map[string]interface{}) error {
 	if pluginName == "" {
+		logger.LogError("RegisterDiscountPlugin: plugin name required")
 		return fmt.Errorf("plugin name is required")
 	}
-
-	plugin, exists := DiscountPlugins.Lookup(pluginName)
-	if !exists {
-		return fmt.Errorf("discount plugin '%s' not found", pluginName)
+	p, ok := a.PluginManager.GetPlugin("discount", pluginName)
+	if !ok {
+		logger.LogError("RegisterDiscountPlugin: plugin not found", logger.String("plugin_name", pluginName))
+		return fmt.Errorf("discount plugin not found")
 	}
-
-	// Initialize the plugin with configuration
+	plugin, ok := p.(DiscountPlugin)
+	if !ok {
+		logger.LogError("RegisterDiscountPlugin: invalid plugin type", logger.String("plugin_name", pluginName))
+		return fmt.Errorf("invalid plugin type")
+	}
 	if err := plugin.Initialize(config); err != nil {
-		return fmt.Errorf("failed to initialize plugin: %v", err)
+		logger.LogError("RegisterDiscountPlugin: failed to initialize plugin", logger.String("plugin_name", pluginName), logger.ErrorField(err))
+		return fmt.Errorf("failed to initialize plugin")
 	}
-
 	return nil
 }
 
-func (a *DiscountServiceAdapter) DisableDiscountPlugin(pluginName string) error {
+func (a *DiscountServiceAdapter) UnregisterDiscountPlugin(ctx context.Context, pluginName string) error {
 	if pluginName == "" {
+		logger.LogError("UnregisterDiscountPlugin: plugin name required")
 		return fmt.Errorf("plugin name is required")
 	}
-
-	_, exists := DiscountPlugins.Lookup(pluginName)
-	if !exists {
-		return fmt.Errorf("discount plugin '%s' not found", pluginName)
+	if err := a.PluginManager.UnregisterPlugin("discount", pluginName); err != nil {
+		logger.LogError("UnregisterDiscountPlugin: failed", logger.String("plugin_name", pluginName), logger.ErrorField(err))
+		return fmt.Errorf("failed to unregister plugin")
 	}
+	return nil
+}
 
-	// In the current implementation, there's no mechanism to disable plugins
-	// We could update the registry to mark plugins as disabled, or implement a different mechanism
-	return fmt.Errorf("DisableDiscountPlugin not implemented for this plugin type")
+func (a *DiscountServiceAdapter) ConfigureDiscountPlugin(ctx context.Context, pluginName string, config map[string]interface{}) error {
+	if pluginName == "" {
+		logger.LogError("ConfigureDiscountPlugin: plugin name required")
+		return fmt.Errorf("plugin name is required")
+	}
+	p, ok := a.PluginManager.GetPlugin("discount", pluginName)
+	if !ok {
+		logger.LogError("ConfigureDiscountPlugin: plugin not found", logger.String("plugin_name", pluginName))
+		return fmt.Errorf("discount plugin not found")
+	}
+	plugin, ok := p.(DiscountPlugin)
+	if !ok {
+		logger.LogError("ConfigureDiscountPlugin: invalid plugin type", logger.String("plugin_name", pluginName))
+		return fmt.Errorf("invalid plugin type")
+	}
+	if err := plugin.Initialize(config); err != nil {
+		logger.LogError("ConfigureDiscountPlugin: failed to initialize plugin", logger.String("plugin_name", pluginName), logger.ErrorField(err))
+		return fmt.Errorf("failed to initialize plugin")
+	}
+	return nil
+}
+
+func (a *DiscountServiceAdapter) DisableDiscountPlugin(ctx context.Context, pluginName string) error {
+	if pluginName == "" {
+		logger.LogError("DisableDiscountPlugin: plugin name required")
+		return fmt.Errorf("plugin name is required")
+	}
+	if err := a.PluginManager.UnregisterPlugin("discount", pluginName); err != nil {
+		logger.LogError("DisableDiscountPlugin: failed to unregister plugin", logger.String("plugin_name", pluginName), logger.ErrorField(err))
+		return fmt.Errorf("failed to unregister plugin")
+	}
+	return nil
 }
 
 type CreditServiceAdapter struct {

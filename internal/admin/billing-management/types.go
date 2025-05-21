@@ -9,8 +9,11 @@ import (
 	discount "github.com/subinc/subinc-backend/internal/admin/billing-management/discount"
 	payment "github.com/subinc/subinc-backend/internal/admin/billing-management/payment"
 	tax "github.com/subinc/subinc-backend/internal/admin/billing-management/tax"
+
+	security_management "github.com/subinc/subinc-backend/internal/admin/security-management"
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
 	"github.com/subinc/subinc-backend/internal/pkg/logger"
+	"github.com/subinc/subinc-backend/internal/pkg/plugin"
 )
 
 // BillingAdminHandler is a struct that contains all the services for the billing admin
@@ -34,9 +37,8 @@ type BillingAdminHandler struct {
 	AuditLogger                BillingAuditLogger     // use interface for audit logging
 	ConfigService              *server_config.Service // for fetching secrets, keys, and static configs from server-config
 	Logger                     *logger.Logger
-	PluginManager              *plugin.Manager                        // plugin manager for billing plugins
-	InvoiceValidationService   InvoiceValidationService               // for invoice validation
-	Notify                     billing_management.NotificationService // for notifications
+	PluginManager              *plugin.Manager // plugin manager for billing plugins
+	Notify                     security_management.NotificationService
 }
 
 // Account represents a billing account
@@ -502,15 +504,14 @@ type InvoicePluginConfig struct {
 // Address represents a billing address for tax calculation
 // All fields are required for tax compliance
 type Address struct {
-	ID         string `json:"id"`
-	TenantID   string `json:"tenant_id"`
-	Address1   string `json:"address1"`
-	Address2   string `json:"address2,omitempty"`
-	City       string `json:"city"`
-	State      string `json:"state"`
-	PostalCode string `json:"postal_code"`
-	Country    string `json:"country"`
+	ID         string    `json:"id"`
+	TenantID   string    `json:"tenant_id"`
+	Address1   string    `json:"address1"`
+	Address2   string    `json:"address2,omitempty"`
+	City       string    `json:"city"`
+	State      string    `json:"state"`
+	PostalCode string    `json:"postal_code"`
+	Country    string    `json:"country"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
-

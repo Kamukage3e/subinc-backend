@@ -3,11 +3,19 @@ package account
 import (
 	"context"
 	"fmt"
+
+	"github.com/subinc/subinc-backend/internal/pkg/logger"
+	"github.com/subinc/subinc-backend/internal/pkg/plugin"
 )
 
 // BillingAccountServiceAdapter provides dynamic, type-agnostic account operations.
 type BillingAccountServiceAdapter struct {
-	Store *PostgresStore
+	Store         *PostgresStore
+	PluginManager *plugin.Manager
+}
+
+func NewBillingAccountServiceAdapter(store *PostgresStore, pluginManager *plugin.Manager) *BillingAccountServiceAdapter {
+	return &BillingAccountServiceAdapter{Store: store, PluginManager: pluginManager}
 }
 
 // Create creates an account of any type.
@@ -71,4 +79,47 @@ func (a *BillingAccountServiceAdapter) PerformAction(ctx context.Context, accoun
 // Delete deletes an account of any type by ID.
 func (a *BillingAccountServiceAdapter) Delete(ctx context.Context, accountType BillingAccountType, id string) error {
 	return a.Store.DeleteBillingAccount(ctx, accountType, id)
+}
+
+func (a *BillingAccountServiceAdapter) GetAccountPlugin(ctx context.Context, pluginName string) (interface{}, error) {
+	if pluginName == "" {
+		logger.LogError("GetAccountPlugin: plugin name required")
+		return nil, fmt.Errorf("plugin name is required")
+	}
+	p, ok := a.PluginManager.GetPlugin("account", pluginName)
+	if !ok {
+		logger.LogError("GetAccountPlugin: plugin not found", logger.String("plugin", pluginName))
+		return nil, fmt.Errorf("plugin not found")
+	}
+	return p, nil
+}
+
+func (a *BillingAccountServiceAdapter) ListAccountPlugins() []string {
+	return a.PluginManager.ListPlugins("account")
+}
+
+func (a *BillingAccountServiceAdapter) RegisterAccountPlugin(ctx context.Context, plugin interface{}) error {
+	if plugin == nil {
+		logger.LogError("RegisterAccountPlugin: plugin instance required")
+		return fmt.Errorf("plugin instance required")
+	}
+	err := a.PluginManager.RegisterPlugin("account", plugin)
+	if err != nil {
+		logger.LogError("RegisterAccountPlugin: failed to register plugin", logger.ErrorField(err))
+		return fmt.Errorf("failed to register plugin")
+	}
+	return nil
+}
+
+func (a *BillingAccountServiceAdapter) UnregisterAccountPlugin(ctx context.Context, pluginName string) error {
+	if pluginName == "" {
+		logger.LogError("UnregisterAccountPlugin: plugin name required")
+		return fmt.Errorf("plugin name required")
+	}
+	err := a.PluginManager.UnregisterPlugin("account", pluginName)
+	if err != nil {
+		logger.LogError("UnregisterAccountPlugin: failed to unregister plugin", logger.String("plugin", pluginName), logger.ErrorField(err))
+		return fmt.Errorf("failed to unregister plugin")
+	}
+	return nil
 }

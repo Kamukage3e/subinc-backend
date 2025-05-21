@@ -59,7 +59,7 @@ func (h *SecurityHandler) ListUserSecurityEvents(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
 		logger.LogError("ListUserSecurityEvents: missing user_id parameter")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured": getTenantID(c)})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "error occured"})
 	}
 
 	// Optional pagination parameters

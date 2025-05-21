@@ -2,6 +2,7 @@ package tax
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -18,6 +19,14 @@ var (
 	ErrMissingParameter     = errors.New("missing required parameter")
 	ErrInvalidConfiguration = errors.New("invalid plugin configuration")
 )
+
+// contextKeyDB is the key for DB in context
+var contextKeyDB = &struct{ name string }{"db"}
+
+func getDBFromContext(ctx context.Context) *sql.DB {
+	db, _ := ctx.Value(contextKeyDB).(*sql.DB)
+	return db
+}
 
 type TaxHandler struct {
 	TaxInfoService TaxInfoService
@@ -271,35 +280,22 @@ func NewNorthAmericaTaxPlugin() *NorthAmericaTaxPlugin {
 	return p
 }
 
-func (p NorthAmericaTaxPlugin) Name() string {
+func (p *NorthAmericaTaxPlugin) Name() string {
 	return "north_america"
 }
 
-func (p NorthAmericaTaxPlugin) Version() string {
+func (p *NorthAmericaTaxPlugin) Version() string {
 	return "1.0.0"
 }
 
-func (p NorthAmericaTaxPlugin) CalculateTax(ctx context.Context, invoice Invoice, account Account, tenantID string) (float64, float64, error) {
-	// Get tax info for the tenant (would come from database in real implementation)
+func (p *NorthAmericaTaxPlugin) CalculateTax(ctx context.Context, invoice Invoice, account Account, tenantID string) (float64, float64, error) {
 	var taxInfo TaxInfo
-	// In a real implementation, we would look up tax info for this account/tenant
-
-	// Set default country from invoice if we don't have it
-	country := ""
-
-	// Try to extract country info from either tax info or account
-	if account.TenantID != "" {
-		// Get TaxInfo from database by TenantID (simulated here)
-		taxInfo = TaxInfo{
-			TenantID: account.TenantID,
-			Country:  "", // Would be populated from DB
-			Region:   "", // Would be populated from DB
-			TaxID:    "", // Would be populated from DB
-		}
-		country = taxInfo.Country
+	db := getDBFromContext(ctx) // Assume helper to get DB from context
+	row := db.QueryRowContext(ctx, `SELECT country, region, tax_id FROM tax_info WHERE tenant_id = $1`, account.TenantID)
+	if err := row.Scan(&taxInfo.Country, &taxInfo.Region, &taxInfo.TaxID); err != nil {
+		return 0, 0, err
 	}
-
-	// Default to invoice currency country code if needed
+	country := taxInfo.Country
 	if country == "" {
 		if invoice.Currency == "USD" {
 			country = "US"
@@ -307,49 +303,36 @@ func (p NorthAmericaTaxPlugin) CalculateTax(ctx context.Context, invoice Invoice
 			country = "CA"
 		}
 	}
-
-	// Lookup region/state/province based on country
 	region := taxInfo.Region
-
-	// Determine applicable tax rate based on location
 	var taxRate float64
 	switch country {
 	case "US":
 		if rate, ok := p.usTaxRates[region]; ok && region != "" {
 			taxRate = rate
 		} else {
-			// Default US tax rate if state not found
-			taxRate = 0.0 // Most digital services don't have federal sales tax
+			taxRate = 0.0
 		}
 	case "CA":
 		if rate, ok := p.caTaxRates[region]; ok && region != "" {
 			taxRate = rate
 		} else {
-			// Default Canadian tax rate (GST only)
 			taxRate = 5.0
 		}
 	default:
-		// For other countries, no tax by default
-		// In a real implementation, would check for other countries or return an error
-		taxRate = 0.0
+		return 0, 0, fmt.Errorf("unsupported country: %s", country)
 	}
-
-	// Check for tax exemption if there's a tax ID
 	taxID := taxInfo.TaxID
 	if taxID != "" {
 		if exempt, ok := p.exemptions[taxID]; ok && exempt {
 			taxRate = 0.0
 		}
 	}
-
-	// Calculate tax amount
 	amount := invoice.Amount
 	taxAmount := amount * taxRate / 100.0
-
 	return taxAmount, taxRate, nil
 }
 
-func (p NorthAmericaTaxPlugin) ValidateAddress(ctx context.Context, address Address, tenantID string) (bool, error) {
+func (p *NorthAmericaTaxPlugin) ValidateAddress(ctx context.Context, address Address, tenantID string) (bool, error) {
 	// Basic address validation
 	if address.Line1 == "" || address.City == "" || address.PostalCode == "" || address.Country == "" {
 		return false, nil
@@ -377,7 +360,7 @@ func (p NorthAmericaTaxPlugin) ValidateAddress(ctx context.Context, address Addr
 	return true, nil
 }
 
-func (p NorthAmericaTaxPlugin) GetTaxExemption(ctx context.Context, taxID string, country string, tenantID string) (bool, string, error) {
+func (p *NorthAmericaTaxPlugin) GetTaxExemption(ctx context.Context, taxID string, country string, tenantID string) (bool, string, error) {
 	// Check if tax ID is in exemptions list
 	if exempt, ok := p.exemptions[taxID]; ok && exempt {
 		if country == "US" {
@@ -391,14 +374,21 @@ func (p NorthAmericaTaxPlugin) GetTaxExemption(ctx context.Context, taxID string
 	return false, "", nil
 }
 
-func (p NorthAmericaTaxPlugin) Initialize(config map[string]interface{}) error {
-	// For the non-pointer receiver, we can't mutate the state directly
-	// In a real implementation, we would have a proper initialization process
-	// For now, we'll just return success since we initialize in the constructor
+func (p *NorthAmericaTaxPlugin) Initialize(config map[string]interface{}) error {
+	// Load config into plugin state if needed
+	if config == nil {
+		return nil
+	}
+	if usRates, ok := config["usTaxRates"].(map[string]float64); ok {
+		p.usTaxRates = usRates
+	}
+	if caRates, ok := config["caTaxRates"].(map[string]float64); ok {
+		p.caTaxRates = caRates
+	}
 	return nil
 }
 
-func (p NorthAmericaTaxPlugin) Capabilities() []string {
+func (p *NorthAmericaTaxPlugin) Capabilities() []string {
 	return []string{"us_sales_tax", "ca_gst_hst", "exemption_certificates", "address_validation"}
 }
 
@@ -414,7 +404,7 @@ var TaxPlugins = func() *TaxPluginRegistry {
 	// Initialize North America tax plugin with proper data
 	naPlugin := NewNorthAmericaTaxPlugin()
 	// The plugin instance is properly initialized with constructor
-	r.Register(*naPlugin) // Use value type since our methods use value receiver
+	r.Register(naPlugin)
 
 	return r
 }()

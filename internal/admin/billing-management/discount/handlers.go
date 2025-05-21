@@ -440,7 +440,7 @@ func (h *DiscountHandler) ApplyCreditsToInvoice(c *fiber.Ctx) error {
 
 // ListDiscountPlugins returns all registered discount plugins
 func (h *DiscountHandler) ListDiscountPlugins(c *fiber.Ctx) error {
-	pluginNames, err := h.DiscountService.ListDiscountPlugins()
+	pluginNames, err := h.DiscountService.ListDiscountPlugins(c.Context())
 	if err != nil {
 		logger.LogError("ListDiscountPlugins: failed to list plugins", logger.ErrorField(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -470,7 +470,7 @@ func (h *DiscountHandler) GetDiscountPlugin(c *fiber.Ctx) error {
 		})
 	}
 
-	plugin, err := h.DiscountService.GetDiscountPlugin(pluginName)
+	plugin, err := h.DiscountService.GetDiscountPlugin(c.Context(), pluginName)
 	if err != nil {
 		logger.LogError("GetDiscountPlugin: plugin not found", logger.ErrorField(err), logger.String("plugin_name", pluginName))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -504,7 +504,7 @@ func (h *DiscountHandler) ConfigureDiscountPlugin(c *fiber.Ctx) error {
 	}
 
 	// Check if the plugin exists first
-	_, err := h.DiscountService.GetDiscountPlugin(pluginName)
+	_, err := h.DiscountService.GetDiscountPlugin(c.Context(), pluginName)
 	if err != nil {
 		logger.LogError("ConfigureDiscountPlugin: plugin not found", logger.ErrorField(err), logger.String("plugin_name", pluginName))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -525,7 +525,7 @@ func (h *DiscountHandler) ConfigureDiscountPlugin(c *fiber.Ctx) error {
 	config["tenant_id"] = tenantID
 
 	// Configure the plugin using the service
-	if err := h.DiscountService.ConfigureDiscountPlugin(pluginName, config); err != nil {
+	if err := h.DiscountService.ConfigureDiscountPlugin(c.Context(), pluginName, config); err != nil {
 		logger.LogError("ConfigureDiscountPlugin: Failed to configure plugin", logger.ErrorField(err), logger.String("plugin_name", pluginName))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to configure plugin",
@@ -546,7 +546,7 @@ func (h *DiscountHandler) DisableDiscountPlugin(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Plugin name is required"})
 	}
 
-	err := h.DiscountService.DisableDiscountPlugin(pluginName)
+	err := h.DiscountService.DisableDiscountPlugin(c.Context(), pluginName)
 	if err != nil {
 		logger.LogError("DisableDiscountPlugin: Failed to disable plugin", logger.ErrorField(err), logger.String("plugin_name", pluginName))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to disable plugin"})
