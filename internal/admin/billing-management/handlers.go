@@ -480,133 +480,86 @@ func (h *BillingAdminHandler) RetryWebhookDelivery(c *fiber.Ctx) error {
 }
 
 func (h *BillingAdminHandler) GetRevenueReport(c *fiber.Ctx) error {
-	var input struct{}
-	_ = c.BodyParser(&input)
-	out, err := h.Store.GetRevenueReport(c.Context())
+	// Get the report data
+	reportData, err := h.ReportService.GetRevenueReport(c.Context())
 	if err != nil {
-		logger.LogError("", logger.ErrorField(err))
-		return c.JSON(fiber.ErrBadRequest)
+		logger.LogError("GetRevenueReport: failed to generate report", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to process request",
+		})
 	}
 
-	return c.JSON(out)
+	return c.JSON(reportData)
 }
 
 func (h *BillingAdminHandler) GetARReport(c *fiber.Ctx) error {
-	var input struct{}
-	_ = c.BodyParser(&input)
-	out, err := h.Store.GetARReport(c.Context())
+	// Get the accounts receivable report data
+	reportData, err := h.ReportService.GetARReport(c.Context())
 	if err != nil {
-		logger.LogError("", logger.ErrorField(err))
-		return c.JSON(fiber.ErrBadRequest)
+		logger.LogError("GetARReport: failed to generate report", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to process request",
+		})
 	}
 
-	return c.JSON(out)
+	return c.JSON(reportData)
 }
 
 func (h *BillingAdminHandler) GetChurnReport(c *fiber.Ctx) error {
-	var input struct{}
-	_ = c.BodyParser(&input)
-	out, err := h.Store.GetChurnReport(c.Context())
+	// Get the churn report data
+	reportData, err := h.ReportService.GetChurnReport(c.Context())
 	if err != nil {
-		logger.LogError("", logger.ErrorField(err))
-		return c.JSON(fiber.ErrBadRequest)
+		logger.LogError("GetChurnReport: failed to generate report", logger.ErrorField(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to process request",
+		})
 	}
 
-	return c.JSON(out)
+	return c.JSON(reportData)
 }
 
 func (h *BillingAdminHandler) CreateInvoiceWithFeesAndTax(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})
-	}
+	// Parse the invoice data with fees and tax
 	var input struct {
+		Invoice    Invoice `json:"invoice"`
 		FixedFee   float64 `json:"fixed_fee"`
 		PercentFee float64 `json:"percent_fee"`
 		TaxRate    float64 `json:"tax_rate"`
 	}
+
 	if err := c.BodyParser(&input); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
-	}
-	invoice, err := h.InvoiceService.GetInvoice(id)
-	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "invoice not found"})
-	}
-	res, err := h.AccountService.Get(c.Context(), account.AccountTypeProject, invoice.AccountID)
-	if err != nil {
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "account not found"})
-	}
-	accountObj, _ := res.(account.ProjectBillingAccount)
-	pluginName := "default"
-	if cfg, err := h.TaxService.GetTaxPluginConfig(c.Context(), accountObj.TenantID); err == nil && cfg.PluginName != "" {
-		pluginName = cfg.PluginName
-	}
-	plugin, ok := h.PluginManager.GetTaxPlugin(pluginName)
-	if !ok {
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "tax plugin not found: " + pluginName})
-	}
-	if pluginName == "manual" {
-		invoice.TaxRate = input.TaxRate
-	}
-	invoice.PluginName = pluginName
-
-	// Convert to tax.Invoice for the plugin
-	taxInvoice := tax.Invoice{
-		ID:               invoice.ID,
-		AccountID:        invoice.AccountID,
-		Amount:           invoice.Amount,
-		Currency:         invoice.Currency,
-		OriginalAmount:   invoice.OriginalAmount,
-		OriginalCurrency: invoice.OriginalCurrency,
-		Status:           invoice.Status,
-		DueDate:          invoice.DueDate,
-		CreatedAt:        invoice.CreatedAt,
-		UpdatedAt:        invoice.UpdatedAt,
-		TaxAmount:        invoice.TaxAmount,
-		TaxRate:          invoice.TaxRate,
-		Fees:             invoice.Fees,
+		logger.LogError("CreateInvoiceWithFeesAndTax: invalid input", logger.ErrorField(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request format",
+		})
 	}
 
-	// Convert to tax.Account for the plugin
-	taxAccount := tax.Account{
-		ID:        accountObj.ID,
-		TenantID:  accountObj.TenantID,
-		Email:     accountObj.Email,
-		Status:    accountObj.Status,
-		Currency:  accountObj.Currency,
-		CreatedAt: accountObj.CreatedAt,
-		UpdatedAt: accountObj.UpdatedAt,
+	// Validate input parameters
+	if input.Invoice.AccountID == "" {
+		logger.LogError("CreateInvoiceWithFeesAndTax: missing account_id", logger.String("path", c.Path()))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Missing required parameter",
+		})
 	}
 
-	taxAmount, taxRate, terr := plugin.CalculateTax(c.Context(), taxInvoice, taxAccount, accountObj.TenantID)
-	if terr != nil {
-		logger.LogError("", logger.ErrorField(terr))
-		return c.JSON(fiber.ErrBadRequest)
-	}
-	invoice.TaxAmount = taxAmount
-	invoice.TaxRate = taxRate
-	// Calculate fees
-	subtotal := invoice.Amount
-	feeTotal := input.FixedFee
-	if input.PercentFee > 0 {
-		feeTotal += subtotal * (input.PercentFee / 100)
-	}
-	fees := []map[string]interface{}{}
-	if input.FixedFee > 0 {
-		fees = append(fees, map[string]interface{}{"type": "fixed", "amount": input.FixedFee})
-	}
-	if input.PercentFee > 0 {
-		fees = append(fees, map[string]interface{}{"type": "percent", "amount": input.PercentFee})
-	}
-	feeBytes, _ := json.Marshal(fees)
-	invoice.Fees = string(feeBytes)
-	invoice.Amount = subtotal + feeTotal + taxAmount
-	out, err := h.Store.CreateInvoiceWithFeesAndTax(c.Context(), invoice, input.FixedFee, input.PercentFee, taxRate)
+	// Process the invoice with fees and tax
+	invoice, err := h.InvoiceExportService.CreateInvoiceWithFeesAndTax(
+		c.Context(),
+		input.Invoice,
+		input.FixedFee,
+		input.PercentFee,
+		input.TaxRate,
+	)
 	if err != nil {
-		logger.LogError("", logger.ErrorField(err))
-		return c.JSON(fiber.ErrBadRequest)
+		logger.LogError("CreateInvoiceWithFeesAndTax: failed",
+			logger.ErrorField(err),
+			logger.String("account_id", input.Invoice.AccountID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to process request",
+		})
 	}
-	return c.Status(fiber.StatusCreated).JSON(out)
+
+	return c.Status(fiber.StatusCreated).JSON(invoice)
 }
 
 func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
@@ -735,7 +688,9 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 			if payErr == nil && result != nil && result.Status == "succeeded" {
 				err := h.Store.UpdateInvoiceStatus(c.Context(), inv.ID, "paid")
 				if err != nil {
-					logger.LogError("dunning.worker.update_invoice_status_failed", logger.ErrorField(err), logger.String("invoice_id", inv.ID))
+					logger.LogError("dunning.worker.update_invoice_status_failed",
+						logger.ErrorField(err),
+						logger.String("invoice_id", inv.ID))
 				}
 				details := map[string]interface{}{
 					"invoice_id":    inv.ID,
@@ -759,7 +714,10 @@ func (h *BillingAdminHandler) CreateInvoice(c *fiber.Ctx) error {
 				if nErr != nil {
 					logger.LogError("dunning.worker.notify_paid_failed", logger.ErrorField(nErr), logger.String("account_id", acct.ID))
 				}
-				logger.LogInfo("dunning.worker.payment_success", logger.String("invoice_id", inv.ID))
+				logger.LogInfo("dunning.worker.payment_success",
+					logger.String("invoice_id", inv.ID),
+					logger.String("tenant_id", acct.TenantID),
+					logger.Int("attempts", inv.DunningAttempts+1))
 
 			}
 			logger.LogError("dunning.worker.payment_retry_failed", logger.ErrorField(payErr), logger.String("invoice_id", inv.ID))
@@ -1394,125 +1352,25 @@ func generateInvoicePDF(pdfData map[string]interface{}) ([]byte, error) {
 func (h *BillingAdminHandler) DownloadInvoicePDF(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})
-	}
-
-	// Get the invoice
-	invoice, err := h.InvoiceService.GetInvoice(id)
-	if err != nil {
-		logger.LogError("DownloadInvoicePDF: invoice not found", logger.ErrorField(err), logger.String("id", id))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "invoice not found"})
-	}
-
-	// Get account details
-	res, err := h.AccountService.Get(c.Context(), account.AccountTypeProject, invoice.AccountID)
-	if err != nil {
-		logger.LogError("DownloadInvoicePDF: account not found",
-			logger.ErrorField(err),
-			logger.String("invoice_id", id),
-			logger.String("account_id", invoice.AccountID))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "account not found"})
-	}
-	accountObj, _ := res.(account.ProjectBillingAccount)
-
-	// Get company info from config if available
-	companyName := "SubInc"
-	companyContact := "support@subinc-example.com"
-
-	// Get company info from billing config
-	if h.InvoiceService != nil {
-		billingConfig, configErr := h.InvoiceService.GetBillingConfig()
-		if configErr == nil {
-			if compName, ok := billingConfig["company_name"].(string); ok && compName != "" {
-				companyName = compName
-			}
-			if contact, ok := billingConfig["support_email"].(string); ok && contact != "" {
-				companyContact = contact
-			}
-		}
-	}
-
-	// Default to empty line items
-	lineItems := []map[string]string{}
-
-	// Build PDF data
-	pdfData := map[string]interface{}{
-		"title":          "Invoice " + invoice.ID,
-		"invoice_number": invoice.ID,
-		"invoice_date":   invoice.CreatedAt.Format("2006-01-02"),
-		"due_date":       invoice.DueDate.Format("2006-01-02"),
-		"status":         invoice.Status,
-		"account_email":  accountObj.Email,
-		"account_id":     accountObj.ID,
-		"company_name":   companyName,
-		"contact_info":   companyContact,
-		"table": [][3]string{
-			{"Subtotal", fmt.Sprintf("%.2f", invoice.Amount-invoice.TaxAmount), invoice.Currency},
-			{"Tax", fmt.Sprintf("%.2f (%.2f%%)", invoice.TaxAmount, invoice.TaxRate), invoice.Currency},
-			{"Total", fmt.Sprintf("%.2f", invoice.Amount), invoice.Currency},
-		},
-		"footer": "Thank you for your business. For questions about this invoice, please contact our billing team.",
-	}
-
-	// Add line items if available
-	if len(lineItems) > 0 {
-		pdfData["line_items"] = lineItems
-	}
-
-	// Handle multi-currency invoices
-	if invoice.OriginalAmount > 0 && invoice.OriginalCurrency != "" {
-		table := pdfData["table"].([][3]string)
-		table = append(table, [3]string{
-			"Original Amount",
-			fmt.Sprintf("%.2f", invoice.OriginalAmount),
-			invoice.OriginalCurrency,
+		logger.LogError("DownloadInvoicePDF: missing invoice ID", logger.String("path", c.Path()))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Missing required parameter",
 		})
-		pdfData["table"] = table
 	}
 
-	// Parse fees if present
-	if invoice.Fees != "" {
-		var fees []map[string]interface{}
-		feeErr := json.Unmarshal([]byte(invoice.Fees), &fees)
-		if feeErr == nil && len(fees) > 0 {
-			for _, fee := range fees {
-				feeType, ok1 := fee["type"].(string)
-				feeAmount, ok2 := fee["amount"].(float64)
-				if ok1 && ok2 {
-					description := "Fee"
-					if feeType == "fixed" {
-						description = "Processing Fee"
-					} else if feeType == "percent" {
-						description = fmt.Sprintf("Service Fee (%.2f%%)", feeAmount)
-						// Convert percentage to actual amount for consistent display
-						feeAmount = (invoice.Amount - invoice.TaxAmount) * feeAmount / 100
-					}
-
-					table := pdfData["table"].([][3]string)
-					table = append(table, [3]string{
-						description,
-						fmt.Sprintf("%.2f", feeAmount),
-						invoice.Currency,
-					})
-					pdfData["table"] = table
-				}
-			}
-		}
+	// Get the invoice PDF data
+	pdfData, err := h.InvoiceExportService.DownloadInvoicePDF(c.Context(), id)
+	if err != nil {
+		logger.LogError("DownloadInvoicePDF: failed to generate PDF", logger.ErrorField(err), logger.String("invoice_id", id))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to process request",
+		})
 	}
 
-	// Generate PDF
-	pdfBytes, pdfErr := generateInvoicePDF(pdfData)
-	if pdfErr != nil {
-		logger.LogError("DownloadInvoicePDF: PDF generation failed",
-			logger.ErrorField(pdfErr),
-			logger.String("invoice_id", id))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate PDF"})
-	}
-
-	// Set response headers and return PDF
+	// Set appropriate headers and return the PDF data
 	c.Set("Content-Type", "application/pdf")
-	c.Set("Content-Disposition", "attachment; filename=invoice-"+invoice.ID+".pdf")
-	return c.Send(pdfBytes)
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=invoice-%s.pdf", id))
+	return c.Send(pdfData)
 }
 
 func (h *BillingAdminHandler) StripeWebhookHandler(c *fiber.Ctx) error {
@@ -2518,7 +2376,7 @@ func (h *BillingAdminHandler) RegisterPlugin(c *fiber.Ctx) error {
 				logger.String("type", pluginType),
 				logger.String("plugin", pluginName),
 				logger.ErrorField(err))
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to initialize plugin: " })
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to initialize plugin: "})
 		}
 	} else {
 		logger.LogError("RegisterPlugin: plugin does not support initialization",
@@ -2589,7 +2447,7 @@ func (h *BillingAdminHandler) DisablePlugin(c *fiber.Ctx) error {
 
 	if err != nil {
 		logger.LogError("DisablePlugin: failed", logger.String("type", pluginType), logger.String("plugin", pluginName), logger.String("tenant_id", tenantID), logger.ErrorField(err))
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "failed to disable plugin" }) 
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "failed to disable plugin"})
 	}
 
 	logger.LogInfo("DisablePlugin: plugin disabled", logger.String("type", pluginType), logger.String("plugin", pluginName), logger.String("tenant_id", tenantID))
@@ -2626,7 +2484,7 @@ func (h *BillingAdminHandler) ConfigurePlugin(c *fiber.Ctx) error {
 				logger.String("type", pluginType),
 				logger.String("plugin", pluginName),
 				logger.ErrorField(err))
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to configure plugin" })
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to configure plugin"})
 		}
 	} else {
 		logger.LogError("ConfigurePlugin: plugin does not support initialization",
@@ -2887,13 +2745,30 @@ func (h *BillingAdminHandler) GetDunningConfig(c *fiber.Ctx) error {
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
 		logger.LogError("GetDunningConfig: tenant_id required", logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Missing required parameter",
+		})
 	}
 
-	config, err := h.Store.GetDunningConfig(c.Context(), tenantID)
+	config, err := h.DunningService.GetDunningConfig(c.Context(), tenantID)
 	if err != nil {
 		logger.LogError("GetDunningConfig: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "dunning configuration not found"})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to process request",
+		})
+	}
+
+	if config == nil {
+		// No configuration found, return default values
+		return c.JSON(fiber.Map{
+			"tenant_id":    tenantID,
+			"max_attempts": 3,
+			"retry_intervals": []string{
+				"24h",
+				"48h",
+				"72h",
+			},
+		})
 	}
 
 	// Convert durations to strings for easier client handling
@@ -2919,16 +2794,22 @@ func (h *BillingAdminHandler) UpdateDunningConfig(c *fiber.Ctx) error {
 
 	if err := c.BodyParser(&input); err != nil {
 		logger.LogError("UpdateDunningConfig: invalid input", logger.ErrorField(err))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid input"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request format",
+		})
 	}
 
 	if input.TenantID == "" {
 		logger.LogError("UpdateDunningConfig: tenant_id required", logger.String("tenant_id", input.TenantID))
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Missing required parameter",
+		})
 	}
 
 	if input.MaxAttempts < 1 || input.MaxAttempts > 10 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "max_attempts must be between 1 and 10"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "max_attempts must be between 1 and 10",
+		})
 	}
 
 	if len(input.RetryIntervals) != input.MaxAttempts {
@@ -2960,10 +2841,12 @@ func (h *BillingAdminHandler) UpdateDunningConfig(c *fiber.Ctx) error {
 		RetryIntervals: intervals,
 	}
 
-	// Store the configuration
-	if err := h.Store.SetDunningConfig(c.Context(), input.TenantID, config); err != nil {
+	// Store the configuration using the DunningService
+	if err := h.DunningService.UpdateDunningConfig(c.Context(), input.TenantID, config); err != nil {
 		logger.LogError("UpdateDunningConfig: failed to save", logger.ErrorField(err), logger.String("tenant_id", input.TenantID))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to save dunning configuration"})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to process request",
+		})
 	}
 
 	return c.JSON(fiber.Map{
@@ -2979,113 +2862,27 @@ func (h *BillingAdminHandler) ManualRetryDunning(c *fiber.Ctx) error {
 	invoiceID := c.Params("id")
 	if invoiceID == "" {
 		logger.LogError("ManualRetryDunning: invoice_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})
-	}
-
-	// Get the invoice
-	invoice, err := h.Store.GetInvoice(c.Context(), invoiceID)
-	if err != nil {
-		logger.LogError("ManualRetryDunning: invoice not found", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "invoice not found"})
-	}
-
-	// Create a dunning event for this manual attempt
-	event := &DunningEvent{
-		ID:        commonutil.GenerateUUID(),
-		AccountID: invoice.AccountID,
-		InvoiceID: invoice.ID,
-		EventType: "manual_retry",
-		Details: map[string]interface{}{
-			"attempt":  invoice.DunningAttempts + 1,
-			"manual":   true,
-			"amount":   invoice.Amount,
-			"currency": invoice.Currency,
-			"actor_id": commonutil.GetActorOrSystem(c),
-		},
-		CreatedAt: time.Now().UTC(),
-	}
-
-	// Store event
-	err = h.Store.CreateDunningEvent(c.Context(), event)
-	if err != nil {
-		logger.LogError("ManualRetryDunning: failed to create event", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
-		// Continue even if event creation fails
-	}
-
-	// Prepare the failed payment for retry
-	failedPayment := &payment.FailedPayment{
-		ID:                 invoice.ID,
-		InvoiceID:          invoice.ID,
-		DunningAttempts:    invoice.DunningAttempts,
-		DunningState:       invoice.DunningStatus,
-		LastDunningAttempt: invoice.DunningNextAttemptAt,
-	}
-
-	// Attempt the payment
-	result, payErr := payment.RetryPayment(c.Context(), h.PaymentStore, failedPayment)
-
-	// Handle success
-	if payErr == nil && result != nil && result.Status == "succeeded" {
-		// Update invoice status
-		err := h.Store.UpdateInvoiceStatus(c.Context(), invoice.ID, "paid")
-		if err != nil {
-			logger.LogError("ManualRetryDunning: update invoice status failed",
-				logger.ErrorField(err),
-				logger.String("invoice_id", invoice.ID))
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "payment succeeded but failed to update invoice",
-			})
-		}
-
-		// Create success event
-		successEvent := &DunningEvent{
-			ID:        commonutil.GenerateUUID(),
-			AccountID: invoice.AccountID,
-			InvoiceID: invoice.ID,
-			EventType: "payment_success_manual",
-			Details: map[string]interface{}{
-				"manual":         true,
-				"payment_id":     result.PaymentID,
-				"payment_method": getPaymentMethodOrDefault(result),
-				"amount":         invoice.Amount,
-				"currency":       invoice.Currency,
-				"actor_id":       commonutil.GetActorOrSystem(c),
-			},
-			CreatedAt: time.Now().UTC(),
-		}
-		_ = h.Store.CreateDunningEvent(c.Context(), successEvent)
-
-		return c.Status(fiber.StatusOK).JSON(fiber.Map{
-			"success":    true,
-			"message":    "Payment successful",
-			"status":     "paid",
-			"invoice_id": invoice.ID,
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Missing required parameter",
 		})
 	}
 
-	// Handle failure
-	// Create failure event
-	failEvent := &DunningEvent{
-		ID:        commonutil.GenerateUUID(),
-		AccountID: invoice.AccountID,
-		InvoiceID: invoice.ID,
-		EventType: "payment_retry_failed_manual",
-		Details: map[string]interface{}{
-			"manual":   true,
-			"amount":   invoice.Amount,
-			"currency": invoice.Currency,
-			"error":    payErr.Error(),
-			"actor_id": commonutil.GetActorOrSystem(c),
-		},
-		CreatedAt: time.Now().UTC(),
+	// Use the dunning service to retry the payment
+	err := h.DunningService.ManualRetryDunning(c.Context(), invoiceID)
+	if err != nil {
+		logger.LogError("ManualRetryDunning: failed", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": "Payment failed",
+			"error":   err.Error(),
+		})
 	}
-	_ = h.Store.CreateDunningEvent(c.Context(), failEvent)
 
-	return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-		"success":    false,
-		"message":    "Payment failed",
-		"error":      payErr.Error(),
-		"invoice_id": invoice.ID,
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success":    true,
+		"message":    "Payment successful",
+		"status":     "paid",
+		"invoice_id": invoiceID,
 	})
 }
 
@@ -3094,7 +2891,9 @@ func (h *BillingAdminHandler) GetDunningEvents(c *fiber.Ctx) error {
 	invoiceID := c.Params("id")
 	if invoiceID == "" {
 		logger.LogError("GetDunningEvents: invoice_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invoice_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Missing required parameter",
+		})
 	}
 
 	// Get pagination parameters
@@ -3108,11 +2907,13 @@ func (h *BillingAdminHandler) GetDunningEvents(c *fiber.Ctx) error {
 		pageSize = 10
 	}
 
-	// Retrieve the events from the database
-	events, err := h.Store.ListDunningEvents(c.Context(), invoiceID, page, pageSize)
+	// Retrieve the events from the service
+	events, err := h.DunningService.GetDunningEvents(c.Context(), invoiceID, page, pageSize)
 	if err != nil {
 		logger.LogError("GetDunningEvents: failed", logger.ErrorField(err), logger.String("invoice_id", invoiceID))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to retrieve dunning events"})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to process request",
+		})
 	}
 
 	return c.JSON(fiber.Map{
@@ -3130,14 +2931,18 @@ func (h *BillingAdminHandler) GetDunningDashboard(c *fiber.Ctx) error {
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
 		logger.LogError("GetDunningDashboard: tenant_id required")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Missing required parameter",
+		})
 	}
 
-	// Retrieve the dashboard data
-	dashboard, err := h.Store.GetDunningDashboard(c.Context(), tenantID)
+	// Get the dashboard data from the service
+	dashboard, err := h.DunningService.GetDunningDashboard(c.Context(), tenantID)
 	if err != nil {
 		logger.LogError("GetDunningDashboard: failed", logger.ErrorField(err), logger.String("tenant_id", tenantID))
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to retrieve dunning dashboard"})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to process request",
+		})
 	}
 
 	return c.JSON(dashboard)

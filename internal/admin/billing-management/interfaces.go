@@ -19,6 +19,12 @@ type InvoiceService interface {
 	DeleteInvoice(id string) error
 }
 
+// InvoiceExportService handles invoice file generation and export
+type InvoiceExportService interface {
+	DownloadInvoicePDF(ctx context.Context, invoiceID string) ([]byte, error)
+	CreateInvoiceWithFeesAndTax(ctx context.Context, invoice Invoice, fixedFee, percentFee, taxRate float64) (Invoice, error)
+}
+
 type PaymentService interface {
 	CreatePayment(input payment.Payment) (payment.Payment, error)
 	UpdatePayment(input payment.Payment) (payment.Payment, error)
@@ -98,6 +104,22 @@ type TenantCurrencyService interface {
 // All audit logging must use AuditLogger for decoupling and optionality.
 type BillingAuditLogger interface {
 	LogBillingEvent(event string, actor string, target string, details string)
+}
+
+// ReportService defines interfaces for generating financial reports
+type ReportService interface {
+	GetRevenueReport(ctx context.Context) (map[string]interface{}, error)
+	GetARReport(ctx context.Context) (map[string]interface{}, error)
+	GetChurnReport(ctx context.Context) (map[string]interface{}, error)
+}
+
+// DunningService handles payment collection retry operations
+type DunningService interface {
+	GetDunningConfig(ctx context.Context, tenantID string) (*DunningConfig, error)
+	UpdateDunningConfig(ctx context.Context, tenantID string, config *DunningConfig) error
+	ManualRetryDunning(ctx context.Context, invoiceID string) error
+	GetDunningEvents(ctx context.Context, invoiceID string, page, pageSize int) ([]DunningEvent, error)
+	GetDunningDashboard(ctx context.Context, tenantID string) (*DunningDashboard, error)
 }
 
 // DisputeServiceInterface defines admin dispute management contract

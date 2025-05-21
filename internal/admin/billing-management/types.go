@@ -29,6 +29,9 @@ type BillingAdminHandler struct {
 	PaymentMethodService       payment.PaymentMethodService
 	CreditService              discount.CreditService
 	TaxService                 tax.TaxInfoService
+	ReportService              ReportService
+	DunningService             DunningService
+	InvoiceExportService       InvoiceExportService
 	Store                      *PostgresStore
 	PaymentStore               payment.StoreInterface
 	AuditLogger                BillingAuditLogger                      // use interface for audit logging
@@ -328,7 +331,7 @@ type ExchangeRate struct {
 }
 
 type PostgresStore struct {
-	DB                  *pgxpool.Pool
+	DB *pgxpool.Pool
 
 	ServerConfigService *server_config.Service
 }

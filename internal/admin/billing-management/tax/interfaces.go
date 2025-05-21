@@ -8,6 +8,8 @@ type TaxInfoService interface {
 	SetTaxInfo(ctx context.Context, info TaxInfo) (TaxInfo, error)
 	GetTaxInfo(ctx context.Context, tenantID string) (TaxInfo, error)
 	ListTaxPlugins(ctx context.Context) ([]string, error)
+	GetTaxPlugin(ctx context.Context, pluginName string) (TaxPlugin, error)
+	ConfigureTaxPlugin(ctx context.Context, pluginName string, tenantID string, config map[string]interface{}) error
 	SetTaxPluginConfig(ctx context.Context, config TaxPluginConfig) (TaxPluginConfig, error)
 	GetTaxPluginConfig(ctx context.Context, tenantID string) (TaxPluginConfig, error)
 	RemoveTaxPluginConfig(ctx context.Context, tenantID, pluginName string) error

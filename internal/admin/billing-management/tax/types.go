@@ -2,12 +2,21 @@ package tax
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	server_config "github.com/subinc/subinc-backend/internal/admin/server-config"
+)
+
+// Common tax errors
+var (
+	ErrPluginNotFound       = errors.New("tax plugin not found")
+	ErrPluginNotSupported   = errors.New("tax plugin feature not supported")
+	ErrMissingParameter     = errors.New("missing required parameter")
+	ErrInvalidConfiguration = errors.New("invalid plugin configuration")
 )
 
 type TaxHandler struct {
